@@ -6,6 +6,7 @@ import { SurfaceChart } from "./SurfaceChart";
 import { num } from "../lib/format";
 import { SplitView, Pane, DetailPane, ContextPane, EmptyDetail, PANE_WIDTH } from "./layout/SplitView";
 import { ListSearch } from "./ListSearch";
+import { SegmentedControl } from "./SegmentedControl";
 
 const TONE_SOLID: Record<Environment["statusTone"], string> = {
   ok: "var(--grass-9)",
@@ -277,24 +278,13 @@ function EnvironmentMain({ env }: { env: Environment }) {
   return (
     <DetailPane>
       <div className="flex shrink-0 items-center gap-1 border-border-default border-b-[0.5px] px-3 py-2">
-        {DETAIL_TABS.map((t) => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => setTab(t)}
-            className="focusable rounded-md px-2.5 py-1 text-body-sm transition-colors"
-            style={{
-              background: tab === t ? "var(--color-transparent-hover)" : "transparent",
-              color: tab === t ? "var(--color-primary-foreground)" : "var(--color-tertiary-foreground)",
-              fontWeight: tab === t ? 500 : 400,
-            }}
-          >
-            {t}
-            {t === "Deployments" && (
-              <span className="ml-1.5 font-departure-mono text-[0.65rem] text-tertiary-foreground">{deploys.length}</span>
-            )}
-          </button>
-        ))}
+        <SegmentedControl
+          variant="ghost"
+          ariaLabel="Environment detail"
+          segments={DETAIL_TABS.map((t) => ({ id: t, label: t, badge: t === "Deployments" ? deploys.length : undefined }))}
+          value={tab}
+          onChange={(id) => setTab(id as DetailTab)}
+        />
       </div>
 
       {tab === "Overview" ? (

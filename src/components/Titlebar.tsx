@@ -7,6 +7,7 @@ import { VIEW_MODES, CONTEXT_LABEL } from "../data/viewLayout";
 import { SETTINGS_PAGES, DEFAULT_SETTINGS_PAGE } from "../data/settings";
 import { Breadcrumb, type Crumb } from "./Breadcrumb";
 import { SidebarToggle } from "./SidebarToggle";
+import { SegmentedControl } from "./SegmentedControl";
 import { Avatar } from "./Avatar";
 
 /** Generic segmented presentation switcher, driven by `VIEW_MODES`. Shown for any
@@ -25,37 +26,22 @@ function ViewModeSwitcher({ view }: { view: View }) {
     selectAutomation(null);
     selectEnvironment(null);
   };
+  // First mode is always "list"; the second is the page's alternate. The selected
+  // segment tracks the global layout, so it persists across pages (only the
+  // alternate's label changes: Board vs Grid).
+  const value = layout === "list" ? modes[0].id : modes[1].id;
   return (
-    <div className="flex items-center gap-0.5 rounded-lg bg-component p-0.5">
-      {modes.map((m, i) => {
-        // First mode is always "list"; the second is the page's alternate. The
-        // selected segment tracks the global layout, so it persists across pages
-        // (only the alternate's label changes: Board vs Grid).
-        const isList = i === 0;
-        const on = isList ? layout === "list" : layout === "alt";
-        return (
-          <button
-            key={m.id}
-            type="button"
-            onClick={() => {
-              const next = isList ? "list" : "alt";
-              setLayout(next);
-              if (next === "alt") clearAllSelections();
-            }}
-            aria-pressed={on}
-            className="pressable focusable flex items-center gap-1.5 rounded-md px-2.5 py-1 text-body-sm font-medium transition-colors"
-            style={{
-              background: on ? "var(--color-page)" : "transparent",
-              color: on ? "var(--color-primary-foreground)" : "var(--color-tertiary-foreground)",
-              boxShadow: on ? "0 0 0 0.5px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.06)" : "none",
-            }}
-          >
-            {m.icon}
-            {m.label}
-          </button>
-        );
-      })}
-    </div>
+    <SegmentedControl
+      variant="solid"
+      ariaLabel="View layout"
+      segments={modes.map((m) => ({ id: m.id, label: m.label, icon: m.icon }))}
+      value={value}
+      onChange={(id) => {
+        const next = id === modes[0].id ? "list" : "alt";
+        setLayout(next);
+        if (next === "alt") clearAllSelections();
+      }}
+    />
   );
 }
 

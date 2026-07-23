@@ -7,6 +7,7 @@ import { MetadataPanel } from "./MetadataPanel";
 import { ActivityFeed } from "./ActivityFeed";
 import { ImpactChart } from "./ImpactChart";
 import { DetailPane, ContextPane } from "./layout/SplitView";
+import { SegmentedControl } from "./SegmentedControl";
 
 const TABS = ["Activity", "Sessions", "Evidence"] as const;
 type Tab = (typeof TABS)[number];
@@ -86,26 +87,13 @@ export function IssueDetail({ issue }: { issue: Issue }) {
       {/* Activity — the primary detail pane */}
       <DetailPane>
         <div className="flex shrink-0 items-center gap-1 border-border-default border-b-[0.5px] px-3 py-2">
-          {TABS.map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setTab(t)}
-              className="focusable rounded-md px-2.5 py-1 text-body-sm transition-colors"
-              style={{
-                background: tab === t ? "var(--color-transparent-hover)" : "transparent",
-                color: tab === t ? "var(--color-primary-foreground)" : "var(--color-tertiary-foreground)",
-                fontWeight: tab === t ? 500 : 400,
-              }}
-            >
-              {t}
-              {t === "Evidence" && (
-                <span className="ml-1.5 font-departure-mono text-[0.65rem] text-tertiary-foreground">
-                  {issue.findingsCount}
-                </span>
-              )}
-            </button>
-          ))}
+          <SegmentedControl
+            variant="ghost"
+            ariaLabel="Issue detail"
+            segments={TABS.map((t) => ({ id: t, label: t, badge: t === "Evidence" ? issue.findingsCount : undefined }))}
+            value={tab}
+            onChange={(id) => setTab(id as Tab)}
+          />
         </div>
 
         {tab === "Activity" ? (
