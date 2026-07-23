@@ -24,6 +24,7 @@ import { endUsers, type Device, type EndUser, type SessionEvent, type UserSessio
 import type { Issue, Priority } from "../data/types";
 import { PRIORITY_ACCENT } from "./Badges";
 import { num } from "../lib/format";
+import { SplitView, Pane, DetailPane, ContextPane, PANE_WIDTH } from "./layout/SplitView";
 
 /* ------------------------------------------------------------------ profile */
 
@@ -54,7 +55,7 @@ function UsersList({ selectedId, onSelect }: { selectedId: string; onSelect: (id
     : endUsers;
 
   return (
-    <div className="flex w-64 shrink-0 flex-col border-border-default border-r-[0.5px]">
+    <Pane width={PANE_WIDTH.list}>
       <div className="border-border-default border-b-[0.5px] px-3 py-3">
         <label className="flex items-center gap-2 rounded-lg bg-component px-2.5 py-1.5">
           <Search size={15} strokeWidth={1.8} className="shrink-0 text-tertiary-foreground" />
@@ -101,7 +102,7 @@ function UsersList({ selectedId, onSelect }: { selectedId: string; onSelect: (id
           })}
         </div>
       </div>
-    </div>
+    </Pane>
   );
 }
 
@@ -177,7 +178,7 @@ function Profile({ user }: { user: EndUser }) {
   };
 
   return (
-    <div className="scrollbar-none flex w-96 shrink-0 flex-col gap-6 overflow-y-auto border-border-default border-r-[0.5px] px-6 py-6">
+    <div className="flex flex-col gap-6 px-6 py-6">
       <div className="flex flex-col gap-4">
         <Avatar user={user} size={72} />
         <h2 className="font-sans font-medium text-heading-4 text-primary-foreground">{user.name}</h2>
@@ -384,7 +385,7 @@ function Sessions({ user }: { user: EndUser }) {
     .filter((i): i is Issue => Boolean(i));
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col">
+    <DetailPane>
       {/* Tabs + tools */}
       <div className="flex shrink-0 items-center gap-1 border-border-default border-b-[0.5px] px-3 py-2">
         {SESSION_TABS.map((t) => (
@@ -459,21 +460,108 @@ function Sessions({ user }: { user: EndUser }) {
           </div>
         </div>
       )}
-    </div>
+    </DetailPane>
+  );
+}
+
+/* ------------------------------------------------------------------ grid mode */
+
+/** A directory card for one end-user, used by the grid presentation. */
+function UserCard({ user, onOpen }: { user: EndUser; onOpen: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="pressable focusable flex flex-col gap-3 rounded-xl border-border-default border-[0.5px] bg-page p-4 text-left shadow-default transition-colors hover:border-border-strong"
+    >
+      <div className="flex items-center gap-3">
+        <Avatar user={user} size={40} />
+        <div className="flex min-w-0 flex-1 flex-col leading-tight">
+          <span className="truncate text-body-sm font-medium text-primary-foreground">{user.name}</span>
+          <span className="truncate text-[0.72rem] text-tertiary-foreground">{user.email}</span>
+        </div>
+      </div>
+      <div className="flex items-center gap-2 border-border-default border-t-[0.5px] pt-3 text-body-sm text-tertiary-foreground">
+        <span aria-hidden>{user.countryFlag}</span>
+        <span className="truncate">{user.country}</span>
+        {user.activeProblemIds.length > 0 && (
+          <span
+            className="ml-auto shrink-0 rounded-full px-1.5 font-departure-mono text-[0.65rem]"
+            style={{ background: "var(--tomato-a3)", color: "var(--tomato-a11)" }}
+          >
+            {user.activeProblemIds.length} active
+          </span>
+        )}
+      </div>
+    </button>
+  );
+}
+
+/** Grid presentation: a browseable card wall. Selecting a card returns to the
+ *  list view focused on that user — mirroring the inbox board → detail flow. */
+function UsersGrid({ onOpen }: { onOpen: (id: string) => void }) {
+  const [query, setQuery] = useState("");
+  const q = query.trim().toLowerCase();
+  const users = q
+    ? endUsers.filter((u) => u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q))
+    : endUsers;
+  return (
+    <DetailPane>
+      <div className="border-border-default border-b-[0.5px] px-4 py-3">
+        <label className="flex max-w-sm items-center gap-2 rounded-lg bg-component px-2.5 py-1.5">
+          <Search size={15} strokeWidth={1.8} className="shrink-0 text-tertiary-foreground" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search users…"
+            className="min-w-0 flex-1 bg-transparent text-body-sm text-primary-foreground outline-none placeholder:text-tertiary-foreground"
+          />
+        </label>
+      </div>
+      <div className="scrollbar-none flex-1 overflow-y-auto p-5">
+        {users.length === 0 ? (
+          <p className="py-16 text-center text-body-sm text-tertiary-foreground">No users match “{query}”.</p>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+            {users.map((u) => (
+              <UserCard key={u.id} user={u} onOpen={() => onOpen(u.id)} />
+            ))}
+          </div>
+        )}
+      </div>
+    </DetailPane>
   );
 }
 
 /* --------------------------------------------------------------------- view */
 
-/** Users — end-user profiles with session history (renamed from the Team view). */
+/** Users — end-user profiles with session history. List mode is the shared shell
+ *  (list → sessions → collapsible profile); grid mode is a browseable card wall. */
 export function UsersView() {
+  const { viewMode, setViewMode } = useStore();
   const [userId, setUserId] = useState(endUsers[0].id);
   const user = endUsers.find((u) => u.id === userId) ?? endUsers[0];
+
+  if (viewMode("users") === "grid") {
+    return (
+      <SplitView>
+        <UsersGrid
+          onOpen={(id) => {
+            setUserId(id);
+            setViewMode("users", "list");
+          }}
+        />
+      </SplitView>
+    );
+  }
+
   return (
-    <div className="flex min-h-0 min-w-0 flex-1">
+    <SplitView>
       <UsersList selectedId={userId} onSelect={setUserId} />
-      <Profile user={user} />
       <Sessions user={user} />
-    </div>
+      <ContextPane>
+        <Profile user={user} />
+      </ContextPane>
+    </SplitView>
   );
 }

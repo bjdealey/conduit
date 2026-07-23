@@ -9,6 +9,7 @@ import { Titlebar } from "./components/Titlebar";
 import { Inbox } from "./components/Inbox";
 import { Board } from "./components/Board";
 import { IssueDetail } from "./components/IssueDetail";
+import { SplitView, EmptyDetail } from "./components/layout/SplitView";
 import { ActivityView } from "./components/ActivityView";
 import { AutomationsView } from "./components/AutomationsView";
 import { ManageView } from "./components/ManageView";
@@ -18,26 +19,21 @@ import { SurfacesView } from "./components/SurfacesView";
 import { EnvironmentsView } from "./components/EnvironmentsView";
 
 function InboxView() {
-  const { selected, inboxLayout } = useStore();
+  const { selected, viewMode } = useStore();
 
   // Board layout: the kanban fills the panel; selecting a card opens the issue
-  // full-width (deselect returns to the board).
-  if (inboxLayout === "board") {
+  // (detail + collapsible context) full-width — deselect returns to the board.
+  if (viewMode("inbox") === "board") {
     return selected ? <IssueDetail issue={selected} /> : <Board />;
   }
 
-  // List layout: the grouped inbox on the left, detail (or a hint) on the right.
+  // List layout: the grouped inbox, the activity detail, and the issue's details
+  // in the shared right-hand context pane.
   return (
-    <>
+    <SplitView>
       <Inbox />
-      {selected ? (
-        <IssueDetail issue={selected} />
-      ) : (
-        <div className="flex flex-1 items-center justify-center text-body-base text-tertiary-foreground">
-          Select an issue from the inbox.
-        </div>
-      )}
-    </>
+      {selected ? <IssueDetail issue={selected} /> : <EmptyDetail>Select an issue from the inbox.</EmptyDetail>}
+    </SplitView>
   );
 }
 

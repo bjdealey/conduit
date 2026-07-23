@@ -1,6 +1,7 @@
-import { Columns3, Inbox, List, MoreHorizontal } from "lucide-react";
+import { Inbox, MoreHorizontal, PanelRight } from "lucide-react";
 import { useStore, type View } from "../store";
 import { navItems } from "../data/nav";
+import { VIEW_MODES, CONTEXT_LABEL } from "../data/viewLayout";
 import { SETTINGS_PAGES, DEFAULT_SETTINGS_PAGE } from "../data/settings";
 import { Breadcrumb, type Crumb } from "./Breadcrumb";
 import { SidebarToggle } from "./SidebarToggle";
@@ -8,36 +9,57 @@ import { Avatar } from "./Avatar";
 
 const InboxIcon = <Inbox size={17} strokeWidth={1.7} />;
 
-/** Segmented Board / List switch for the inbox. */
-function LayoutToggle() {
-  const { inboxLayout, setInboxLayout } = useStore();
-  const options = [
-    { id: "board", label: "Board", icon: <Columns3 size={14} strokeWidth={1.8} /> },
-    { id: "list", label: "List", icon: <List size={14} strokeWidth={1.8} /> },
-  ] as const;
+/** Generic segmented presentation switcher, driven by `VIEW_MODES`. Shown for any
+ *  view that declares more than one mode (inbox board/list, users list/grid, …). */
+function ViewModeSwitcher({ view }: { view: View }) {
+  const { viewMode, setViewMode } = useStore();
+  const modes = VIEW_MODES[view];
+  if (!modes || modes.length < 2) return null;
+  const active = viewMode(view);
   return (
-    <div className="ml-auto flex items-center gap-0.5 rounded-lg bg-component p-0.5">
-      {options.map((o) => {
-        const active = inboxLayout === o.id;
+    <div className="flex items-center gap-0.5 rounded-lg bg-component p-0.5">
+      {modes.map((m) => {
+        const on = active === m.id;
         return (
           <button
-            key={o.id}
+            key={m.id}
             type="button"
-            onClick={() => setInboxLayout(o.id)}
-            aria-pressed={active}
+            onClick={() => setViewMode(view, m.id)}
+            aria-pressed={on}
             className="pressable focusable flex items-center gap-1.5 rounded-md px-2.5 py-1 text-body-sm font-medium transition-colors"
             style={{
-              background: active ? "var(--color-page)" : "transparent",
-              color: active ? "var(--color-primary-foreground)" : "var(--color-tertiary-foreground)",
-              boxShadow: active ? "0 0 0 0.5px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.06)" : "none",
+              background: on ? "var(--color-page)" : "transparent",
+              color: on ? "var(--color-primary-foreground)" : "var(--color-tertiary-foreground)",
+              boxShadow: on ? "0 0 0 0.5px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.06)" : "none",
             }}
           >
-            {o.icon}
-            {o.label}
+            {m.icon}
+            {m.label}
           </button>
         );
       })}
     </div>
+  );
+}
+
+/** Show/hide the right-hand context pane. Consistent across every view that has
+ *  one; the label reflects what that view's pane holds. */
+function InfoPaneToggle({ label }: { label: string }) {
+  const { infoPaneOpen, toggleInfoPane } = useStore();
+  return (
+    <button
+      type="button"
+      onClick={toggleInfoPane}
+      aria-pressed={infoPaneOpen}
+      title={infoPaneOpen ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
+      className="pressable focusable flex size-7 items-center justify-center rounded-md transition-colors hover:bg-transparent-hover"
+      style={{
+        background: infoPaneOpen ? "var(--color-transparent-hover)" : "transparent",
+        color: infoPaneOpen ? "var(--color-primary-foreground)" : "var(--color-tertiary-foreground)",
+      }}
+    >
+      <PanelRight size={16} strokeWidth={1.8} />
+    </button>
   );
 }
 
@@ -52,10 +74,22 @@ const VIEW_LABEL: Record<Exclude<View, "inbox">, string> = {
   settings: "Settings",
 };
 
+/** Whether the current view is presently showing a context pane the toggle can act
+ *  on. Mirrors each view's own render conditions so the control is never dead. */
+function contextApplies(view: View, selected: boolean, mode: string): boolean {
+  if (!CONTEXT_LABEL[view]) return false;
+  if (view === "inbox") return selected; // context = the open issue's details
+  if (view === "users") return mode !== "grid";
+  if (view === "automations") return mode !== "board";
+  return true; // surfaces, activity
+}
+
 /** The application titlebar: sidebar toggle + a consistent breadcrumb trail for
- *  the current view/selection, plus contextual actions (issue subscribers). */
+ *  the current view/selection, plus a shared control cluster (view-mode switch,
+ *  info-pane toggle, and contextual actions) pinned to the right. */
 export function Titlebar() {
-  const { view, subview, selected, select, setView, openSubview, members } = useStore();
+  const { view, subview, selected, select, setView, openSubview, members, viewMode } = useStore();
+  const mode = viewMode(view);
 
   let items: Crumb[];
   if (view === "inbox") {
@@ -84,8 +118,9 @@ export function Titlebar() {
     items = [{ label: VIEW_LABEL[view] }];
   }
 
+  const showSwitcher = (VIEW_MODES[view]?.length ?? 0) > 1;
+  const showInfoToggle = contextApplies(view, !!selected, mode);
   const showSubscribers = view === "inbox" && !!selected;
-  const showLayoutToggle = view === "inbox" && !selected;
   const showSurfaceActions = view === "surfaces";
 
   return (
@@ -96,10 +131,10 @@ export function Titlebar() {
       <SidebarToggle />
       <Breadcrumb items={items} />
 
-      {showLayoutToggle && <LayoutToggle />}
+      <div className="ml-auto flex items-center gap-2">
+        {showSwitcher && <ViewModeSwitcher view={view} />}
 
-      {showSurfaceActions && (
-        <div className="ml-auto flex items-center gap-2">
+        {showSurfaceActions && (
           <button
             type="button"
             onClick={() => setView("inbox")}
@@ -108,6 +143,26 @@ export function Titlebar() {
             View all problems
             <kbd className="rounded bg-component px-1 font-departure-mono text-[0.65rem] text-tertiary-foreground">P</kbd>
           </button>
+        )}
+
+        {showSubscribers && (
+          <div className="flex items-center gap-3 pl-1">
+            <div className="flex items-center -space-x-1.5">
+              {members.map((m) => (
+                <div key={m.id} className="rounded-md p-[1.5px]" style={{ background: "var(--color-page)" }}>
+                  <Avatar member={m} size={20} />
+                </div>
+              ))}
+            </div>
+            <span className="rounded-full bg-component px-2.5 py-1 text-body-sm text-secondary-foreground">
+              Subscribed
+            </span>
+          </div>
+        )}
+
+        {showInfoToggle && <InfoPaneToggle label={CONTEXT_LABEL[view] ?? "Details"} />}
+
+        {showSurfaceActions && (
           <button
             type="button"
             aria-label="Surface options"
@@ -115,23 +170,8 @@ export function Titlebar() {
           >
             <MoreHorizontal size={16} strokeWidth={1.8} />
           </button>
-        </div>
-      )}
-
-      {showSubscribers && (
-        <div className="ml-auto flex items-center gap-3 pl-3">
-          <div className="flex items-center -space-x-1.5">
-            {members.map((m) => (
-              <div key={m.id} className="rounded-md p-[1.5px]" style={{ background: "var(--color-page)" }}>
-                <Avatar member={m} size={20} />
-              </div>
-            ))}
-          </div>
-          <span className="rounded-full bg-component px-2.5 py-1 text-body-sm text-secondary-foreground">
-            Subscribed
-          </span>
-        </div>
-      )}
+        )}
+      </div>
     </header>
   );
 }
