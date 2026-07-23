@@ -15,6 +15,6 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["packages/**/*.test.ts", "connectors/**/*.test.ts"],
+    include: ["packages/**/*.test.ts", "connectors/**/*.test.ts", "src/**/*.test.ts"],
   },
 });

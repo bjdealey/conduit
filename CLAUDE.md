@@ -236,3 +236,37 @@ sandbox (Deno egress is policy-blocked; no Postgres-with-Vault here) — validat
 `deno check` + `supabase db push` on deploy. New `TODO(supabase)`: `pg_net`/URL shape for cron;
 admin role-claim source (`_shared/auth.ts`); stale-bot pruning in `sync`; and confirm the deploy
 bundler includes the workspace TS the import map points to (verify on first `functions deploy`).
+
+## Implemented so far — stage 4: frontend seam
+
+The React app now reads through **our API** (never a vendor), with a seed fallback so the static
+prototype still runs with no backend. Verified in a real browser (Chromium): the app mounts with
+no errors, the capability-gated nav renders, and the Integrations page shows live domain models.
+
+**Layout**
+- The app can import the shared domain types: `@conduit/domain` is aliased in `vite.config.ts`
+  and `tsconfig.json` (paths). `src/` code stays extensionless; the alias resolves to the package.
+- `src/lib/supabase.ts` — optional `supabase-js` client from `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`
+  (anon only; unset → seed mode). `src/lib/api.ts` — `getBots()` / `getCapabilities()` calling our
+  Edge Functions, with defensive `coerceBot`/`coerceBots`/`coerceCapabilities` at the boundary.
+- `src/data/toDomain.ts` — `seedBots()` maps the rich seed `Automation`s to canonical `Bot`s, so
+  there is one domain code path with or without a backend.
+- `src/store.tsx` gained `bots`, `capabilities`, `hasCapability(c)`, `dataSource`, `integrationError`;
+  a mount effect loads live data when Supabase is configured, else keeps the seed fallback.
+- Nav is capability-gated: `NavItemDef.capability` + a Sidebar filter (Automations → `bots`). Seed
+  mode enables all capabilities, so the default prototype is unchanged.
+- `supabase/functions/bots` — a service-role GET returning domain bots, so the frontend reads work
+  with the anon key before Supabase Auth is wired (once it is, switch to a direct PostgREST read).
+- Settings → **Integrations** renders the capabilities union + the live `bots` (title/state/platform/
+  owner) — the first surface that actually consumes our-API domain models.
+
+**Contract details that concretized**
+- **The frontend calls our API, never a vendor.** Reads go through `supabase.functions.invoke`
+  (`bots`, `capabilities`); responses are coerced to domain types (malformed rows dropped — the
+  loud-failure guarantee lives server-side at the adapter).
+- **Only the anon URL + key reach the browser** (`VITE_`-prefixed). No service-role key or secret is
+  ever in a `VITE_` var. `.env.example` documents this; real `.env` is git-ignored.
+- **Capabilities drive the UI.** The nav enables features from the declared-capability union, never
+  from a connector's type.
+- **New app dependency:** `@supabase/supabase-js` (the client for our API). Tests use Vitest; app
+  tests live in `src/**/*.test.ts` (boundary coercion + seed→domain mapping).

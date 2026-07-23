@@ -8,6 +8,8 @@ dist/
 *.local
 .env
 .env.*
+# ...but keep the committed example/template.
+!.env.example
 .DS_Store
 
 # TypeScript build info

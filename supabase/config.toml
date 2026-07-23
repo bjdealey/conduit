@@ -23,6 +23,12 @@ import_map = "./functions/import_map.json"
 verify_jwt = true
 import_map = "./functions/import_map.json"
 
+# Read the bots cache as domain models. Requires a valid JWT (the anon key qualifies);
+# the function uses the service role internally so it works before Supabase Auth is wired.
+[functions.bots]
+verify_jwt = true
+import_map = "./functions/import_map.json"
+
 [functions.health]
 verify_jwt = true
 import_map = "./functions/import_map.json"

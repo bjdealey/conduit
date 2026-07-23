@@ -11,6 +11,10 @@ import { VIEW_MODES } from "./data/viewLayout";
 import { applyBrand } from "./lib/palette";
 import { isDark, setTheme } from "./lib/theme";
 import type { Automation, Folder, Issue, Member, Priority, Role, Run, Status } from "./data/types";
+import { CAPABILITIES, Capability, type Bot } from "@conduit/domain";
+import { isSupabaseConfigured } from "./lib/supabase";
+import { getBots, getCapabilities } from "./lib/api";
+import { seedBots } from "./data/toDomain";
 
 const read = (key: string, fallback: string): string => {
   try {
@@ -49,6 +53,17 @@ type Store = {
   automationById: (id: string) => Automation | undefined;
   /** Runs for one automation, newest first (seed order). */
   runsForAutomation: (automationId: string) => Run[];
+  /** Canonical domain bots from our API (live) or the seed fallback. */
+  bots: Bot[];
+  /** Capability ids the enabled connectors declare — the UI enables features from
+   *  this union, never from a connector's vendor identity. */
+  capabilities: Capability[];
+  /** Whether a capability is currently enabled (drives capability-gated UI). */
+  hasCapability: (capability: Capability) => boolean;
+  /** Where `bots` + capabilities come from: our live API, or in-memory seed data. */
+  dataSource: "live" | "seed";
+  /** Set when a live load failed and the app fell back to seed data. */
+  integrationError: string | null;
   /** The signed-in user's role — gates permission-scoped UI. Switchable in
    *  Settings so the gating is demonstrable in the prototype. */
   role: Role;
@@ -143,6 +158,35 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [workspaceId, setWorkspaceId] = useState(workspaces[0].id);
   const [openIds, setOpenIds] = useState<number[]>(selectedId != null ? [selectedId] : []);
 
+  // Integration data plane. Defaults to the seed-derived domain view (so the prototype
+  // runs with no backend); if Supabase is configured, live data replaces it on mount.
+  const [bots, setBots] = useState<Bot[]>(() => seedBots());
+  const [capabilitySet, setCapabilitySet] = useState<Set<Capability>>(() => new Set(CAPABILITIES));
+  const [dataSource, setDataSource] = useState<"live" | "seed">("seed");
+  const [integrationError, setIntegrationError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const [caps, liveBots] = await Promise.all([getCapabilities(), getBots()]);
+        if (cancelled) return;
+        setCapabilitySet(new Set(caps));
+        setBots(liveBots);
+        setDataSource("live");
+        setIntegrationError(null);
+      } catch (e) {
+        if (cancelled) return;
+        // Keep the seed fallback visible; surface the reason on the Integrations page.
+        setIntegrationError(e instanceof Error ? e.message : String(e));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Appearance preferences (persisted).
   const [backgroundEnabled, setBgState] = useState(() => read("bg-enabled", "on") !== "off");
   const [bordersEnabled, setBordersState] = useState(() => read("borders-enabled", "off") === "on");
@@ -214,6 +258,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     runs: seedRuns,
     automationById: (id) => seedAutomations.find((a) => a.id === id),
     runsForAutomation: (automationId) => seedRuns.filter((r) => r.automationId === automationId),
+    bots,
+    capabilities: [...capabilitySet],
+    hasCapability: (capability) => capabilitySet.has(capability),
+    dataSource,
+    integrationError,
     role,
     setRole: (r) => {
       setRoleState(r);

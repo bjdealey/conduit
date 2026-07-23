@@ -30,11 +30,17 @@ const icons: Record<View, ReactNode> = {
  *  lives in the main content header (SidebarToggle) and drives `sidebarExpanded`
  *  in the store, which sets this rail's width and label visibility. */
 export function Sidebar() {
-  const { sidebarExpanded: expanded, view, openIds, issues, automations, badgesEnabled, role } = useStore();
+  const { sidebarExpanded: expanded, view, openIds, issues, automations, badgesEnabled, role, hasCapability } =
+    useStore();
   const inSettings = view === "settings";
 
-  // Permission gating: hide nav items whose `roles` list excludes the current role.
-  const visibleNav = navItems.filter((item) => !item.roles || item.roles.includes(role));
+  // Gating: hide nav items whose `roles` exclude the current role, or whose declared
+  // `capability` isn't enabled by any connector. (Seed mode enables all capabilities, so
+  // the default prototype shows everything.)
+  const visibleNav = navItems.filter(
+    (item) =>
+      (!item.roles || item.roles.includes(role)) && (!item.capability || hasCapability(item.capability)),
+  );
 
   const openIssues = openIds
     .map((id) => issues.find((i) => i.id === id))

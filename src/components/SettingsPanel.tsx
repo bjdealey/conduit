@@ -328,6 +328,105 @@ function ProfilePage() {
 }
 
 /* ---------------------------------------------------------------------------
+   Integrations — live connector data plane (our API → our domain models)
+   --------------------------------------------------------------------------- */
+
+const BOT_STATE_ACCENT: Record<string, string> = {
+  Running: "var(--color-success-solid, #16a34a)",
+  Idle: "var(--color-tertiary-foreground)",
+  Disabled: "var(--color-warning-solid, #d97706)",
+  Unknown: "var(--color-tertiary-foreground)",
+};
+
+function IntegrationsPage() {
+  const { bots, capabilities, dataSource, integrationError } = useStore();
+  const live = dataSource === "live";
+
+  return (
+    <Page>
+      <div className="flex items-center justify-between gap-4 py-6">
+        <div className="flex flex-col">
+          <span className="text-body-base font-medium text-primary-foreground">Integrations</span>
+          <span className="text-body-sm text-tertiary-foreground">
+            Connectors surface their data through Conduit&rsquo;s API as normalised domain models.
+          </span>
+        </div>
+        <span
+          className="shrink-0 rounded-full px-2.5 py-1 text-body-sm font-medium"
+          style={{
+            background: live ? "color-mix(in srgb, var(--color-success-solid, #16a34a) 16%, transparent)" : "var(--color-component)",
+            color: live ? "var(--color-success-solid, #16a34a)" : "var(--color-tertiary-foreground)",
+          }}
+        >
+          {live ? "Live · Supabase" : "Seed data"}
+        </span>
+      </div>
+
+      {integrationError && (
+        <div
+          className="mb-4 rounded-lg px-3 py-2.5 text-body-sm"
+          style={{
+            background: "color-mix(in srgb, var(--color-warning-solid, #d97706) 12%, transparent)",
+            color: "var(--color-secondary-foreground)",
+          }}
+        >
+          Couldn&rsquo;t reach the backend — showing seed data. <span className="text-tertiary-foreground">({integrationError})</span>
+        </div>
+      )}
+
+      <Divider />
+      <Row label="Capabilities">
+        <div className="flex flex-wrap gap-1.5">
+          {capabilities.length === 0 ? (
+            <span className="text-body-sm text-tertiary-foreground">None enabled.</span>
+          ) : (
+            capabilities.map((c) => (
+              <span key={c} className="rounded-md bg-component px-2 py-1 text-body-sm text-secondary-foreground">
+                {c}
+              </span>
+            ))
+          )}
+        </div>
+      </Row>
+
+      <Divider />
+      <div className="flex flex-col gap-2 py-4">
+        <span className="text-body-sm font-medium text-primary-foreground">Bots ({bots.length})</span>
+        <div className="flex flex-col overflow-hidden rounded-lg border" style={{ borderColor: "var(--color-border-default)" }}>
+          <div
+            className="grid gap-3 bg-component px-3 py-2 text-body-sm text-tertiary-foreground"
+            style={{ gridTemplateColumns: "2fr 1fr 1.5fr 1fr" }}
+          >
+            <span>Title</span>
+            <span>State</span>
+            <span>Platform</span>
+            <span>Owner</span>
+          </div>
+          {bots.map((b) => (
+            <div
+              key={b.id}
+              className="grid items-center gap-3 px-3 py-2 text-body-sm"
+              style={{ gridTemplateColumns: "2fr 1fr 1.5fr 1fr" }}
+            >
+              <span className="truncate text-primary-foreground">{b.title}</span>
+              <span className="flex items-center gap-1.5 text-secondary-foreground">
+                <span className="size-1.5 rounded-full" style={{ background: BOT_STATE_ACCENT[b.state] ?? BOT_STATE_ACCENT.Unknown }} />
+                {b.state}
+              </span>
+              <span className="truncate font-departure-mono text-tertiary-foreground">{b.platform}</span>
+              <span className="truncate text-secondary-foreground">{b.owner}</span>
+            </div>
+          ))}
+        </div>
+        <span className="text-body-sm text-tertiary-foreground">
+          Namespaced by connector instance ({dataSource === "live" ? "live connectors" : "the local seed connector"}).
+        </span>
+      </div>
+    </Page>
+  );
+}
+
+/* ---------------------------------------------------------------------------
    Placeholder pages
    --------------------------------------------------------------------------- */
 
@@ -368,6 +467,8 @@ export function SettingsContent() {
         <ProfilePage />
       ) : pageId === "workspace" ? (
         <WorkspaceDetailsPage />
+      ) : pageId === "integrations" ? (
+        <IntegrationsPage />
       ) : (
         <PlaceholderPage icon={page.icon} title={page.label} hint={PLACEHOLDER_HINTS[pageId] ?? "Coming soon."} />
       )}
