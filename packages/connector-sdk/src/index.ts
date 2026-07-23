@@ -16,3 +16,13 @@ export {
   type ServiceResult,
 } from "./service";
 export { BotService, type BotFilter } from "./bot-service";
+export {
+  InMemorySecretStore,
+  SupabaseVaultSecretStore,
+  SecretNotFoundError,
+  type SecretStore,
+  type SecretRecord,
+  type SecretMetadata,
+  type VaultClient,
+} from "./secrets";
+export { queryCapability, type CapabilitySupport } from "./capability-query";

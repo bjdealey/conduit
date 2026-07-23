@@ -8,6 +8,6 @@
     },
     "types": []
   },
-  "include": ["packages"],
+  "include": ["packages", "connectors"],
   "exclude": ["**/*.test.ts"]
 }

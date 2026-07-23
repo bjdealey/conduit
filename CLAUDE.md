@@ -153,5 +153,47 @@ Stack-agnostic TypeScript, no Supabase/vendor/frontend code yet. Tested with **V
   those stay per-invocation (the Supabase Edge Function model). `connect()` is where a real
   connector will resolve its secret via the `SecretStore`.
 
-**Not yet built** (do not assume these exist): any real connector, `SecretStore`, the other seven
-capability services, Supabase wiring, and any frontend change.
+**Not yet built after stage 1** (do not assume these exist): any real connector, `SecretStore`, the
+other seven capability services, Supabase wiring, and any frontend change.
+
+## Implemented so far — stage 2: A360 connector + SecretStore
+
+The `SecretStore` seam and the first real connector (**Automation Anywhere A360**), wired to the
+stage-1 interfaces. Still no Supabase/vendor-network/frontend code (tests use fakes).
+
+**Layout**
+- `packages/connector-sdk` gained `SecretStore` (interface + `InMemorySecretStore` for dev/tests +
+  `SupabaseVaultSecretStore` over an injected `VaultClient` — no Supabase dep) and
+  `queryCapability()` (structured supported/unsupported, never throws).
+- `connectors/automation-anywhere` — the A360 connector: `config` (non-secret, holds `secretRef`),
+  `http` (injectable `HttpTransport`, default `fetch`), `endpoints` (paths, TODO-flagged),
+  `session` (token acquire/refresh/expiry), `map` (status normalisation + `mapA360Bot`),
+  `connector` (`A360Connector`), and `a360ConnectorFactory(secrets, deps?)`.
+
+**Contract details that concretized (authoritative for later stages)**
+- **Declare only implemented capabilities.** A360 declares `[bots]` only; asking for anything else
+  returns `queryCapability(...).supported === false`, never an exception.
+- **Secrets are write-only through the store.** `SecretStore.get()` is server-side only;
+  `describe()` is the read path and returns `{ ref, present, keys, updatedAt }` — field names, never
+  values. Instance `config` holds a `secretRef` pointer only.
+- **No secret is serialisable.** Credentials live in the session behind ECMAScript `#private`
+  fields (non-enumerable, never `JSON.stringify`-ed); `A360Connector.toJSON()` additionally
+  allow-lists only `{ id, type, capabilities, controlRoomUrl, secretRef }`. A test asserts no
+  secret value appears on any public surface.
+- **Per-instance credential scoping.** A connector only ever resolves its own `config.secretRef`;
+  two Control Rooms cannot read each other's credentials, and their bots stay attributed by
+  `connectorId` (ids namespaced `${connectorId}:${sourceId}`).
+- **Token lifecycle.** `A360Session` caches a token with an expiry taken from the JWT `exp`
+  (fallback TTL configurable), refreshes on expiry with no user re-entry (API-key re-auth or OAuth
+  refresh grant). A **refresh failure surfaces as an unhealthy `health()`**, so `BotService`'s
+  health-gate skips the connector rather than crashing the listing path.
+- **Status normalisation.** `normalizeStatus()` folds A360 status tokens onto `BotState`; anything
+  unrecognised or absent maps to `Unknown` (an explicit state, not a silent partial).
+- **Testing seams.** Inject `HttpTransport` and a `now()` clock to test refresh/expiry without a
+  live Control Room. Only the fake transport carries vendor-shaped payloads.
+
+**Open TODO(a360) / TODO(supabase) flags** (endpoints/shapes not verified against a live Control
+Room; do not treat as confirmed): OAuth refresh endpoint+params; bot-list endpoint + filter schema
++ list envelope; the auth header (`X-Authorization` vs `Bearer`); the per-bot status source field;
+bot `name`/`createdBy` field names; token TTL fallback; and the production Supabase `VaultClient`.
+See the connector source and the stage-2 report for the exact questions.
