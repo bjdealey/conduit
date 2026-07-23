@@ -14,27 +14,33 @@ import { Avatar } from "./Avatar";
  *  Switching to a non-list mode clears the open item so the board/grid shows (the
  *  detail returns only when you click into an item), matching the inbox. */
 function ViewModeSwitcher({ view }: { view: View }) {
-  const { viewMode, setViewMode, select, selectUser, selectAutomation, selectEnvironment } = useStore();
+  const { layout, setLayout, select, selectUser, selectAutomation, selectEnvironment } = useStore();
   const modes = VIEW_MODES[view];
   if (!modes || modes.length < 2) return null;
-  const active = viewMode(view);
-  const clearSelection = () => {
-    if (view === "inbox") select(null);
-    else if (view === "users") selectUser(null);
-    else if (view === "automations") selectAutomation(null);
-    else if (view === "environments") selectEnvironment(null);
+  // Switching to the alternate layout clears every page's open item, so each page
+  // lands on its board/grid — not a stale detail — as you move between them.
+  const clearAllSelections = () => {
+    select(null);
+    selectUser(null);
+    selectAutomation(null);
+    selectEnvironment(null);
   };
   return (
     <div className="flex items-center gap-0.5 rounded-lg bg-component p-0.5">
-      {modes.map((m) => {
-        const on = active === m.id;
+      {modes.map((m, i) => {
+        // First mode is always "list"; the second is the page's alternate. The
+        // selected segment tracks the global layout, so it persists across pages
+        // (only the alternate's label changes: Board vs Grid).
+        const isList = i === 0;
+        const on = isList ? layout === "list" : layout === "alt";
         return (
           <button
             key={m.id}
             type="button"
             onClick={() => {
-              setViewMode(view, m.id);
-              if (m.id !== "list") clearSelection();
+              const next = isList ? "list" : "alt";
+              setLayout(next);
+              if (next === "alt") clearAllSelections();
             }}
             aria-pressed={on}
             className="pressable focusable flex items-center gap-1.5 rounded-md px-2.5 py-1 text-body-sm font-medium transition-colors"
