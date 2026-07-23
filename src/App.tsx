@@ -9,7 +9,8 @@ import { Titlebar } from "./components/Titlebar";
 import { Inbox } from "./components/Inbox";
 import { Board } from "./components/Board";
 import { IssueDetail } from "./components/IssueDetail";
-import { SplitView, EmptyDetail } from "./components/layout/SplitView";
+import { SplitView, DetailPane, EmptyDetail } from "./components/layout/SplitView";
+import { ListSearch } from "./components/ListSearch";
 import { ActivityView } from "./components/ActivityView";
 import { AutomationsView } from "./components/AutomationsView";
 import { ManageView } from "./components/ManageView";
@@ -19,12 +20,19 @@ import { SurfacesView } from "./components/SurfacesView";
 import { EnvironmentsView } from "./components/EnvironmentsView";
 
 function InboxView() {
-  const { selected, viewMode } = useStore();
+  const { selected, viewMode, query, setQuery } = useStore();
 
   // Board layout: the kanban fills the panel; selecting a card opens the issue
-  // (detail + collapsible context) full-width — deselect returns to the board.
+  // (detail + collapsible context) full-width — deselect returns to the board. The
+  // search sits at the top in the same place as the list layout's search.
   if (viewMode("inbox") === "board") {
-    return selected ? <IssueDetail issue={selected} /> : <Board />;
+    if (selected) return <IssueDetail issue={selected} />;
+    return (
+      <DetailPane>
+        <ListSearch value={query} onChange={setQuery} placeholder="Search issues…" constrained />
+        <Board />
+      </DetailPane>
+    );
   }
 
   // List layout: the grouped inbox, the activity detail, and the issue's details

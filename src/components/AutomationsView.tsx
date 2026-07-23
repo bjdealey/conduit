@@ -469,18 +469,24 @@ const AUTOMATION_STATUSES: AutomationStatus[] = ["Active", "Paused", "Draft"];
  *  inbox board → detail flow. */
 function AutomationsBoard({ items, onSelect }: { items: Automation[]; onSelect: (id: string) => void }) {
   const { memberById } = useStore();
+  const [query, setQuery] = useState("");
+  const q = query.trim().toLowerCase();
+  const filtered = q
+    ? items.filter((a) => a.name.toLowerCase().includes(q) || a.id.toLowerCase().includes(q))
+    : items;
   const columns = useMemo(() => {
     const by = new Map<AutomationStatus, Automation[]>();
-    for (const a of items) {
+    for (const a of filtered) {
       const arr = by.get(a.status) ?? [];
       arr.push(a);
       by.set(a.status, arr);
     }
     return AUTOMATION_STATUSES.map((status) => ({ status, items: by.get(status) ?? [] }));
-  }, [items]);
+  }, [filtered]);
 
   return (
     <DetailPane>
+      <ListSearch value={query} onChange={setQuery} placeholder="Search automations…" constrained />
       <div
         className="scrollbar-none flex min-w-0 flex-1 gap-5 overflow-x-auto p-5"
         style={{ background: "color-mix(in srgb, var(--color-primary-foreground) 3%, transparent)" }}
