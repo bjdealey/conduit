@@ -118,20 +118,29 @@ npm run dev   # Settings → Integrations flips from "Seed data" to "Live · Sup
 ### See live data without a real Control Room
 
 A real A360 sync needs live Control Room credentials. To watch the pipeline light up
-without one, insert a demo row directly (Dashboard → SQL editor), then reload Integrations:
+without one, seed a demo connector + rows directly (Dashboard → SQL editor), then reload
+Integrations. The connector needs a `secret_ref` (the A360 connector won't build without
+one), so create a throwaway Vault secret for it:
 
 ```sql
-insert into public.connector_instances (id, type, name, enabled, config)
-values ('demo-eu', 'automation-anywhere', 'Demo EU', true, '{"controlRoomUrl":"https://demo"}');
+-- throwaway credential bundle so the connector validates (never actually used here)
+select vault.create_secret('{"username":"demo","apiKey":"demo"}', 'connector/demo-eu', 'conduit demo');
 
+-- register the connector (enabled, declares bots)
+insert into public.connector_instances (id, type, name, enabled, config, secret_ref)
+values ('demo-eu', 'automation-anywhere', 'Demo EU', true,
+        '{"controlRoomUrl":"https://demo"}', 'connector/demo-eu');
+
+-- seed the bots cache directly (stands in for a real sync)
 insert into public.bots (id, source_id, platform, connector_id, title, state, owner) values
   ('demo-eu:1','1','automation-anywhere','demo-eu','Invoice Bot','Running','Brad'),
   ('demo-eu:2','2','automation-anywhere','demo-eu','Payment Recon','Idle','Dana');
 ```
 
-`capabilities` now returns `["bots"]` (a bots-capable connector is enabled) and `bots`
-returns the two rows. To go real, register an A360 instance with live credentials instead
-(the write-only `POST /functions/v1/connectors` path above) and run `sync`.
+`capabilities` now returns `["bots"]` (a valid bots-capable connector is enabled) and
+`bots` returns the two rows. To go real, register an A360 instance with live credentials
+via the write-only `POST /functions/v1/connectors` path above and run `sync` (which will
+replace these demo rows with real bots).
 
 ## Local development
 
