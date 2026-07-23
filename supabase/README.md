@@ -31,6 +31,17 @@ The functions consume the same `packages/*` and `connectors/*` TypeScript the te
 the import map. The connector layer resolves credentials through the `SecretStore` seam;
 here it's backed by `SupabaseVaultClient` → the Vault RPCs.
 
+## Quick deploy (one command)
+
+```bash
+./supabase/deploy.sh <your-project-ref>
+```
+
+`<your-project-ref>` is the ref in your dashboard URL
+(`https://supabase.com/dashboard/project/<ref>`). The script logs in, links, pushes the
+schema, and deploys all five functions, then prints the frontend env values. Prereqs: the
+Supabase CLI and Docker. The steps it runs, if you'd rather do them by hand:
+
 ## One-time setup
 
 ```bash
@@ -80,6 +91,47 @@ curl "https://<ref>.supabase.co/rest/v1/bots?select=*" -H "Authorization: Bearer
 
 `GET /functions/v1/connectors` lists instances with **secret presence + field names only** —
 never values.
+
+## Smoke test (after deploy)
+
+Point the frontend at the project and confirm the API answers. Use the **anon** key.
+
+```bash
+REF=<your-project-ref>; ANON=<anon-key>
+# capabilities: empty [] until a bots-capable connector is enabled
+curl -s "https://$REF.supabase.co/functions/v1/capabilities" -H "Authorization: Bearer $ANON" -H "apikey: $ANON"
+# bots: [] until a connector has synced
+curl -s "https://$REF.supabase.co/functions/v1/bots" -H "Authorization: Bearer $ANON" -H "apikey: $ANON"
+```
+
+Then wire the frontend (`.env`, git-ignored) and run it:
+
+```
+VITE_SUPABASE_URL=https://<ref>.supabase.co
+VITE_SUPABASE_ANON_KEY=<anon-key>
+```
+
+```bash
+npm run dev   # Settings → Integrations flips from "Seed data" to "Live · Supabase"
+```
+
+### See live data without a real Control Room
+
+A real A360 sync needs live Control Room credentials. To watch the pipeline light up
+without one, insert a demo row directly (Dashboard → SQL editor), then reload Integrations:
+
+```sql
+insert into public.connector_instances (id, type, name, enabled, config)
+values ('demo-eu', 'automation-anywhere', 'Demo EU', true, '{"controlRoomUrl":"https://demo"}');
+
+insert into public.bots (id, source_id, platform, connector_id, title, state, owner) values
+  ('demo-eu:1','1','automation-anywhere','demo-eu','Invoice Bot','Running','Brad'),
+  ('demo-eu:2','2','automation-anywhere','demo-eu','Payment Recon','Idle','Dana');
+```
+
+`capabilities` now returns `["bots"]` (a bots-capable connector is enabled) and `bots`
+returns the two rows. To go real, register an A360 instance with live credentials instead
+(the write-only `POST /functions/v1/connectors` path above) and run `sync`.
 
 ## Local development
 
