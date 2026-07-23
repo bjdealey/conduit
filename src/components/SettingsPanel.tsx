@@ -192,6 +192,12 @@ function DangerZone() {
    Profile (personal details + appearance preferences)
    --------------------------------------------------------------------------- */
 
+const ROLE_OPTIONS = [
+  { id: "admin", label: "Admin" },
+  { id: "developer", label: "Developer" },
+  { id: "user", label: "User" },
+] as const;
+
 function ProfilePage() {
   const {
     backgroundEnabled,
@@ -203,6 +209,8 @@ function ProfilePage() {
     palettes,
     palette,
     setPaletteId,
+    role,
+    setRole,
   } = useStore();
   return (
     <Page>
@@ -231,6 +239,34 @@ function ProfilePage() {
       </Row>
       <Row label="Email">
         <TextInput defaultValue={currentUser.email} />
+      </Row>
+      <Row label="Role">
+        <div className="flex flex-col gap-2 pt-0.5">
+          <div className="inline-flex w-fit items-center gap-0.5 rounded-lg bg-component p-0.5">
+            {ROLE_OPTIONS.map((o) => {
+              const active = role === o.id;
+              return (
+                <button
+                  key={o.id}
+                  type="button"
+                  onClick={() => setRole(o.id)}
+                  aria-pressed={active}
+                  className="pressable focusable rounded-md px-3 py-1 text-body-sm font-medium transition-colors"
+                  style={{
+                    background: active ? "var(--color-page)" : "transparent",
+                    color: active ? "var(--color-primary-foreground)" : "var(--color-tertiary-foreground)",
+                    boxShadow: active ? "0 0 0 0.5px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.06)" : "none",
+                  }}
+                >
+                  {o.label}
+                </button>
+              );
+            })}
+          </div>
+          <span className="text-body-sm text-tertiary-foreground">
+            Gates permission-scoped UI — Administration is hidden for User and read-only for Developer.
+          </span>
+        </div>
       </Row>
 
       <Divider />

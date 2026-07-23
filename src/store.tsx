@@ -25,7 +25,16 @@ const write = (key: string, value: string): void => {
 };
 
 /** Top-level navigation destinations (the sidebar rail). */
-export type View = "activity" | "inbox" | "automations" | "manage" | "users" | "surfaces" | "environments" | "settings";
+export type View =
+  | "activity"
+  | "inbox"
+  | "automations"
+  | "manage"
+  | "users"
+  | "administration"
+  | "surfaces"
+  | "environments"
+  | "settings";
 
 type Store = {
   issues: Issue[];
@@ -37,8 +46,10 @@ type Store = {
   automationById: (id: string) => Automation | undefined;
   /** Runs for one automation, newest first (seed order). */
   runsForAutomation: (automationId: string) => Run[];
-  /** The signed-in user's role — gates permission-scoped UI. */
+  /** The signed-in user's role — gates permission-scoped UI. Switchable in
+   *  Settings so the gating is demonstrable in the prototype. */
   role: Role;
+  setRole: (r: Role) => void;
   selectedId: number | null;
   selected: Issue | null;
   query: string;
@@ -114,6 +125,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [paletteId, setPaletteState] = useState(() => read("palette", palettes[0].id));
   const [searchOpen, setSearchOpen] = useState(false);
   const [dark, setDark] = useState(() => isDark());
+  const [role, setRoleState] = useState<Role>(() => read("role", currentUser.role) as Role);
   const [authed, setAuthed] = useState(() => read("authed", "no") === "yes");
   const palette = palettes.find((p) => p.id === paletteId) ?? palettes[0];
 
@@ -177,7 +189,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     runs: seedRuns,
     automationById: (id) => seedAutomations.find((a) => a.id === id),
     runsForAutomation: (automationId) => seedRuns.filter((r) => r.automationId === automationId),
-    role: currentUser.role,
+    role,
+    setRole: (r) => {
+      setRoleState(r);
+      write("role", r);
+      // A demoted viewer loses the Administration surface they may be looking at.
+      if (r === "user" && view === "administration") {
+        setViewRaw("inbox");
+        setSubview(null);
+      }
+    },
     selectedId,
     selected: issues.find((i) => i.id === selectedId) ?? null,
     query,

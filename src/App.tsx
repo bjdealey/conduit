@@ -12,6 +12,7 @@ import { IssueDetail } from "./components/IssueDetail";
 import { ActivityView } from "./components/ActivityView";
 import { AutomationsView } from "./components/AutomationsView";
 import { ManageView } from "./components/ManageView";
+import { AdministrationView } from "./components/AdministrationView";
 import { UsersView } from "./components/UsersView";
 import { SurfacesView } from "./components/SurfacesView";
 import { EnvironmentsView } from "./components/EnvironmentsView";
@@ -48,6 +49,7 @@ function Body() {
       {view === "inbox" && <InboxView />}
       {view === "automations" && <AutomationsView />}
       {view === "manage" && <ManageView />}
+      {view === "administration" && <AdministrationView />}
       {view === "users" && <UsersView />}
       {view === "surfaces" && <SurfacesView />}
       {view === "environments" && <EnvironmentsView />}

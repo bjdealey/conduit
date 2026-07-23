@@ -46,6 +46,7 @@ const VIEW_LABEL: Record<Exclude<View, "inbox">, string> = {
   automations: "Automations",
   manage: "Manage",
   users: "Users",
+  administration: "Administration",
   surfaces: "Surfaces",
   environments: "Environments",
   settings: "Settings",

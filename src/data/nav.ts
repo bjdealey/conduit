@@ -1,9 +1,11 @@
 import type { View } from "../store";
+import type { Role } from "./types";
 
 /** A subpage under a top-level sidebar page. */
 export type SubPage = { id: string; label: string };
 
-export type NavItemDef = { id: View; label: string; subpages?: SubPage[] };
+/** `roles`, when present, restricts the item to those roles (permission gating). */
+export type NavItemDef = { id: View; label: string; subpages?: SubPage[]; roles?: Role[] };
 
 /** Sidebar navigation structure. Items with `subpages` expand in the sidebar and
  *  show a hover flyout when collapsed. */
@@ -13,6 +15,7 @@ export const navItems: NavItemDef[] = [
   { id: "automations", label: "Automations" },
   { id: "manage", label: "Manage" },
   { id: "users", label: "Users" },
+  { id: "administration", label: "Administration", roles: ["admin", "developer"] },
   { id: "surfaces", label: "Surfaces" },
   { id: "environments", label: "Environments" },
   { id: "settings", label: "Settings" },

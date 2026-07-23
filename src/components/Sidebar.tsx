@@ -1,5 +1,5 @@
 import { type ReactNode } from "react";
-import { Bell, Box, Inbox, Layers, Settings, SlidersHorizontal, Users, Workflow } from "lucide-react";
+import { Bell, Box, Inbox, Layers, Settings, ShieldCheck, SlidersHorizontal, Users, Workflow } from "lucide-react";
 import { useStore, type View } from "../store";
 import { navItems } from "../data/nav";
 import { endUsers } from "../data/users";
@@ -20,6 +20,7 @@ const icons: Record<View, ReactNode> = {
   automations: <Workflow {...navIconProps} />,
   manage: <SlidersHorizontal {...navIconProps} />,
   users: <Users {...navIconProps} />,
+  administration: <ShieldCheck {...navIconProps} />,
   surfaces: <Box {...navIconProps} />,
   environments: <Layers {...navIconProps} />,
   settings: <Settings {...navIconProps} />,
@@ -29,8 +30,11 @@ const icons: Record<View, ReactNode> = {
  *  lives in the main content header (SidebarToggle) and drives `sidebarExpanded`
  *  in the store, which sets this rail's width and label visibility. */
 export function Sidebar() {
-  const { sidebarExpanded: expanded, view, openIds, issues, automations, badgesEnabled } = useStore();
+  const { sidebarExpanded: expanded, view, openIds, issues, automations, badgesEnabled, role } = useStore();
   const inSettings = view === "settings";
+
+  // Permission gating: hide nav items whose `roles` list excludes the current role.
+  const visibleNav = navItems.filter((item) => !item.roles || item.roles.includes(role));
 
   const openIssues = openIds
     .map((id) => issues.find((i) => i.id === id))
@@ -95,7 +99,7 @@ export function Sidebar() {
           <>
             {/* Primary nav items (with optional subpages) */}
             <div className="flex flex-col items-center gap-1">
-              {navItems.map((item) => (
+              {visibleNav.map((item) => (
                 <NavGroup
                   key={item.id}
                   item={item}
