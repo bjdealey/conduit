@@ -2,6 +2,7 @@ import { MoreHorizontal, PanelRight } from "lucide-react";
 import { useStore, type View } from "../store";
 import { navItems } from "../data/nav";
 import { endUsers } from "../data/users";
+import { environments } from "../data/environments";
 import { VIEW_MODES, CONTEXT_LABEL } from "../data/viewLayout";
 import { SETTINGS_PAGES, DEFAULT_SETTINGS_PAGE } from "../data/settings";
 import { Breadcrumb, type Crumb } from "./Breadcrumb";
@@ -13,7 +14,7 @@ import { Avatar } from "./Avatar";
  *  Switching to a non-list mode clears the open item so the board/grid shows (the
  *  detail returns only when you click into an item), matching the inbox. */
 function ViewModeSwitcher({ view }: { view: View }) {
-  const { viewMode, setViewMode, select, selectUser, selectAutomation } = useStore();
+  const { viewMode, setViewMode, select, selectUser, selectAutomation, selectEnvironment } = useStore();
   const modes = VIEW_MODES[view];
   if (!modes || modes.length < 2) return null;
   const active = viewMode(view);
@@ -21,6 +22,7 @@ function ViewModeSwitcher({ view }: { view: View }) {
     if (view === "inbox") select(null);
     else if (view === "users") selectUser(null);
     else if (view === "automations") selectAutomation(null);
+    else if (view === "environments") selectEnvironment(null);
   };
   return (
     <div className="flex items-center gap-0.5 rounded-lg bg-component p-0.5">
@@ -96,6 +98,8 @@ export function Titlebar() {
     selectUser,
     selectedAutomationId,
     selectAutomation,
+    selectedEnvironmentId,
+    selectEnvironment,
     automations,
     setView,
     openSubview,
@@ -105,6 +109,9 @@ export function Titlebar() {
   const openUser = selectedUserId ? endUsers.find((u) => u.id === selectedUserId) ?? null : null;
   const openAutomation = selectedAutomationId
     ? automations.find((a) => a.id === selectedAutomationId) ?? null
+    : null;
+  const openEnvironment = selectedEnvironmentId
+    ? environments.find((e) => e.id === selectedEnvironmentId) ?? null
     : null;
 
   let items: Crumb[];
@@ -140,6 +147,11 @@ export function Titlebar() {
   } else if (view === "activity") {
     hasContext = true;
     items = [{ label: "Activity" }];
+  } else if (view === "environments") {
+    hasContext = !!openEnvironment;
+    items = openEnvironment
+      ? [{ label: "Environments", onClick: () => selectEnvironment(null) }, { label: openEnvironment.name }]
+      : [{ label: "Environments" }];
   } else if (subview) {
     const sub = navItems.find((n) => n.id === view)?.subpages?.find((s) => s.id === subview);
     items = [
