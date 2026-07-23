@@ -25,6 +25,11 @@ jobs:
         with:
           node-version: 20
           cache: npm
+      # Enables GitHub Pages for the repo if it isn't already, so the first
+      # deploy doesn't fail on a missing Pages site.
+      - uses: actions/configure-pages@v4
+        with:
+          enablement: true
       - run: npm ci
       - run: npm run build
       - uses: actions/upload-pages-artifact@v3
