@@ -44,6 +44,7 @@ function LayoutToggle() {
 const VIEW_LABEL: Record<Exclude<View, "inbox">, string> = {
   activity: "Activity",
   automations: "Automations",
+  manage: "Manage",
   users: "Users",
   surfaces: "Surfaces",
   environments: "Environments",

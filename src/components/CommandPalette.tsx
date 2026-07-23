@@ -66,6 +66,7 @@ export function CommandPalette() {
       ["activity", "Go to Activity"],
       ["inbox", "Go to Inbox"],
       ["automations", "Go to Automations"],
+      ["manage", "Go to Manage"],
       ["users", "Go to Users"],
       ["surfaces", "Go to Surfaces"],
       ["environments", "Go to Environments"],

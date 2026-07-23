@@ -11,6 +11,7 @@ export const navItems: NavItemDef[] = [
   { id: "activity", label: "Activity" },
   { id: "inbox", label: "Inbox" },
   { id: "automations", label: "Automations" },
+  { id: "manage", label: "Manage" },
   { id: "users", label: "Users" },
   { id: "surfaces", label: "Surfaces" },
   { id: "environments", label: "Environments" },

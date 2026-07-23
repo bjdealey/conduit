@@ -1,5 +1,5 @@
 import { type ReactNode } from "react";
-import { Bell, Box, Inbox, Layers, Settings, Users, Workflow } from "lucide-react";
+import { Bell, Box, Inbox, Layers, Settings, SlidersHorizontal, Users, Workflow } from "lucide-react";
 import { useStore, type View } from "../store";
 import { navItems } from "../data/nav";
 import { endUsers } from "../data/users";
@@ -18,6 +18,7 @@ const icons: Record<View, ReactNode> = {
   activity: <Bell {...navIconProps} />,
   inbox: <Inbox {...navIconProps} />,
   automations: <Workflow {...navIconProps} />,
+  manage: <SlidersHorizontal {...navIconProps} />,
   users: <Users {...navIconProps} />,
   surfaces: <Box {...navIconProps} />,
   environments: <Layers {...navIconProps} />,

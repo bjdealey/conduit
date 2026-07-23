@@ -25,7 +25,7 @@ const write = (key: string, value: string): void => {
 };
 
 /** Top-level navigation destinations (the sidebar rail). */
-export type View = "activity" | "inbox" | "automations" | "users" | "surfaces" | "environments" | "settings";
+export type View = "activity" | "inbox" | "automations" | "manage" | "users" | "surfaces" | "environments" | "settings";
 
 type Store = {
   issues: Issue[];
