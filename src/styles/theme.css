@@ -1,0 +1,102 @@
+/* =============================================================================
+   theme.css — THE RESKIN SURFACE
+   -----------------------------------------------------------------------------
+   Edit colours, fonts, and radii for the whole site from this one file.
+
+   How it works: the compiled `globals.css` defines the site's design tokens as
+   CSS variables, and every component's colour comes from those variables (via
+   Tailwind classes like `bg-page`, `text-primary-foreground`, `border-border-
+   default`). This file re-declares the tokens you're most likely to change and
+   is imported AFTER globals.css, so whatever you set here wins — without
+   touching the 311 KB generated file.
+
+   The values below are the ORIGINAL site's values, so this file changes nothing
+   until you edit it. Change a value, save, done — it propagates everywhere.
+
+   Tip: colours use the Radix 12-step scale convention:
+     1–2  app/page backgrounds        6–8  borders / separators
+     3–5  component backgrounds        9–10 solid fills (buttons, brand)
+                                       11–12 text
+   The `-a` variants are the same steps as transparent (alpha) colours.
+
+   NOTE — DARK MODE: these overrides are scoped to `:root:not(.dark)` so they only
+   apply in light mode. Dark mode uses the built-in dark palette from globals.css
+   (toggled by the `dark` class on <html>); if this block used a plain `:root`, its
+   light gray-scale values would shadow the dark tokens and break dark mode. To
+   customise dark colours, add a matching `.dark { … }` block below.
+   ============================================================================= */
+
+:root:not(.dark) {
+  /* ---------------------------------------------------------------------------
+     1. BRAND  — the accent colour (buttons, links, focus rings).
+        Currently blue. To rebrand, change these 12+12 values to your colour's
+        scale (generate one at https://www.radix-ui.com/colors/custom), or point
+        the semantic brand tokens in §4 at a different scale.
+     --------------------------------------------------------------------------- */
+  --blue-1: #fbfdff;  --blue-2: #f4faff;  --blue-3: #e6f4fe;  --blue-4: #d5efff;
+  --blue-5: #c2e5ff;  --blue-6: #acd8fc;  --blue-7: #8ec8f6;  --blue-8: #5eb1ef;
+  --blue-9: #0090ff;  --blue-10: #0588f0; --blue-11: #0d74ce; --blue-12: #113264;
+
+  --blue-a1: #0080ff04; --blue-a2: #008cff0b; --blue-a3: #008ff519; --blue-a4: #009eff2a;
+  --blue-a5: #0093ff3d; --blue-a6: #0088f653; --blue-a7: #0083eb71; --blue-a8: #0084e6a1;
+  --blue-a9: #0090ff;   --blue-a10: #0086f0fa; --blue-a11: #006dcbf2; --blue-a12: #002359ee;
+
+  /* ---------------------------------------------------------------------------
+     2. NEUTRALS  — the gray scale. Drives almost all text, borders, and surface
+        backgrounds. Nudge these to warm/cool the whole UI.
+     --------------------------------------------------------------------------- */
+  --gray-1: #fcfcfc;  --gray-2: #f9f9f9;  --gray-3: #f0f0f0;  --gray-4: #e8e8e8;
+  --gray-5: #e0e0e0;  --gray-6: #d9d9d9;  --gray-7: #cecece;  --gray-8: #bbb;
+  --gray-9: #8d8d8d;  --gray-10: #838383; --gray-11: #646464; --gray-12: #202020;
+
+  --gray-a1: #00000003; --gray-a2: #00000006; --gray-a3: #0000000f; --gray-a4: #00000017;
+  --gray-a5: #0000001f; --gray-a6: #00000026; --gray-a7: #00000031; --gray-a8: #0004;
+  --gray-a9: #00000072; --gray-a10: #0000007c; --gray-a11: #0000009b; --gray-a12: #000000df;
+
+  /* ---------------------------------------------------------------------------
+     3. SEMANTIC ROLES  — high-level, human-readable knobs. Prefer editing these
+        over the raw scales above when you only want to retarget one role.
+     --------------------------------------------------------------------------- */
+  --color-page: var(--color-white-fill);        /* page background            */
+  --color-container: var(--color-white-fill);   /* cards / panels background  */
+  --color-card: var(--gray-a2);
+  --color-primary-foreground: var(--gray-a12);   /* headings / primary text    */
+  --color-secondary-foreground: var(--gray-a11); /* body text                  */
+  --color-tertiary-foreground: var(--gray-a9);   /* muted / captions           */
+  --color-border-default: var(--gray-a3);
+  --color-border-strong: var(--gray-a6);
+
+  /* ---------------------------------------------------------------------------
+     4. BRAND SEMANTIC TOKENS  — what "brand" resolves to. Repoint these at a
+        different scale (e.g. var(--iris-9)) to rebrand without touching §1.
+     --------------------------------------------------------------------------- */
+  --color-brand-solid: var(--blue-a9);
+  --color-brand-solid-hover: var(--blue-a10);
+  --color-brand-solid-active: var(--blue-a11);
+  --color-brand-foreground: var(--blue-a10);
+  --color-brand-subtle: var(--blue-a3);
+
+  /* ---------------------------------------------------------------------------
+     5. STATUS  — success / warning / danger map to green / orange / tomato.
+        Repoint to taste; full scales live in globals.css.
+     --------------------------------------------------------------------------- */
+  --color-positive-solid: var(--green-a9);
+  --color-warning-solid: var(--orange-a9);
+  --color-danger-solid: var(--tomato-a9);
+
+  /* ---------------------------------------------------------------------------
+     6. TYPOGRAPHY  — font families. Swap the primary/serif/mono faces here.
+        (The @font-face declarations that load the files stay in globals.css.)
+     --------------------------------------------------------------------------- */
+  --font-inter: "InterVariable", "InterVariable Fallback";     /* sans / UI     */
+  --font-heldane-text: var(--font-heldane-text), serif;        /* display serif */
+  --font-berkeley-mono: "BerkeleyMono", "BerkeleyMono Fallback"; /* mono        */
+
+  /* NOTE — Decorative accent pops in the product mockups use extra Radix scales
+     (plum, crimson, indigo, iris, cyan, amber, violet, green). They are defined
+     in globals.css; copy any you want to recolour into this block to override.
+
+     DARK THEME — dark-mode values live under `.dark { … }` in globals.css. This
+     template renders light-only; to theme dark mode, mirror your overrides in a
+     `.dark { … }` block here. */
+}

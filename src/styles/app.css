@@ -1,0 +1,294 @@
+/* Supplementary rules for the platform app. The bulk of styling comes from the
+   shared design tokens + utility classes in globals.css; this file only adds a
+   few app-specific helpers that use those same CSS variables so the look stays
+   consistent with the marketing mockup. */
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--color-page);
+  color: var(--color-primary-foreground);
+  font-family: var(--font-inter), system-ui, sans-serif;
+}
+
+/* Thin, unobtrusive scrollbars inside panels. */
+.scrollbar-none {
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* Native <select> reset so our metadata dropdowns inherit the design system. */
+.field-select {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  outline: none;
+  border-radius: 6px;
+  padding: 2px 6px;
+  margin: -2px -6px;
+  transition: background-color 0.15s ease;
+}
+.field-select:hover {
+  background: var(--color-transparent-hover);
+}
+
+/* Keyboard focus ring using the brand token. */
+.focusable:focus-visible {
+  outline: 2px solid var(--color-brand-border-focus);
+  outline-offset: 2px;
+}
+
+/* Collapsed-sidebar hover tooltips: hidden by default, shown when the parent
+   .group rail item is hovered or keyboard-focused. */
+.rail-tooltip {
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.group:hover > .rail-tooltip,
+.group:focus-within > .rail-tooltip {
+  opacity: 1;
+}
+
+/* Collapsed-sidebar hover flyout (interactive subpage menu). Like the tooltip
+   but clickable — so pointer-events toggle with visibility. Its left padding is
+   a transparent hover bridge, keeping .group:hover true across the gap. */
+.rail-flyout {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+.group:hover > .rail-flyout,
+.group:focus-within > .rail-flyout {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Opaque filled rail tiles (product mark, user avatar) fill their 36px slot, so
+   a hover background would just frame them. Give a subtle scale for feedback
+   instead. (Gated by prefers-reduced-motion globally in globals.css.) */
+.rail-tile {
+  transition: transform 0.15s ease;
+}
+.group:hover > .rail-tile,
+.group:focus-visible > .rail-tile {
+  transform: scale(1.06);
+}
+
+/* Optional "outlined" look (Settings → Appearance → Borders): a hairline around
+   each navigation button so items read as discrete buttons (like the reference
+   badge/button). Off by default; toggled by `.borders-on` on the app shell. */
+.borders-on .rail-item {
+  border: 0.5px solid var(--color-border-strong);
+}
+
+/* Hover/active highlight layer. Expanded it fills the full-width row; collapsed it
+   insets to a centred 36px tile that matches the icon / id square, so a hovered or
+   active item is never wider than a plain one. It's a layer behind the content so
+   the button itself can stay full-width (which keeps icons pinned for the morph),
+   and it animates its inset so the highlight morphs with the rail. */
+.rail-hl {
+  position: absolute;
+  inset: 0;
+  border-radius: 0.5rem;
+  pointer-events: none;
+  transition: left 0.2s ease, right 0.2s ease, top 0.2s ease, bottom 0.2s ease,
+    background-color 0.15s ease, box-shadow 0.15s ease;
+}
+/* Collapsed: a 28x28 square (all rail rows are 36px tall) centred on the rail
+   axis, so the filled icons sit flush inside it with no extra width or height. */
+nav[data-expanded="false"] .rail-hl {
+  left: 6px;
+  right: 6px;
+  top: 4px;
+  bottom: 4px;
+}
+.rail-item:hover > .rail-hl:not([data-active="true"]),
+.pressable:hover > .rail-hl {
+  background-color: var(--color-transparent-hover);
+}
+.rail-hl[data-active="true"] {
+  background-color: var(--color-page);
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.08), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+}
+
+/* Tactile press feedback: a subtle scale-down while a button is held. Applied to
+   the sidebar buttons (via `.rail-item`) and other controls (via `.pressable`).
+   The transition declares transform alongside the usual colour properties so it
+   coexists with hover colour changes instead of overriding them. Gated by
+   prefers-reduced-motion. */
+.rail-item,
+.pressable {
+  transition-property: color, background-color, border-color, box-shadow, transform;
+  transition-duration: 0.15s;
+  transition-timing-function: var(--ease-out, cubic-bezier(0, 0, 0.2, 1));
+}
+.rail-item:active,
+.pressable:active {
+  transform: scale(0.97);
+}
+@media (prefers-reduced-motion: reduce) {
+  .rail-item:active,
+  .pressable:active {
+    transform: none;
+  }
+}
+
+/* Search field: the trailing arrow nudges right on hover. */
+.search-arrow {
+  transition: transform 0.15s ease;
+}
+.search-field:hover .search-arrow {
+  transform: translateX(2px);
+}
+
+/* =============================================================================
+   Sidebar expand/collapse morph
+   -----------------------------------------------------------------------------
+   Every rail control keeps a single full-width layout in both states, with its
+   icon/mark pinned at a fixed left offset — so nothing jumps as the rail width
+   animates. The pieces that only belong to one state stay mounted and cross-fade:
+   `.rail-fade` is visible when expanded (labels, secondary text, inline badges,
+   chevrons, the search text/arrow); `.rail-fade-collapsed` is visible when
+   collapsed (the corner count badges, the collapsed search glyph backdrop).
+   Driven by `data-expanded` on the <nav>. Gated by prefers-reduced-motion via the
+   global rule in globals.css (durations collapse to ~0, so it snaps rather than
+   morphs — still correct, just not animated). */
+.rail-fade,
+.rail-fade-collapsed {
+  transition: opacity 0.18s ease;
+}
+nav[data-expanded="false"] .rail-fade {
+  opacity: 0;
+  pointer-events: none;
+}
+.rail-fade-collapsed {
+  opacity: 0;
+  pointer-events: none;
+}
+nav[data-expanded="false"] .rail-fade-collapsed {
+  opacity: 1;
+}
+
+/* =============================================================================
+   Utility classes the app references that were never emitted into the ported
+   globals.css.
+   -----------------------------------------------------------------------------
+   globals.css was compiled from the marketing site, so only the utilities that
+   site happened to use exist in it. The platform app references a handful more
+   (small font sizes, the metadata pane width, the sidebar width transition,
+   content max-width, a few margins). Without these the classes are silent
+   no-ops — e.g. `text-[0.7rem]` fell back to the 15px body size. Defining them
+   here (with the standard Tailwind values, on the same spacing rhythm) makes the
+   markup render as intended. This file is imported after globals.css, so these
+   win without touching the generated file.
+   ============================================================================= */
+
+/* Small mono/label font sizes (issue ids, counts, timestamps, code). */
+.text-\[0\.7rem\]  { font-size: 0.7rem; }
+.text-\[0\.72rem\] { font-size: 0.72rem; }
+.text-\[0\.65rem\] { font-size: 0.65rem; }
+.leading-5         { line-height: 1.25rem; }
+.tracking-wide     { letter-spacing: 0.025em; }
+
+/* Layout widths. */
+.w-64              { width: 16rem; }
+.w-72              { width: 18rem; }
+.w-96              { width: 24rem; }
+.max-w-2xl         { max-width: 42rem; }
+.max-w-3xl         { max-width: 48rem; }
+.max-w-4xl         { max-width: 56rem; }
+.max-w-\[400px\]   { max-width: 400px; }
+
+/* Board card odds and ends. */
+.size-2\.5         { width: 0.625rem; height: 0.625rem; }
+.rounded-\[4px\]   { border-radius: 4px; }
+.mt-px             { margin-top: 1px; }
+
+/* Users screen (profile + session timeline). */
+.w-16              { width: 4rem; }
+.w-\[18px\]        { width: 18px; }
+.size-\[18px\]     { width: 18px; height: 18px; }
+.pl-7              { padding-left: 1.75rem; }
+.pt-0\.5           { padding-top: 0.125rem; }
+.gap-\[2px\]       { gap: 2px; }
+.w-\[3px\]         { width: 3px; }
+.rounded-\[1px\]   { border-radius: 1px; }
+.rounded           { border-radius: 0.25rem; }
+
+/* Login card spacing (Tailwind's 0.25rem scale). */
+.gap-2\.5          { gap: 0.625rem; }
+.mt-1\.5           { margin-top: 0.375rem; }
+.mt-5              { margin-top: 1.25rem; }
+.mt-7              { margin-top: 1.75rem; }
+.px-7              { padding-left: 1.75rem;  padding-right: 1.75rem; }
+.py-9              { padding-top: 2.25rem;   padding-bottom: 2.25rem; }
+.px-3\.5           { padding-left: 0.875rem; padding-right: 0.875rem; }
+
+/* Spacing (Tailwind's 0.25rem scale). */
+.my-1              { margin-top: 0.25rem;  margin-bottom: 0.25rem; }
+.my-1\.5           { margin-top: 0.375rem; margin-bottom: 0.375rem; }
+.my-2              { margin-top: 0.5rem;   margin-bottom: 0.5rem; }
+.ml-1\.5           { margin-left: 0.375rem; }
+.-ml-1             { margin-left: -0.25rem; }
+.-mx-1             { margin-left: -0.25rem; margin-right: -0.25rem; }
+.-mx-2             { margin-left: -0.5rem;  margin-right: -0.5rem; }
+.pb-5              { padding-bottom: 1.25rem; }
+.pl-0\.5           { padding-left: 0.125rem; }
+.pr-9              { padding-right: 2.25rem; }
+.p-\[1\.5px\]      { padding: 1.5px; }
+
+/* Reveal on keyboard focus (pairs with the group-hover reveal already present). */
+.focus-visible\:opacity-100:focus-visible { opacity: 1; }
+
+/* Smooth the sidebar collapse/expand. The rail also carries `duration-200
+   ease-out`; here we just declare width as the animated property so it eases
+   instead of snapping. (Gated globally by prefers-reduced-motion in globals.css.) */
+.transition-\[width\] {
+  transition-property: width;
+  transition-timing-function: var(--tw-ease, var(--ease-out, cubic-bezier(0, 0, 0.2, 1)));
+  transition-duration: var(--tw-duration, 0.2s);
+}
+
+/* =============================================================================
+   Auth morph layers
+   -----------------------------------------------------------------------------
+   Sign-in / sign-out don't hard-swap the login screen and the workspace — they're
+   the same card transforming. <Shell> (App.tsx) measures the login card's rect
+   and the content panel's real rect, then animates the panel (as a fixed-position
+   box, animating top/left/width/height so its content is clip-revealed rather
+   than scaled) between them: it grows into the workspace on sign-in and shrinks
+   back into the card on sign-out. These two stacked full-viewport layers hold the
+   login screen and the workspace; the actual grow/shrink and all cross-fades are
+   inline transitions driven from React (see App.tsx). Reduced motion skips the
+   morph entirely, so no inline transitions run.
+   ============================================================================= */
+.morph-layer {
+  position: fixed;
+  inset: 0;
+}
+
+/* =============================================================================
+   Enter animation helper for popovers/menus that mount on open.
+   Mirrors the tailwindcss-animate `animate-in fade-in zoom-in` pattern (which is
+   only partially present in globals.css) so dropdowns fade+scale in from their
+   anchor instead of popping. Set `transform-origin` per-menu via a style prop.
+   ============================================================================= */
+@keyframes pop-in {
+  from { opacity: 0; transform: scale(0.96) translateY(-4px); }
+  to   { opacity: 1; transform: none; }
+}
+.pop-in {
+  animation: pop-in 0.16s cubic-bezier(0, 0, 0.2, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pop-in { animation: none; }
+}
