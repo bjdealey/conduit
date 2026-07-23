@@ -1,9 +1,10 @@
-import { ChevronsRight } from "lucide-react";
+import { PanelLeft } from "lucide-react";
 import { useStore } from "../store";
 
 /** Icon-only sidebar collapse/expand toggle. Lives in the main content header
- *  (just left of the header title), not inside the rail. The chevrons rotate to
- *  animate between the collapsed (>>) and expanded (<<) states. */
+ *  (just left of the header title), not inside the rail. Uses a panel glyph that
+ *  mirrors the right-hand info-pane toggle, so the two edge controls read as a
+ *  matched pair (filled when their panel is expanded/shown). */
 export function SidebarToggle() {
   const { sidebarExpanded, toggleSidebar } = useStore();
   return (
@@ -12,17 +13,15 @@ export function SidebarToggle() {
       onClick={toggleSidebar}
       aria-label={sidebarExpanded ? "Collapse sidebar" : "Expand sidebar"}
       aria-expanded={sidebarExpanded}
+      aria-pressed={sidebarExpanded}
       title={sidebarExpanded ? "Collapse sidebar" : "Expand sidebar"}
-      className="pressable focusable -ml-1 flex size-7 shrink-0 items-center justify-center rounded-md text-tertiary-foreground transition-colors hover:bg-transparent-hover hover:text-primary-foreground"
+      className="pressable focusable -ml-1 flex size-7 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-transparent-hover"
+      style={{
+        background: sidebarExpanded ? "var(--color-transparent-hover)" : "transparent",
+        color: sidebarExpanded ? "var(--color-primary-foreground)" : "var(--color-tertiary-foreground)",
+      }}
     >
-      <ChevronsRight
-        size={18}
-        strokeWidth={1.7}
-        style={{
-          transform: sidebarExpanded ? "rotate(180deg)" : "none",
-          transition: "transform 0.2s ease",
-        }}
-      />
+      <PanelLeft size={16} strokeWidth={1.8} />
     </button>
   );
 }
