@@ -2,7 +2,9 @@
 
 export const cors: Record<string, string> = {
   "access-control-allow-origin": "*",
-  "access-control-allow-headers": "authorization, content-type",
+  // supabase-js sends apikey + x-client-info on every invoke; all must be allow-listed
+  // or the browser blocks the request at preflight.
+  "access-control-allow-headers": "authorization, x-client-info, apikey, content-type",
   "access-control-allow-methods": "GET, POST, PATCH, DELETE, OPTIONS",
 };
 
