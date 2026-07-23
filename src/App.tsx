@@ -9,7 +9,7 @@ import { Titlebar } from "./components/Titlebar";
 import { Inbox } from "./components/Inbox";
 import { Board } from "./components/Board";
 import { IssueDetail } from "./components/IssueDetail";
-import { ActivityView } from "./components/Views";
+import { ActivityView } from "./components/ActivityView";
 import { AutomationsView } from "./components/AutomationsView";
 import { UsersView } from "./components/UsersView";
 import { SurfacesView } from "./components/SurfacesView";

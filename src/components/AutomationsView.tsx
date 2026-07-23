@@ -12,52 +12,14 @@ import {
   Workflow,
 } from "lucide-react";
 import { useStore } from "../store";
-import type { Automation, AutomationStatus, Run, RunState, Visibility } from "../data/types";
+import type { Automation, Visibility } from "../data/types";
 import { folders as allFolders } from "../data/automations";
 import { Avatar } from "./Avatar";
-import { ActivityFeed } from "./ActivityFeed";
+import { AUTOMATION_STATUS_ACCENT, AutomationStatusChip } from "./Badges";
+import { RunRow } from "./RunRow";
 import { num } from "../lib/format";
 
 /* ------------------------------------------------------------------ shared bits */
-
-const AUTOMATION_STATUS_ACCENT: Record<AutomationStatus, string> = {
-  Active: "grass",
-  Paused: "amber",
-  Draft: "gray",
-};
-
-const RUN_STATE_ACCENT: Record<RunState, string> = {
-  Queued: "gray",
-  Running: "blue",
-  Completed: "grass",
-  Failed: "tomato",
-};
-
-function StatusChip({ status }: { status: AutomationStatus }) {
-  const accent = AUTOMATION_STATUS_ACCENT[status];
-  return (
-    <span
-      className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[0.72rem] font-medium"
-      style={{ background: `var(--${accent}-a3)`, color: `var(--${accent}-a11)` }}
-    >
-      <span className="size-1.5 shrink-0 rounded-full" style={{ background: `var(--${accent}-9)` }} />
-      {status}
-    </span>
-  );
-}
-
-function RunStateChip({ state }: { state: RunState }) {
-  const accent = RUN_STATE_ACCENT[state];
-  return (
-    <span
-      className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-1.5 py-0.5 font-departure-mono text-[0.65rem] font-medium"
-      style={{ background: `var(--${accent}-a3)`, color: `var(--${accent}-a11)` }}
-    >
-      <span className="size-1.5 shrink-0 rounded-full" style={{ background: `var(--${accent}-9)` }} />
-      {state}
-    </span>
-  );
-}
 
 const pct = (r: number) => `${Math.round(r * 100)}%`;
 
@@ -310,53 +272,6 @@ function AutomationList({
   );
 }
 
-/* ------------------------------------------------------------------ run history */
-
-function RunRow({ run }: { run: Run }) {
-  const { select, setView } = useStore();
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="flex flex-col border-border-default border-b-[0.5px]">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="focusable flex items-center gap-3 px-2 py-2.5 text-left transition-colors hover:bg-transparent-hover"
-      >
-        <ChevronRight
-          size={13}
-          strokeWidth={2}
-          className="shrink-0 text-tertiary-foreground transition-transform"
-          style={{ transform: open ? "rotate(90deg)" : "none" }}
-        />
-        <span className="w-20 shrink-0 font-departure-mono text-[0.7rem] text-tertiary-foreground">{run.id}</span>
-        <RunStateChip state={run.state} />
-        <span className="min-w-0 flex-1 truncate text-body-sm text-secondary-foreground">{run.startedBy}</span>
-        <span className="shrink-0 font-departure-mono text-[0.65rem] text-tertiary-foreground">
-          {run.startedAt} · {run.duration}
-        </span>
-      </button>
-      {open && (
-        <div className="px-4 pb-4 pt-1">
-          <ActivityFeed events={run.activity} />
-          {run.issueId != null && (
-            <button
-              type="button"
-              onClick={() => {
-                select(run.issueId!);
-                setView("inbox");
-              }}
-              className="focusable inline-flex items-center gap-1 rounded-md bg-component px-2 py-1 text-body-sm text-secondary-foreground transition-colors hover:text-primary-foreground"
-            >
-              Open incident #{run.issueId}
-              <ArrowUpRight size={14} strokeWidth={1.8} />
-            </button>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
 /* ---------------------------------------------------------------------- detail */
 
 const DETAIL_TABS = ["History", "Dependencies"] as const;
@@ -407,7 +322,7 @@ function AutomationDetail({ automation, onSelectAutomation }: { automation: Auto
 
         <div className="flex flex-col gap-1">
           <MetaRow label="Status">
-            <StatusChip status={automation.status} />
+            <AutomationStatusChip status={automation.status} />
           </MetaRow>
           <MetaRow label="Owner">
             <span className="inline-flex items-center gap-1.5">
