@@ -7,7 +7,7 @@ import { currentUser } from "./data/user";
 import { workspaces } from "./data/workspaces";
 import type { Workspace } from "./data/workspaces";
 import { palettes, type Palette } from "./data/palettes";
-import { VIEW_MODES, defaultViewMode } from "./data/viewLayout";
+import { VIEW_MODES } from "./data/viewLayout";
 import { applyBrand } from "./lib/palette";
 import { isDark, setTheme } from "./lib/theme";
 import type { Automation, Folder, Issue, Member, Priority, Role, Run, Status } from "./data/types";
@@ -69,10 +69,14 @@ type Store = {
   /** Active subpage id within the current view, or null. */
   subview: string | null;
   sidebarExpanded: boolean;
-  /** Per-view presentation mode (e.g. inbox list/board, users list/grid). Views
-   *  opt in via `VIEW_MODES`; unknown views fall back to their default. */
+  /** Global layout preference shared by every page's view switcher: the primary
+   *  "list" layout, or each page's alternate (board/grid). One control, so the
+   *  choice persists as you move between pages. */
+  layout: "list" | "alt";
+  setLayout: (l: "list" | "alt") => void;
+  /** Resolve a view's current mode id from the global layout and its declared
+   *  modes (`VIEW_MODES`) — e.g. "list" or, for the alternate, "board"/"grid". */
   viewMode: (v: View) => string;
-  setViewMode: (v: View, mode: string) => void;
   /** Whether the right-hand context ("more info") pane is shown. Toggled from the
    *  titlebar and shared by every view that has one. Persisted. */
   infoPaneOpen: boolean;
@@ -133,16 +137,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [subview, setSubview] = useState<string | null>(null);
   const [settingsReturn, setSettingsReturn] = useState<View>("inbox");
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
-  // Per-view presentation modes, hydrated from localStorage for every view that
-  // declares modes (migrating the legacy `inbox-layout` key for the inbox).
-  const [viewModes, setViewModes] = useState<Record<string, string>>(() => {
-    const out: Record<string, string> = {};
-    for (const v of Object.keys(VIEW_MODES) as View[]) {
-      const legacy = v === "inbox" ? read("inbox-layout", "") : "";
-      out[v] = read(`viewmode:${v}`, legacy || defaultViewMode(v));
-    }
-    return out;
-  });
+  // Global layout preference (list vs each page's board/grid alternate).
+  const [layout, setLayoutState] = useState<"list" | "alt">(() => (read("layout", "list") === "alt" ? "alt" : "list"));
   const [infoPaneOpen, setInfoPaneState] = useState(() => read("info-pane", "on") !== "off");
   const [workspaceId, setWorkspaceId] = useState(workspaces[0].id);
   const [openIds, setOpenIds] = useState<number[]>(selectedId != null ? [selectedId] : []);
@@ -240,10 +236,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     view,
     subview,
     sidebarExpanded,
-    viewMode: (v) => viewModes[v] ?? defaultViewMode(v),
-    setViewMode: (v, mode) => {
-      setViewModes((prev) => ({ ...prev, [v]: mode }));
-      write(`viewmode:${v}`, mode);
+    layout,
+    setLayout: (l) => {
+      setLayoutState(l);
+      write("layout", l);
+    },
+    viewMode: (v) => {
+      const modes = VIEW_MODES[v];
+      if (!modes || modes.length === 0) return "list";
+      return layout === "list" ? modes[0].id : modes[1]?.id ?? modes[0].id;
     },
     infoPaneOpen,
     setInfoPaneOpen: (on) => {
