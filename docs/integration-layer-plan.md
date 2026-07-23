@@ -21,7 +21,15 @@ Frontend ──▶ Internal API ──▶ Capability services ──▶ Connecto
 
 The single most important finding: **there is no backend.** Conduit is a static, in-memory
 React/Vite/TypeScript prototype. The `{{BACKEND}}` and `{{SECRETS_STORE}}` placeholders in
-the brief therefore resolve to *"none yet"* — choosing them is decision #1 in §7.
+the brief therefore resolve to *"none yet"* — choosing them was decision #1 in §7.
+
+> **Decided (2026-07): the backend is Supabase.** This settles the secrets store (Supabase
+> **Vault**) and the config source (a Postgres table). The backend runtime is **Supabase
+> Edge Functions** (Deno + TypeScript); **PostgREST** over normalised domain tables is the
+> frontend read API; **`pg_cron`** drives scheduled syncs; **Supabase Auth** can replace the
+> prototype's fake sign-in and back the existing `admin/developer/user` role gating via RLS.
+> The sections below reflect this choice. See §7 for the one sub-decision it introduces
+> (connectors in Edge Functions vs. a dedicated worker).
 
 | Concern the brief asks about | What is actually in the repo | Evidence |
 |---|---|---|
@@ -87,25 +95,27 @@ None of these are blockers; they are the work.
 
 ### 3.1 Repository layout (npm workspaces)
 
-Introduce npm workspaces so backend, frontend, and connectors share one TypeScript domain
-package. Phase 1 keeps the existing SPA where it is to minimise churn; the target end-state
-moves it under `apps/web`.
+Introduce npm workspaces so frontend, connectors, and shared code share one TypeScript domain
+package, plus a `supabase/` project directory for the backend. Deno Edge Functions consume the
+shared packages via `npm:`/import-map specifiers. Phase 1 keeps the existing SPA where it is to
+minimise churn; the target end-state moves it under `apps/web`.
 
 ```
 conduit/
   package.json                 # workspaces: ["apps/*", "packages/*", "connectors/*"]
+  supabase/
+    config.toml
+    migrations/                # domain cache tables, connector_instances, RLS, pg_cron, Vault
+    functions/                 # Edge Functions (Deno + TypeScript) — the API + orchestration
+      _shared/                 # registry loader, capability services, SecretStore, normalise-guard
+      bots/  schedules/ …      # (optional) per-capability read functions if not served by PostgREST
+      connectors/              # instance CRUD + enable/disable + health + sync trigger
+      sync/                    # pull → normalise → upsert into domain tables (pg_cron + on-demand)
+      capabilities/            # union of declared capabilities across enabled instances
   apps/
     web/                       # existing Vite SPA (moved from ./src; unchanged behaviour)
-    api/                       # NEW backend (Fastify + TypeScript)
-      src/
-        server.ts              # bootstrap: load config, build registry, mount routes
-        routes/                # thin controllers per capability + /connectors, /capabilities
-        services/              # capability services (dispatch + merge + normalise-guard)
-        registry/              # type registry, instance registry, loader/lifecycle
-        secrets/               # SecretStore interface + providers
-        config/                # config loader (env + instance config source)
   packages/
-    domain/                    # canonical domain models + capability enum + DTOs (shared FE/BE)
+    domain/                    # canonical domain models + capability enum + DTOs (shared FE/Edge)
     connector-sdk/             # Connector interface, capability provider interfaces,
                                # defineConnector(), conformance test kit
   connectors/
@@ -115,7 +125,8 @@ conduit/
 
 Conventions preserved from the repo: TS strict + ESM, PascalCase types / camelCase values,
 JSDoc on every exported type, string ids, domain types centralised (now in `packages/domain`
-instead of `src/data/types.ts`).
+instead of `src/data/types.ts`). Postgres tables/columns use `snake_case`; the PostgREST layer
+or a thin mapper renders them as the `camelCase` domain DTOs the frontend consumes.
 
 ### 3.2 Canonical domain models (`packages/domain`)
 
@@ -235,20 +246,30 @@ export default defineConnector({
 ```
 
 **B. Instance registry (which connectors are configured, and their on/off state).** Instances
-live in a **config source** (a DB table for prod, a JSON/YAML file for dev) — pure data:
+live in a **Supabase Postgres table** `connector_instances`, guarded by RLS (admins read/write;
+Edge Functions use the service role) — pure data:
 
-```jsonc
-// one row per configured instance — add/enable/disable/remove = data mutation, no redeploy
-{ "instanceId": "a360-prod-eu", "type": "automation-anywhere", "name": "Prod EU Control Room",
-  "enabled": true, "config": { "baseUrl": "https://eu.cr.example" }, "secretRef": "a360/prod-eu" }
+```sql
+-- one row per configured instance — add/enable/disable/remove = a row mutation, no redeploy
+create table connector_instances (
+  id          text primary key,        -- instance id, e.g. 'a360-prod-eu'
+  type        text not null,           -- connector type / platform
+  name        text not null,           -- 'Prod EU Control Room'
+  enabled     boolean not null default true,
+  config      jsonb not null default '{}',  -- non-secret connection config
+  secret_ref  text,                    -- pointer into Supabase Vault (never a secret value)
+  created_at  timestamptz not null default now()
+);
 ```
 
-At boot and on change, the **loader** reads instance rows, looks up the factory by `type`,
-resolves `secretRef` via the SecretStore, calls `create()`, `connect()`, and registers the live
-connector with each capability service. **Runtime CRUD** (`POST/PATCH/DELETE /api/connectors`)
-mutates instance rows and calls `connect`/`disconnect` — enabling, disabling, adding, or removing
-a connector with no code change and no deploy. Multiple instances of one type are just multiple
-rows (the two-Control-Rooms requirement).
+Per invocation (Edge Functions are stateless), the **loader** reads enabled instance rows, looks
+up the factory by `type` from the code-side type registry, resolves `secret_ref` via the
+SecretStore (Vault), calls `create()` and `connect()`, and hands the live connector to the
+capability services. **Runtime CRUD** (the `connectors` Edge Function → `connector_instances`
+mutations) enables, disables, adds, or removes a connector with no code change and no deploy.
+Multiple instances of one type are just multiple rows (the two-Control-Rooms requirement). Because
+Edge Functions don't persist memory, `connect()/disconnect()` are per-invocation setup/teardown and
+the **domain cache tables are the durable registry state**, not an in-process object.
 
 ### 3.6 Secrets (`apps/api/src/secrets`)
 
@@ -256,37 +277,55 @@ rows (the two-Control-Rooms requirement).
 interface SecretStore { get(ref: string): Promise<Record<string,string>>; }
 ```
 
-Providers: `EnvSecretStore` (dev, from `.env`), `AzureKeyVaultSecretStore`, `AwsSecretsManagerStore`,
-`VaultSecretStore`. Rules enforced by design:
+Default provider: **`SupabaseVaultSecretStore`** — secrets are stored with `vault.create_secret()`
+and read from `vault.decrypted_secrets` **only inside Edge Functions using the service-role key**;
+the `anon` role and PostgREST never see them. `EnvSecretStore` (from `.env`) remains for local dev;
+the interface keeps AWS Secrets Manager / HashiCorp Vault swappable. Rules enforced by design:
 
-- Instance config holds only a **`secretRef` pointer**, never a secret value.
-- Secrets are resolved **at `connect()` time, server-side**, and injected into the connector.
+- Instance config (`connector_instances.config`) holds only a **`secret_ref` pointer**, never a
+  secret value.
+- Secrets are resolved **at `connect()` time, server-side in the Edge Function**, and injected
+  into the connector.
 - The domain `Credential` model is **metadata only**; a contract test asserts no secret-shaped
-  field is ever serialised (§4). Nothing token-shaped can reach the browser.
+  field is ever serialised (§4). RLS + the service-role boundary mean nothing token-shaped can
+  reach the browser.
 
-### 3.7 Internal API surface (`apps/api/src/routes`)
+### 3.7 Internal API surface
+
+Two layers, both under the Supabase project URL — the frontend calls **our** API, never a vendor.
+
+**Reads → PostgREST** over the normalised domain cache tables (RLS: `authenticated` read-only).
+This gives the domain-model read API — and realtime subscriptions — for free:
 
 ```
-GET    /api/capabilities                 # union of enabled capabilities → drives UI features
-GET    /api/bots        ?platform&connectorId
-GET    /api/schedules   /api/devices  /api/credentials  /api/activity  /api/audit  /api/packages  /api/queues
-GET    /api/connectors                   # instances + health + declared capabilities
-POST   /api/connectors                   # register an instance (data-driven)
-PATCH  /api/connectors/:id               # enable / disable / reconfigure
-DELETE /api/connectors/:id               # remove
-POST   /api/connectors/:id/sync
-GET    /api/connectors/:id/health
+GET  /rest/v1/bots?platform=eq.automation-anywhere&connector_id=eq.a360-prod-eu
+GET  /rest/v1/{schedules,devices,credentials,activity,audit,packages,queues}
 ```
 
-Every response is a domain DTO from `packages/domain`. No route returns a vendor payload.
+**Orchestration & writes → Edge Functions** (service role, admin-gated):
+
+```
+GET    /functions/v1/capabilities        # union of enabled capabilities → drives UI features
+GET    /functions/v1/connectors          # instances + health + declared capabilities
+POST   /functions/v1/connectors          # register an instance (row insert)
+PATCH  /functions/v1/connectors/:id      # enable / disable / reconfigure
+DELETE /functions/v1/connectors/:id      # remove
+POST   /functions/v1/connectors/:id/sync
+GET    /functions/v1/connectors/:id/health
+```
+
+Every response is a domain DTO from `packages/domain` (PostgREST rows mapped to `camelCase`). No
+route returns a vendor payload. Reads may alternatively be served by thin per-capability Edge
+Functions if row-level PostgREST proves too coarse — see §7 decision 3b.
 
 ### 3.8 Frontend seam (later phase — no code now)
 
-`src/store.tsx` stops importing `data/*.ts` and instead calls an API client (`apps/web/src/lib/api.ts`)
-typed against `packages/domain`. Loading becomes async; capability-gating reads `/api/capabilities`.
-The existing seed data (`automations.ts`, `manage.ts`, …) is retargeted as the fixture behind a
-`fake`/`conduit-native` connector so the prototype keeps rendering with zero backend dependency
-during migration.
+`src/store.tsx` stops importing `data/*.ts` and instead uses `supabase-js` (`apps/web/src/lib/api.ts`),
+typed against `packages/domain`: PostgREST/realtime for reads, Edge Function calls for connector
+admin, and Supabase Auth for sign-in (replacing the fake `signIn` in `src/store.tsx:213`). Loading
+becomes async; capability-gating reads `/functions/v1/capabilities`. The existing seed data
+(`automations.ts`, `manage.ts`, …) is retargeted as the fixture behind a `fake`/`conduit-native`
+connector so the prototype keeps rendering with zero vendor dependency during migration.
 
 ---
 
@@ -325,15 +364,18 @@ Run against recorded vendor fixtures (nock/msw) in CI, and optionally against a 
 
 ## 5. Phased delivery (suggested)
 
-1. **Scaffold** workspaces, `packages/domain`, `packages/connector-sdk`, `apps/api` (Fastify),
-   `/api/capabilities` + `/api/bots` backed by a **fake connector over existing seed data**.
-2. **Registry + secrets**: type/instance registries, loader, `SecretStore` (env provider),
-   runtime connector CRUD.
+1. **Scaffold** workspaces + `supabase/` project, `packages/domain`, `packages/connector-sdk`,
+   the domain cache tables + `connector_instances` migration, and a `capabilities` + `sync` Edge
+   Function backed by a **fake connector over existing seed data**; PostgREST reads on `bots`.
+2. **Registry + secrets**: code-side type registry, instance loader, `SupabaseVaultSecretStore`,
+   the `connectors` Edge Function for runtime CRUD, `pg_cron`-scheduled `sync`.
 3. **A360 connector**: real adapter for `bots`+`activity` first, passing the conformance kit.
-4. **Frontend seam**: `store.tsx` → API client; capability-driven UI gating; seed data becomes the
-   fake connector's fixture.
+4. **Frontend seam**: `store.tsx` → `supabase-js`; Supabase Auth; capability-driven UI gating;
+   seed data becomes the fake connector's fixture.
 5. **Breadth**: remaining A360 capabilities, then Azure DevOps / Jira / ServiceNow / SQL / REST.
-6. **Deploy**: separate API host + pipeline; Pages SPA points at it via build-time base URL.
+6. **Deploy**: Supabase project (hosted or self-hosted) for the API/DB; the Pages SPA points at
+   the Supabase URL via a build-time env var. If a connector's `sync` outgrows Edge Function
+   limits, graduate it to a dedicated worker (§7 decision 1b) without changing the contract.
 
 ---
 
@@ -345,13 +387,17 @@ Consolidated list at the end of the reply; each has a recommended default and re
 
 ## 7. Decisions needing your input (recommended defaults)
 
+**Settled by your Supabase choice:** ~~#1 backend stack~~ → Supabase Edge Functions (Deno/TS).
+~~#2 secrets store~~ → Supabase Vault. ~~#3 config source~~ → Postgres `connector_instances`.
+The remaining and newly-surfaced decisions:
+
 | # | Decision | Recommended default | Reason |
 |---|---|---|---|
-| 1 | **Backend stack** (`{{BACKEND}}` was unresolved — no backend exists) | **Node.js + TypeScript, Fastify** | One language across FE/BE lets `packages/domain` types be shared verbatim; matches strict-ESM-TS repo conventions; Fastify is TS-first, light, with a plugin model that fits the registry. Alternatives: Hono (edge), NestJS (heavier DI). |
-| 2 | **Secrets store** (`{{SECRETS_STORE}}` unresolved) | **`SecretStore` interface; env provider for dev, Azure Key Vault default for prod** | Azure DevOps is already a target vendor, so Key Vault is likely in the org; the interface keeps AWS/Vault swappable. |
-| 3 | **Instance config source** | **JSON file in dev, Postgres table in prod** | Data-driven registration needs a store; Postgres is the conventional choice and supports runtime CRUD; file keeps dev zero-infra. |
+| 1b | **Where connectors run** (new, from Supabase) | **Inside Edge Functions for v1; graduate a connector to a dedicated Node worker only if its `sync` outgrows the limits** | All-in on Supabase is the lowest-ops path and satisfies every rule; Edge Functions' ~150s wall + stateless model only bite on large/long syncs, which chunk via `pg_cron` until a worker is justified. |
+| 3b | **Read API: PostgREST vs Edge Functions** (new) | **PostgREST over domain cache tables, with RLS** | Gives the domain-model read API + realtime for free and keeps reads off the Edge Function budget; swap a capability to a thin function only if row-level access proves too coarse. |
 | 4 | **"Automation" vs "Bot" naming** | **Domain/API type = `Bot`; keep the UI label "Automation"** | Canonical model + A360 say *bot*; the existing UI copy is heavy and user-facing. Align the contract, leave the prototype's wording. |
 | 5 | **`queues` capability** | **Include it as a capability with no seed data** | Brief lists `QueueService` but not `queues` in the capability list, and A360 marks Queues "Not Used"; define the seam now, leave it empty until a connector needs it. |
-| 6 | **Monorepo migration timing** | **Add `apps/api` + `packages/*` now; move SPA to `apps/web` in phase 4** | Standing up the API shouldn't block on relocating the working SPA and its Pages pipeline. |
-| 7 | **Data freshness model** (`sync` pull-cache vs live pass-through) | **Cache-on-`sync` with live fallback per capability** | Vendor APIs are rate-limited and slow; a cache makes aggregation across instances viable. Revisit per capability. |
+| 6 | **Monorepo migration timing** | **Add `supabase/` + `packages/*` now; move SPA to `apps/web` in phase 4** | Standing up the backend shouldn't block on relocating the working SPA and its Pages pipeline. |
+| 7 | **Data freshness model** (`sync` pull-cache vs live pass-through) | **Cache-on-`sync` into Postgres with live fallback per capability** | Vendor APIs are rate-limited and slow; the domain cache tables make aggregation across instances viable and fit the stateless Edge Function model. Revisit per capability. |
 | 8 | **Write operations** (run a bot, disable a schedule) | **Read-only in v1; add capability-scoped writes later** | The brief specifies read/normalise flows (`connect/disconnect/sync/health` + list); writes are a separate contract surface. |
+| 9 | **Auth** (new — Supabase includes it) | **Adopt Supabase Auth; map `admin/developer/user` to JWT claims + RLS, replacing the fake local sign-in** | The app already has the role enum (`src/store.tsx`); Supabase Auth turns the prototype gate into a real one and secures the connector-admin surface. |

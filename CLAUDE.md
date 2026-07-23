@@ -12,6 +12,13 @@ data** in `src/data/*.ts`, served synchronously through a React context store (`
 There is **no backend, no HTTP client, no secrets handling, and no DI** yet — the integration
 layer introduces all of them.
 
+**Backend = Supabase** (decided). Runtime: **Edge Functions** (Deno + TypeScript). Read API:
+**PostgREST** over normalised domain tables with RLS. Secrets: **Supabase Vault**. Config/registry:
+Postgres tables. Scheduling: **`pg_cron`**. Auth: **Supabase Auth** (maps to the existing
+`admin/developer/user` roles). Connectors run inside Edge Functions in v1; graduate to a dedicated
+worker only if a `sync` outgrows the ~150s/stateless limits. Shared TS (`packages/*`) is consumed
+from Deno via `npm:`/import-map specifiers.
+
 ## Architecture intent (the target)
 
 ```
@@ -76,18 +83,21 @@ the adapter.
 - **Type registry**: each connector package self-registers via `defineConnector({ type,
   capabilities, configSchema, secretKeys, create })`, discovered at boot. Services never import a
   connector class.
-- **Instance registry**: configured instances live in a data source (JSON file in dev, DB table in
-  prod) — one row per instance `{ instanceId, type, name, enabled, config, secretRef }`. Runtime
-  `POST/PATCH/DELETE /api/connectors` mutates rows and calls `connect`/`disconnect`. Multiple
+- **Instance registry**: configured instances live in the Postgres table `connector_instances`
+  (RLS-guarded) — one row per instance `{ id, type, name, enabled, config, secret_ref }`. The
+  `connectors` Edge Function mutates rows; the loader rebuilds live connectors per invocation
+  (Edge Functions are stateless — the domain cache tables hold durable state, not memory). Multiple
   instances of one type = multiple rows. No redeploy to add/enable/disable/remove a connector.
 
 ## Security rules (non-negotiable)
 
-- **Credentials live only in the secrets store and are used only server-side.** Access tokens and
+- **Credentials live only in Supabase Vault and are used only server-side.** Access tokens and
   client secrets reaching the browser is an unacceptable exposure.
-- Instance config holds a **`secretRef` pointer only**, never a secret value.
-- Secrets resolve via the `SecretStore` interface **at `connect()` time, server-side**, and are
-  injected into the connector.
+- Instance config (`connector_instances.config`) holds a **`secret_ref` pointer only**, never a
+  secret value.
+- Secrets resolve via the `SecretStore` interface (default `SupabaseVaultSecretStore`, read from
+  `vault.decrypted_secrets` with the service-role key) **at `connect()` time, inside the Edge
+  Function**, and are injected into the connector. The `anon` role and PostgREST never see them.
 - The domain `Credential` model is **metadata only** (name, kind, scope, lastUsed). A contract test
   asserts no secret-shaped field is ever serialised. No API response body may contain a
   token/secret/password field.
@@ -100,6 +110,7 @@ the adapter.
   `src/data/*.ts`; helpers in `src/lib/*.ts`.
 - String ids with a type prefix: `aut_`, `run_`, `cred_`, `pkg_`, `sch_`, `evt_`.
 - Capability ids and connector `type`/`platform` values are **lowercase-kebab** (`automation-anywhere`).
+- Postgres tables/columns are `snake_case`; the read layer maps them to the `camelCase` domain DTOs.
 - UI keeps the label "Automation"; the domain/API type is `Bot` (see plan §7, decision 4).
 
 ## Guardrails for sessions
