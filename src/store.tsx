@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { issues as seedIssues, members } from "./data/issues";
 import { automations as seedAutomations, folders as seedFolders, runs as seedRuns } from "./data/automations";
+import { endUsers } from "./data/users";
 import { currentUser } from "./data/user";
 import { workspaces } from "./data/workspaces";
 import type { Workspace } from "./data/workspaces";
@@ -53,6 +54,13 @@ type Store = {
   setRole: (r: Role) => void;
   selectedId: number | null;
   selected: Issue | null;
+  /** Selected end-user (Users view) and automation (Automations view). Lifted here
+   *  so the titlebar breadcrumb can show them and so board/grid modes can swap the
+   *  collection for the item's detail, like the inbox does. Null = nothing opened. */
+  selectedUserId: string | null;
+  selectUser: (id: string | null) => void;
+  selectedAutomationId: string | null;
+  selectAutomation: (id: string | null) => void;
   query: string;
   view: View;
   /** Active subpage id within the current view, or null. */
@@ -114,6 +122,8 @@ const StoreContext = createContext<Store | null>(null);
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [issues, setIssues] = useState<Issue[]>(seedIssues);
   const [selectedId, setSelectedId] = useState<number | null>(seedIssues[0]?.id ?? null);
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(endUsers[0]?.id ?? null);
+  const [selectedAutomationId, setSelectedAutomationId] = useState<string | null>(seedAutomations[0]?.id ?? null);
   const [query, setQuery] = useState("");
   const [view, setViewRaw] = useState<View>("inbox");
   const [subview, setSubview] = useState<string | null>(null);
@@ -216,6 +226,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     },
     selectedId,
     selected: issues.find((i) => i.id === selectedId) ?? null,
+    selectedUserId,
+    selectUser: setSelectedUserId,
+    selectedAutomationId,
+    selectAutomation: setSelectedAutomationId,
     query,
     view,
     subview,
