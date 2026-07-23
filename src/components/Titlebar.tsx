@@ -1,21 +1,27 @@
-import { Inbox, MoreHorizontal, PanelRight } from "lucide-react";
+import { MoreHorizontal, PanelRight } from "lucide-react";
 import { useStore, type View } from "../store";
 import { navItems } from "../data/nav";
+import { endUsers } from "../data/users";
 import { VIEW_MODES, CONTEXT_LABEL } from "../data/viewLayout";
 import { SETTINGS_PAGES, DEFAULT_SETTINGS_PAGE } from "../data/settings";
 import { Breadcrumb, type Crumb } from "./Breadcrumb";
 import { SidebarToggle } from "./SidebarToggle";
 import { Avatar } from "./Avatar";
 
-const InboxIcon = <Inbox size={17} strokeWidth={1.7} />;
-
 /** Generic segmented presentation switcher, driven by `VIEW_MODES`. Shown for any
- *  view that declares more than one mode (inbox board/list, users list/grid, …). */
+ *  view that declares more than one mode (inbox board/list, users list/grid, …).
+ *  Switching to a non-list mode clears the open item so the board/grid shows (the
+ *  detail returns only when you click into an item), matching the inbox. */
 function ViewModeSwitcher({ view }: { view: View }) {
-  const { viewMode, setViewMode } = useStore();
+  const { viewMode, setViewMode, select, selectUser, selectAutomation } = useStore();
   const modes = VIEW_MODES[view];
   if (!modes || modes.length < 2) return null;
   const active = viewMode(view);
+  const clearSelection = () => {
+    if (view === "inbox") select(null);
+    else if (view === "users") selectUser(null);
+    else if (view === "automations") selectAutomation(null);
+  };
   return (
     <div className="flex items-center gap-0.5 rounded-lg bg-component p-0.5">
       {modes.map((m) => {
@@ -24,7 +30,10 @@ function ViewModeSwitcher({ view }: { view: View }) {
           <button
             key={m.id}
             type="button"
-            onClick={() => setViewMode(view, m.id)}
+            onClick={() => {
+              setViewMode(view, m.id);
+              if (m.id !== "list") clearSelection();
+            }}
             aria-pressed={on}
             className="pressable focusable flex items-center gap-1.5 rounded-md px-2.5 py-1 text-body-sm font-medium transition-colors"
             style={{
@@ -74,30 +83,49 @@ const VIEW_LABEL: Record<Exclude<View, "inbox">, string> = {
   settings: "Settings",
 };
 
-/** Whether the current view is presently showing a context pane the toggle can act
- *  on. Mirrors each view's own render conditions so the control is never dead. */
-function contextApplies(view: View, selected: boolean, mode: string): boolean {
-  if (!CONTEXT_LABEL[view]) return false;
-  if (view === "inbox") return selected; // context = the open issue's details
-  if (view === "users") return mode !== "grid";
-  if (view === "automations") return mode !== "board";
-  return true; // surfaces, activity
-}
-
 /** The application titlebar: sidebar toggle + a consistent breadcrumb trail for
  *  the current view/selection, plus a shared control cluster (view-mode switch,
  *  info-pane toggle, and contextual actions) pinned to the right. */
 export function Titlebar() {
-  const { view, subview, selected, select, setView, openSubview, members, viewMode } = useStore();
-  const mode = viewMode(view);
+  const {
+    view,
+    subview,
+    selected,
+    select,
+    selectedUserId,
+    selectUser,
+    selectedAutomationId,
+    selectAutomation,
+    automations,
+    setView,
+    openSubview,
+    members,
+  } = useStore();
+
+  const openUser = selectedUserId ? endUsers.find((u) => u.id === selectedUserId) ?? null : null;
+  const openAutomation = selectedAutomationId
+    ? automations.find((a) => a.id === selectedAutomationId) ?? null
+    : null;
 
   let items: Crumb[];
+  // Whether the current view is showing a right-hand context pane the info toggle
+  // can act on — mirrors each view's render conditions so the control is never dead.
+  let hasContext = false;
   if (view === "inbox") {
-    if (selected) {
-      items = [{ label: "Inbox", icon: InboxIcon, onClick: () => select(null) }, { label: selected.title }];
-    } else {
-      items = [{ label: "Inbox" }];
-    }
+    hasContext = !!selected;
+    items = selected
+      ? [{ label: "Inbox", onClick: () => select(null) }, { label: selected.title }]
+      : [{ label: "Inbox" }];
+  } else if (view === "users") {
+    hasContext = !!openUser;
+    items = openUser
+      ? [{ label: "Users", onClick: () => selectUser(null) }, { label: openUser.name }]
+      : [{ label: "Users" }];
+  } else if (view === "automations") {
+    hasContext = !!openAutomation;
+    items = openAutomation
+      ? [{ label: "Automations", onClick: () => selectAutomation(null) }, { label: openAutomation.name }]
+      : [{ label: "Automations" }];
   } else if (view === "settings") {
     const pageId = subview ?? DEFAULT_SETTINGS_PAGE;
     const page = SETTINGS_PAGES.find((p) => p.id === pageId);
@@ -107,7 +135,11 @@ export function Titlebar() {
     ];
   } else if (view === "surfaces") {
     // The Surfaces section always opens on the surface "Dashboard".
+    hasContext = true;
     items = [{ label: "Surfaces", onClick: () => setView("surfaces") }, { label: "Dashboard" }];
+  } else if (view === "activity") {
+    hasContext = true;
+    items = [{ label: "Activity" }];
   } else if (subview) {
     const sub = navItems.find((n) => n.id === view)?.subpages?.find((s) => s.id === subview);
     items = [
@@ -119,7 +151,7 @@ export function Titlebar() {
   }
 
   const showSwitcher = (VIEW_MODES[view]?.length ?? 0) > 1;
-  const showInfoToggle = contextApplies(view, !!selected, mode);
+  const showInfoToggle = hasContext && !!CONTEXT_LABEL[view];
   const showSubscribers = view === "inbox" && !!selected;
   const showSurfaceActions = view === "surfaces";
 

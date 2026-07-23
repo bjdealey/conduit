@@ -24,7 +24,7 @@ import { endUsers, type Device, type EndUser, type SessionEvent, type UserSessio
 import type { Issue, Priority } from "../data/types";
 import { PRIORITY_ACCENT } from "./Badges";
 import { num } from "../lib/format";
-import { SplitView, Pane, DetailPane, ContextPane, PANE_WIDTH } from "./layout/SplitView";
+import { SplitView, Pane, DetailPane, ContextPane, EmptyDetail, PANE_WIDTH } from "./layout/SplitView";
 import { ListSearch } from "./ListSearch";
 
 /* ------------------------------------------------------------------ profile */
@@ -48,7 +48,7 @@ function Avatar({ user, size }: { user: EndUser; size: number }) {
 }
 
 /** Left column: searchable list of users to pick from (mirrors the inbox list). */
-function UsersList({ selectedId, onSelect }: { selectedId: string; onSelect: (id: string) => void }) {
+function UsersList({ selectedId, onSelect }: { selectedId: string | null; onSelect: (id: string) => void }) {
   const [query, setQuery] = useState("");
   const q = query.trim().toLowerCase();
   const users = q
@@ -526,33 +526,34 @@ function UsersGrid({ onOpen }: { onOpen: (id: string) => void }) {
 
 /* --------------------------------------------------------------------- view */
 
-/** Users — end-user profiles with session history. List mode is the shared shell
- *  (list → sessions → collapsible profile); grid mode is a browseable card wall. */
-export function UsersView() {
-  const { viewMode, setViewMode } = useStore();
-  const [userId, setUserId] = useState(endUsers[0].id);
-  const user = endUsers.find((u) => u.id === userId) ?? endUsers[0];
-
-  if (viewMode("users") === "grid") {
-    return (
-      <SplitView>
-        <UsersGrid
-          onOpen={(id) => {
-            setUserId(id);
-            setViewMode("users", "list");
-          }}
-        />
-      </SplitView>
-    );
-  }
-
+/** The opened user's detail: the session timeline (primary) and the profile in the
+ *  collapsible context pane. Shared by list and grid modes. */
+function UserDetail({ user }: { user: EndUser }) {
   return (
-    <SplitView>
-      <UsersList selectedId={userId} onSelect={setUserId} />
+    <>
       <Sessions user={user} />
       <ContextPane>
         <Profile user={user} />
       </ContextPane>
+    </>
+  );
+}
+
+/** Users — end-user profiles with session history. List mode is the shared shell
+ *  (list → sessions → collapsible profile). Grid mode is a browseable card wall;
+ *  opening a user hides the wall and shows their detail (like the inbox board). */
+export function UsersView() {
+  const { viewMode, selectedUserId, selectUser } = useStore();
+  const user = selectedUserId ? endUsers.find((u) => u.id === selectedUserId) ?? null : null;
+
+  if (viewMode("users") === "grid") {
+    return <SplitView>{user ? <UserDetail user={user} /> : <UsersGrid onOpen={selectUser} />}</SplitView>;
+  }
+
+  return (
+    <SplitView>
+      <UsersList selectedId={selectedUserId} onSelect={selectUser} />
+      {user ? <UserDetail user={user} /> : <EmptyDetail>Select a user.</EmptyDetail>}
     </SplitView>
   );
 }

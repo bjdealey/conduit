@@ -543,32 +543,30 @@ function AutomationsBoard({ items, onSelect }: { items: Automation[]; onSelect: 
  *  summary. Board mode fills the panel with a status board (like the inbox board).
  *  Failed runs link back to the incidents they spawned. */
 export function AutomationsView() {
-  const { automations, viewMode, setViewMode } = useStore();
-  const [selectedId, setSelectedId] = useState<string | null>(automations[0]?.id ?? null);
+  const { automations, viewMode, selectedAutomationId, selectAutomation } = useStore();
+  const selected = selectedAutomationId
+    ? automations.find((a) => a.id === selectedAutomationId) ?? null
+    : null;
 
-  const selected = automations.find((a) => a.id === selectedId) ?? null;
-
-  // Board layout: the status board fills the panel; selecting a card opens the
-  // automation in list mode (mirroring the inbox board → detail flow).
+  // Board layout: the status board fills the panel; opening an automation shows its
+  // detail (the board is hidden) — deselect via the breadcrumb returns to the board.
   if (viewMode("automations") === "board") {
     return (
       <SplitView>
-        <AutomationsBoard
-          items={automations}
-          onSelect={(id) => {
-            setSelectedId(id);
-            setViewMode("automations", "list");
-          }}
-        />
+        {selected ? (
+          <AutomationDetail automation={selected} onSelectAutomation={selectAutomation} />
+        ) : (
+          <AutomationsBoard items={automations} onSelect={selectAutomation} />
+        )}
       </SplitView>
     );
   }
 
   return (
     <SplitView>
-      <AutomationLibrary selectedId={selectedId} onSelect={setSelectedId} />
+      <AutomationLibrary selectedId={selectedAutomationId} onSelect={selectAutomation} />
       {selected ? (
-        <AutomationDetail automation={selected} onSelectAutomation={setSelectedId} />
+        <AutomationDetail automation={selected} onSelectAutomation={selectAutomation} />
       ) : (
         <EmptyDetail>Select an automation.</EmptyDetail>
       )}
