@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import { ChevronDown, Cloud, Files, GitBranch, Map, Zap } from "lucide-react";
 import { surfaces, type Integration, type Surface } from "../data/surfaces";
 import { SurfaceChart } from "./SurfaceChart";
+import { SplitView, DetailPane, ContextPane } from "./layout/SplitView";
 
 const GithubMark = (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
@@ -56,7 +57,7 @@ function IntegrationRow({ integration }: { integration: Integration }) {
 function InfoPane({ surface }: { surface: Surface }) {
   const r = surface.release;
   return (
-    <div className="scrollbar-none flex w-96 shrink-0 flex-col gap-6 overflow-y-auto border-border-default border-r-[0.5px] px-6 py-6">
+    <div className="flex flex-col gap-6 px-6 py-6">
       <div className="flex flex-col gap-4">
         <h2 className="font-sans font-medium text-heading-4 text-primary-foreground">{surface.name}</h2>
         <div className="flex flex-col gap-1">
@@ -153,7 +154,7 @@ function EmptyState({ label }: { label: string }) {
 function Detail({ surface }: { surface: Surface }) {
   const [tab, setTab] = useState<SurfaceTab>("Events");
   return (
-    <div className="flex min-w-0 flex-1 flex-col">
+    <DetailPane>
       <div className="flex shrink-0 items-center gap-1 border-border-default border-b-[0.5px] px-3 py-2">
         {SURFACE_TABS.map((t) => (
           <button
@@ -205,17 +206,21 @@ function Detail({ surface }: { surface: Surface }) {
       ) : (
         <EmptyState label={tab} />
       )}
-    </div>
+    </DetailPane>
   );
 }
 
-/** Surfaces — a monitored surface dashboard (renamed from Projects). */
+/** Surfaces — a monitored surface dashboard (renamed from Projects). The event
+ *  detail is the primary pane; the surface overview + latest release ride in the
+ *  shared, collapsible context pane. */
 export function SurfacesView() {
   const surface = surfaces[0];
   return (
-    <div className="flex min-h-0 min-w-0 flex-1">
-      <InfoPane surface={surface} />
+    <SplitView>
       <Detail surface={surface} />
-    </div>
+      <ContextPane>
+        <InfoPane surface={surface} />
+      </ContextPane>
+    </SplitView>
   );
 }

@@ -12,12 +12,13 @@ import {
   Workflow,
 } from "lucide-react";
 import { useStore } from "../store";
-import type { Automation, Visibility } from "../data/types";
+import type { Automation, AutomationStatus, Visibility } from "../data/types";
 import { folders as allFolders } from "../data/automations";
 import { Avatar } from "./Avatar";
 import { AUTOMATION_STATUS_ACCENT, AutomationStatusChip } from "./Badges";
 import { RunRow } from "./RunRow";
 import { num } from "../lib/format";
+import { SplitView, Pane, DetailPane, ContextPane, EmptyDetail, PANE_WIDTH } from "./layout/SplitView";
 
 /* ------------------------------------------------------------------ shared bits */
 
@@ -164,7 +165,7 @@ function FolderTree({ sel, onSelect }: { sel: TreeSel; onSelect: (s: TreeSel) =>
   ];
 
   return (
-    <div className="flex w-60 shrink-0 flex-col border-border-default border-r-[0.5px]">
+    <Pane width={PANE_WIDTH.nav}>
       <div className="border-border-default border-b-[0.5px] px-3 py-3">
         <span className="font-departure-mono text-[0.65rem] uppercase tracking-wide text-tertiary-foreground">
           Library
@@ -204,7 +205,7 @@ function FolderTree({ sel, onSelect }: { sel: TreeSel; onSelect: (s: TreeSel) =>
           );
         })}
       </div>
-    </div>
+    </Pane>
   );
 }
 
@@ -223,7 +224,7 @@ function AutomationList({
   const canCreate = role !== "user";
 
   return (
-    <div className="flex w-80 shrink-0 flex-col border-border-default border-r-[0.5px]">
+    <Pane width={PANE_WIDTH.list}>
       <div className="flex items-center gap-2 border-border-default border-b-[0.5px] px-3 py-2.5">
         <span className="text-body-sm font-medium text-secondary-foreground">Automations</span>
         <span className="font-departure-mono text-[0.65rem] text-tertiary-foreground">{items.length}</span>
@@ -268,7 +269,7 @@ function AutomationList({
           })}
         </div>
       </div>
-    </div>
+    </Pane>
   );
 }
 
@@ -293,78 +294,9 @@ function AutomationDetail({ automation, onSelectAutomation }: { automation: Auto
   const runs = runsForAutomation(automation.id);
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1">
-      {/* Summary pane */}
-      <div className="scrollbar-none flex w-96 shrink-0 flex-col gap-6 overflow-y-auto border-border-default border-r-[0.5px] px-6 py-6">
-        <div className="flex flex-col gap-4">
-          <div
-            className="flex size-12 items-center justify-center rounded-xl"
-            style={{ background: "var(--violet-a3)", color: "var(--violet-a11)" }}
-          >
-            <Workflow size={22} strokeWidth={1.7} />
-          </div>
-          <div className="flex flex-col gap-2">
-            <span className="font-departure-mono text-[0.72rem] text-tertiary-foreground">{automation.id}</span>
-            <h2 className="font-sans font-medium text-heading-4 text-primary-foreground">{automation.name}</h2>
-            <p className="text-body-base text-secondary-foreground">{automation.description}</p>
-          </div>
-          <button
-            type="button"
-            className="pressable focusable inline-flex w-fit items-center gap-1.5 rounded-lg px-3 py-1.5 text-body-sm font-medium"
-            style={{ background: "var(--color-brand-solid)", color: "#fff" }}
-          >
-            <Play size={14} strokeWidth={2} />
-            Run now
-          </button>
-        </div>
-
-        <div className="h-px w-full" style={{ background: "var(--color-border-default)" }} />
-
-        <div className="flex flex-col gap-1">
-          <MetaRow label="Status">
-            <AutomationStatusChip status={automation.status} />
-          </MetaRow>
-          <MetaRow label="Owner">
-            <span className="inline-flex items-center gap-1.5">
-              {owner && <Avatar member={owner} size={18} />}
-              {owner?.name}
-            </span>
-          </MetaRow>
-          <MetaRow label="Visibility">
-            <span className="inline-flex items-center gap-1.5 capitalize">
-              {automation.visibility === "public" ? (
-                <Globe size={14} strokeWidth={1.8} className="text-tertiary-foreground" />
-              ) : (
-                <Lock size={14} strokeWidth={1.8} className="text-tertiary-foreground" />
-              )}
-              {automation.visibility}
-            </span>
-          </MetaRow>
-          <MetaRow label="Folder">
-            <span className="truncate">{folderPath(automation.folderId)}</span>
-          </MetaRow>
-        </div>
-
-        <div className="h-px w-full" style={{ background: "var(--color-border-default)" }} />
-
-        <div className="flex flex-col gap-1">
-          <MetaRow label="Total runs">
-            <span>{num(automation.runCount)}</span>
-          </MetaRow>
-          <MetaRow label="Success rate">
-            <span>{pct(automation.successRate)}</span>
-          </MetaRow>
-          <MetaRow label="Last run">
-            <span>{automation.lastRunAt}</span>
-          </MetaRow>
-          <MetaRow label="Updated">
-            <span>{automation.updatedAgo}</span>
-          </MetaRow>
-        </div>
-      </div>
-
-      {/* Tabbed pane */}
-      <div className="flex min-w-0 flex-1 flex-col">
+    <>
+      {/* Tabbed pane — primary detail */}
+      <DetailPane>
         <div className="flex shrink-0 items-center gap-1 border-border-default border-b-[0.5px] px-3 py-2">
           {DETAIL_TABS.map((t) => (
             <button
@@ -440,18 +372,168 @@ function AutomationDetail({ automation, onSelectAutomation }: { automation: Auto
             </div>
           </div>
         )}
-      </div>
-    </div>
+      </DetailPane>
+
+      {/* Summary — collapsible context pane */}
+      <ContextPane>
+        <div className="flex flex-col gap-6 px-6 py-6">
+          <div className="flex flex-col gap-4">
+            <div
+              className="flex size-12 items-center justify-center rounded-xl"
+              style={{ background: "var(--violet-a3)", color: "var(--violet-a11)" }}
+            >
+              <Workflow size={22} strokeWidth={1.7} />
+            </div>
+            <div className="flex flex-col gap-2">
+              <span className="font-departure-mono text-[0.72rem] text-tertiary-foreground">{automation.id}</span>
+              <h2 className="font-sans font-medium text-heading-4 text-primary-foreground">{automation.name}</h2>
+              <p className="text-body-base text-secondary-foreground">{automation.description}</p>
+            </div>
+            <button
+              type="button"
+              className="pressable focusable inline-flex w-fit items-center gap-1.5 rounded-lg px-3 py-1.5 text-body-sm font-medium"
+              style={{ background: "var(--color-brand-solid)", color: "#fff" }}
+            >
+              <Play size={14} strokeWidth={2} />
+              Run now
+            </button>
+          </div>
+
+          <div className="h-px w-full" style={{ background: "var(--color-border-default)" }} />
+
+          <div className="flex flex-col gap-1">
+            <MetaRow label="Status">
+              <AutomationStatusChip status={automation.status} />
+            </MetaRow>
+            <MetaRow label="Owner">
+              <span className="inline-flex items-center gap-1.5">
+                {owner && <Avatar member={owner} size={18} />}
+                {owner?.name}
+              </span>
+            </MetaRow>
+            <MetaRow label="Visibility">
+              <span className="inline-flex items-center gap-1.5 capitalize">
+                {automation.visibility === "public" ? (
+                  <Globe size={14} strokeWidth={1.8} className="text-tertiary-foreground" />
+                ) : (
+                  <Lock size={14} strokeWidth={1.8} className="text-tertiary-foreground" />
+                )}
+                {automation.visibility}
+              </span>
+            </MetaRow>
+            <MetaRow label="Folder">
+              <span className="truncate">{folderPath(automation.folderId)}</span>
+            </MetaRow>
+          </div>
+
+          <div className="h-px w-full" style={{ background: "var(--color-border-default)" }} />
+
+          <div className="flex flex-col gap-1">
+            <MetaRow label="Total runs">
+              <span>{num(automation.runCount)}</span>
+            </MetaRow>
+            <MetaRow label="Success rate">
+              <span>{pct(automation.successRate)}</span>
+            </MetaRow>
+            <MetaRow label="Last run">
+              <span>{automation.lastRunAt}</span>
+            </MetaRow>
+            <MetaRow label="Updated">
+              <span>{automation.updatedAgo}</span>
+            </MetaRow>
+          </div>
+        </div>
+      </ContextPane>
+    </>
   );
 }
 
 /* ------------------------------------------------------------------------ view */
 
+/* ------------------------------------------------------------------- board mode */
+
+const AUTOMATION_STATUSES: AutomationStatus[] = ["Active", "Paused", "Draft"];
+
+/** Board presentation: automations laid out in columns by lifecycle status.
+ *  Selecting a card returns to the list focused on that automation — mirroring the
+ *  inbox board → detail flow. */
+function AutomationsBoard({ items, onSelect }: { items: Automation[]; onSelect: (id: string) => void }) {
+  const { memberById } = useStore();
+  const columns = useMemo(() => {
+    const by = new Map<AutomationStatus, Automation[]>();
+    for (const a of items) {
+      const arr = by.get(a.status) ?? [];
+      arr.push(a);
+      by.set(a.status, arr);
+    }
+    return AUTOMATION_STATUSES.map((status) => ({ status, items: by.get(status) ?? [] }));
+  }, [items]);
+
+  return (
+    <DetailPane>
+      <div
+        className="scrollbar-none flex min-w-0 flex-1 gap-5 overflow-x-auto p-5"
+        style={{ background: "color-mix(in srgb, var(--color-primary-foreground) 3%, transparent)" }}
+      >
+        {columns.map((col) => {
+          const accent = AUTOMATION_STATUS_ACCENT[col.status];
+          return (
+            <section key={col.status} className="flex w-72 shrink-0 flex-col">
+              <header className="flex items-center gap-2 px-1 pb-3">
+                <span className="size-2.5 shrink-0 rounded-[4px]" style={{ background: `var(--${accent}-9)` }} />
+                <span className="text-[0.7rem] font-semibold uppercase tracking-wide text-secondary-foreground">
+                  {col.status}
+                </span>
+                <span className="font-departure-mono text-[0.65rem] text-tertiary-foreground">{col.items.length}</span>
+              </header>
+              <div className="flex flex-col gap-2.5">
+                {col.items.map((a) => {
+                  const owner = memberById(a.ownerId);
+                  return (
+                    <button
+                      key={a.id}
+                      type="button"
+                      onClick={() => onSelect(a.id)}
+                      className="pressable focusable flex w-full flex-col gap-2.5 rounded-xl border-border-default border-[0.5px] bg-page p-3 text-left shadow-default transition-colors hover:border-border-strong"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="font-departure-mono text-[0.65rem] uppercase tracking-wide text-tertiary-foreground">
+                          {a.id}
+                        </span>
+                        {owner && (
+                          <span className="ml-auto">
+                            <Avatar member={owner} size={18} />
+                          </span>
+                        )}
+                      </div>
+                      <span className="min-w-0 text-body-sm font-medium leading-5 text-primary-foreground line-clamp-2">
+                        {a.name}
+                      </span>
+                      <span className="text-[0.72rem] text-tertiary-foreground">
+                        {pct(a.successRate)} success · {a.lastRunAt}
+                      </span>
+                    </button>
+                  );
+                })}
+                {col.items.length === 0 && (
+                  <p className="px-1 py-4 text-body-sm text-tertiary-foreground">None.</p>
+                )}
+              </div>
+            </section>
+          );
+        })}
+      </div>
+    </DetailPane>
+  );
+}
+
 /** Automations — the first-class automation library: a Public/Private folder tree,
  *  the automations within the selected folder, and a run-history / dependencies
- *  detail. Failed runs link back to the incidents they spawned. */
+ *  detail. List mode uses the shared shell (list → detail → collapsible summary);
+ *  board mode groups automations by lifecycle status. Failed runs link back to the
+ *  incidents they spawned. */
 export function AutomationsView() {
-  const { automations } = useStore();
+  const { automations, viewMode, setViewMode } = useStore();
   const [sel, setSel] = useState<TreeSel>({ kind: "vis", visibility: "public" });
   const [selectedId, setSelectedId] = useState<string | null>(automations[0]?.id ?? null);
 
@@ -462,18 +544,29 @@ export function AutomationsView() {
   }, [automations, sel]);
 
   const selected = automations.find((a) => a.id === selectedId) ?? null;
+  const board = viewMode("automations") === "board";
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1">
+    <SplitView>
       <FolderTree sel={sel} onSelect={setSel} />
-      <AutomationList items={visibleAutomations} selectedId={selectedId} onSelect={setSelectedId} />
-      {selected ? (
-        <AutomationDetail automation={selected} onSelectAutomation={setSelectedId} />
+      {board ? (
+        <AutomationsBoard
+          items={visibleAutomations}
+          onSelect={(id) => {
+            setSelectedId(id);
+            setViewMode("automations", "list");
+          }}
+        />
       ) : (
-        <div className="flex flex-1 items-center justify-center text-body-base text-tertiary-foreground">
-          Select an automation.
-        </div>
+        <>
+          <AutomationList items={visibleAutomations} selectedId={selectedId} onSelect={setSelectedId} />
+          {selected ? (
+            <AutomationDetail automation={selected} onSelectAutomation={setSelectedId} />
+          ) : (
+            <EmptyDetail>Select an automation.</EmptyDetail>
+          )}
+        </>
       )}
-    </div>
+    </SplitView>
   );
 }

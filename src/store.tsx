@@ -5,6 +5,7 @@ import { currentUser } from "./data/user";
 import { workspaces } from "./data/workspaces";
 import type { Workspace } from "./data/workspaces";
 import { palettes, type Palette } from "./data/palettes";
+import { VIEW_MODES, defaultViewMode } from "./data/viewLayout";
 import { applyBrand } from "./lib/palette";
 import { isDark, setTheme } from "./lib/theme";
 import type { Automation, Folder, Issue, Member, Priority, Role, Run, Status } from "./data/types";
@@ -57,9 +58,15 @@ type Store = {
   /** Active subpage id within the current view, or null. */
   subview: string | null;
   sidebarExpanded: boolean;
-  /** Inbox presentation: the grouped list, or the kanban board. */
-  inboxLayout: "list" | "board";
-  setInboxLayout: (layout: "list" | "board") => void;
+  /** Per-view presentation mode (e.g. inbox list/board, users list/grid). Views
+   *  opt in via `VIEW_MODES`; unknown views fall back to their default. */
+  viewMode: (v: View) => string;
+  setViewMode: (v: View, mode: string) => void;
+  /** Whether the right-hand context ("more info") pane is shown. Toggled from the
+   *  titlebar and shared by every view that has one. Persisted. */
+  infoPaneOpen: boolean;
+  setInfoPaneOpen: (on: boolean) => void;
+  toggleInfoPane: () => void;
   workspaces: Workspace[];
   workspace: Workspace;
   setWorkspaceId: (id: string) => void;
@@ -112,9 +119,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [subview, setSubview] = useState<string | null>(null);
   const [settingsReturn, setSettingsReturn] = useState<View>("inbox");
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
-  const [inboxLayout, setInboxLayoutState] = useState<"list" | "board">(() =>
-    read("inbox-layout", "list") === "board" ? "board" : "list",
-  );
+  // Per-view presentation modes, hydrated from localStorage for every view that
+  // declares modes (migrating the legacy `inbox-layout` key for the inbox).
+  const [viewModes, setViewModes] = useState<Record<string, string>>(() => {
+    const out: Record<string, string> = {};
+    for (const v of Object.keys(VIEW_MODES) as View[]) {
+      const legacy = v === "inbox" ? read("inbox-layout", "") : "";
+      out[v] = read(`viewmode:${v}`, legacy || defaultViewMode(v));
+    }
+    return out;
+  });
+  const [infoPaneOpen, setInfoPaneState] = useState(() => read("info-pane", "on") !== "off");
   const [workspaceId, setWorkspaceId] = useState(workspaces[0].id);
   const [openIds, setOpenIds] = useState<number[]>(selectedId != null ? [selectedId] : []);
 
@@ -205,11 +220,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     view,
     subview,
     sidebarExpanded,
-    inboxLayout,
-    setInboxLayout: (layout) => {
-      setInboxLayoutState(layout);
-      write("inbox-layout", layout);
+    viewMode: (v) => viewModes[v] ?? defaultViewMode(v),
+    setViewMode: (v, mode) => {
+      setViewModes((prev) => ({ ...prev, [v]: mode }));
+      write(`viewmode:${v}`, mode);
     },
+    infoPaneOpen,
+    setInfoPaneOpen: (on) => {
+      setInfoPaneState(on);
+      write("info-pane", on ? "on" : "off");
+    },
+    toggleInfoPane: () =>
+      setInfoPaneState((prev) => {
+        const next = !prev;
+        write("info-pane", next ? "on" : "off");
+        return next;
+      }),
     workspaces,
     workspace: workspaces.find((w) => w.id === workspaceId) ?? workspaces[0],
     setWorkspaceId,

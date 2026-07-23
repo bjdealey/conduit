@@ -3,6 +3,7 @@ import { Search } from "lucide-react";
 import { useStore } from "../store";
 import { STATUSES, type Issue, type Status } from "../data/types";
 import { IssueRow } from "./IssueRow";
+import { Pane, PANE_WIDTH } from "./layout/SplitView";
 
 /** Left column: search + issues grouped by workflow status. */
 export function Inbox() {
@@ -28,7 +29,7 @@ export function Inbox() {
   }, [filtered]);
 
   return (
-    <div className="flex w-80 shrink-0 flex-col border-border-default border-r-[0.5px]">
+    <Pane width={PANE_WIDTH.list}>
       {/* Search */}
       <div className="flex flex-col gap-3 border-border-default border-b-[0.5px] px-3 py-3">
         <label className="flex items-center gap-2 rounded-lg bg-component px-2.5 py-1.5">
@@ -61,6 +62,6 @@ export function Inbox() {
           </section>
         ))}
       </div>
-    </div>
+    </Pane>
   );
 }

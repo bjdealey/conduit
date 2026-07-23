@@ -6,6 +6,7 @@ import { RUN_STATE_ACCENT, RunStateChip } from "./Badges";
 import { RunRow } from "./RunRow";
 import { SurfaceChart } from "./SurfaceChart";
 import { num } from "../lib/format";
+import { SplitView, DetailPane, ContextPane, PANE_WIDTH } from "./layout/SplitView";
 
 const TABS = ["In progress", "Historical", "Insights"] as const;
 type Tab = (typeof TABS)[number];
@@ -74,7 +75,7 @@ function IncidentsRail({ issues }: { issues: Issue[] }) {
   };
 
   return (
-    <aside className="flex w-80 shrink-0 flex-col border-border-default border-l-[0.5px]">
+    <div className="flex h-full flex-col">
       <div className="flex items-center gap-2 border-border-default border-b-[0.5px] px-3 py-2.5">
         <span className="text-body-sm font-medium text-secondary-foreground">Incidents</span>
         <span className="font-departure-mono text-[0.65rem] text-tertiary-foreground">{issues.length}</span>
@@ -107,7 +108,7 @@ function IncidentsRail({ issues }: { issues: Issue[] }) {
           })}
         </div>
       </div>
-    </aside>
+    </div>
   );
 }
 
@@ -229,8 +230,8 @@ export function ActivityView() {
   };
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1">
-      <main className="flex min-w-0 flex-1 flex-col">
+    <SplitView>
+      <DetailPane>
         <div className="flex shrink-0 items-center gap-1 border-border-default border-b-[0.5px] px-3 py-2">
           {TABS.map((t) => (
             <button
@@ -259,9 +260,13 @@ export function ActivityView() {
             <Insights runs={runs} automations={automations} activeIncidents={activeIncidents} />
           )}
         </div>
-      </main>
+      </DetailPane>
 
-      {tab !== "Insights" && <IncidentsRail issues={issues} />}
-    </div>
+      {tab !== "Insights" && (
+        <ContextPane width={PANE_WIDTH.list} scroll={false}>
+          <IncidentsRail issues={issues} />
+        </ContextPane>
+      )}
+    </SplitView>
   );
 }

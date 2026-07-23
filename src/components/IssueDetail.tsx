@@ -6,6 +6,7 @@ import { num } from "../lib/format";
 import { MetadataPanel } from "./MetadataPanel";
 import { ActivityFeed } from "./ActivityFeed";
 import { ImpactChart } from "./ImpactChart";
+import { DetailPane, ContextPane } from "./layout/SplitView";
 
 const TABS = ["Activity", "Sessions", "Evidence"] as const;
 type Tab = (typeof TABS)[number];
@@ -81,41 +82,9 @@ export function IssueDetail({ issue }: { issue: Issue }) {
   const events = [...issue.activity, ...(posted[issue.id] ?? [])];
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1">
-      {/* Metadata / summary pane */}
-      <div className="scrollbar-none flex w-96 shrink-0 flex-col gap-6 overflow-y-auto border-border-default border-r-[0.5px] px-6 py-6">
-        <div className="flex flex-col gap-4">
-          <div
-            className="flex size-12 items-center justify-center rounded-xl"
-            style={{ background: "var(--cyan-a3)", color: "var(--cyan-a11)" }}
-          >
-            <KeyRound size={22} strokeWidth={1.7} />
-          </div>
-          <div className="flex flex-col gap-2">
-            <span className="font-departure-mono text-[0.72rem] text-tertiary-foreground">#{issue.id}</span>
-            <h2 className="font-sans font-medium text-heading-4 text-primary-foreground">{issue.title}</h2>
-            <p className="text-body-base text-secondary-foreground">{issue.description}</p>
-          </div>
-        </div>
-
-        <div className="h-px w-full" style={{ background: "var(--color-border-default)" }} />
-
-        <MetadataPanel issue={issue} onEvidence={() => setTab("Evidence")} />
-
-        <div className="h-px w-full" style={{ background: "var(--color-border-default)" }} />
-
-        {/* Impacted users trend */}
-        <div className="flex flex-col gap-2">
-          <span className="font-departure-mono text-[0.65rem] uppercase tracking-wide text-tertiary-foreground">
-            Impacted Users
-          </span>
-          <span className="font-sans text-heading-4 font-medium text-primary-foreground">{num(issue.impactedUsers)}</span>
-          <ImpactChart seed={issue.id} />
-        </div>
-      </div>
-
-      {/* Activity pane */}
-      <div className="flex min-w-0 flex-1 flex-col">
+    <>
+      {/* Activity — the primary detail pane */}
+      <DetailPane>
         <div className="flex shrink-0 items-center gap-1 border-border-default border-b-[0.5px] px-3 py-2">
           {TABS.map((t) => (
             <button
@@ -155,7 +124,43 @@ export function IssueDetail({ issue }: { issue: Issue }) {
             {tab === "Evidence" && <EmptyState label={`${issue.findingsCount} evidence`} />}
           </div>
         )}
-      </div>
-    </div>
+      </DetailPane>
+
+      {/* Summary + metadata — the collapsible context pane */}
+      <ContextPane>
+        <div className="flex flex-col gap-6 px-6 py-6">
+          <div className="flex flex-col gap-4">
+            <div
+              className="flex size-12 items-center justify-center rounded-xl"
+              style={{ background: "var(--cyan-a3)", color: "var(--cyan-a11)" }}
+            >
+              <KeyRound size={22} strokeWidth={1.7} />
+            </div>
+            <div className="flex flex-col gap-2">
+              <span className="font-departure-mono text-[0.72rem] text-tertiary-foreground">#{issue.id}</span>
+              <h2 className="font-sans font-medium text-heading-4 text-primary-foreground">{issue.title}</h2>
+              <p className="text-body-base text-secondary-foreground">{issue.description}</p>
+            </div>
+          </div>
+
+          <div className="h-px w-full" style={{ background: "var(--color-border-default)" }} />
+
+          <MetadataPanel issue={issue} onEvidence={() => setTab("Evidence")} />
+
+          <div className="h-px w-full" style={{ background: "var(--color-border-default)" }} />
+
+          {/* Impacted users trend */}
+          <div className="flex flex-col gap-2">
+            <span className="font-departure-mono text-[0.65rem] uppercase tracking-wide text-tertiary-foreground">
+              Impacted Users
+            </span>
+            <span className="font-sans text-heading-4 font-medium text-primary-foreground">
+              {num(issue.impactedUsers)}
+            </span>
+            <ImpactChart seed={issue.id} />
+          </div>
+        </div>
+      </ContextPane>
+    </>
   );
 }
