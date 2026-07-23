@@ -193,8 +193,17 @@ function DangerZone() {
    --------------------------------------------------------------------------- */
 
 function ProfilePage() {
-  const { backgroundEnabled, setBackgroundEnabled, bordersEnabled, setBordersEnabled, palettes, palette, setPaletteId } =
-    useStore();
+  const {
+    backgroundEnabled,
+    setBackgroundEnabled,
+    bordersEnabled,
+    setBordersEnabled,
+    badgesEnabled,
+    setBadgesEnabled,
+    palettes,
+    palette,
+    setPaletteId,
+  } = useStore();
   return (
     <Page>
       <div className="flex items-center gap-5 py-6">
@@ -235,6 +244,12 @@ function ProfilePage() {
         <div className="flex items-center justify-between gap-4 pt-0.5">
           <span className="text-body-sm text-tertiary-foreground">Outline navigation items with a hairline border.</span>
           <Switch checked={bordersEnabled} onChange={setBordersEnabled} label="Borders" />
+        </div>
+      </Row>
+      <Row label="Badge counts">
+        <div className="flex items-center justify-between gap-4 pt-0.5">
+          <span className="text-body-sm text-tertiary-foreground">Show count badges on the sidebar tabs.</span>
+          <Switch checked={badgesEnabled} onChange={setBadgesEnabled} label="Badge counts" />
         </div>
       </Row>
       <Row label="Colour theme">

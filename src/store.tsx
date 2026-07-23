@@ -58,6 +58,9 @@ type Store = {
   /** Show hairline borders around navigation buttons (outlined look). */
   bordersEnabled: boolean;
   setBordersEnabled: (on: boolean) => void;
+  /** Show count badges on the sidebar navigation tabs. */
+  badgesEnabled: boolean;
+  setBadgesEnabled: (on: boolean) => void;
   palettes: Palette[];
   palette: Palette;
   setPaletteId: (id: string) => void;
@@ -96,6 +99,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // Appearance preferences (persisted).
   const [backgroundEnabled, setBgState] = useState(() => read("bg-enabled", "on") !== "off");
   const [bordersEnabled, setBordersState] = useState(() => read("borders-enabled", "off") === "on");
+  const [badgesEnabled, setBadgesState] = useState(() => read("badges-enabled", "on") !== "off");
   const [paletteId, setPaletteState] = useState(() => read("palette", palettes[0].id));
   const [searchOpen, setSearchOpen] = useState(false);
   const [dark, setDark] = useState(() => isDark());
@@ -109,6 +113,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const setBordersEnabled = (on: boolean) => {
     setBordersState(on);
     write("borders-enabled", on ? "on" : "off");
+  };
+  const setBadgesEnabled = (on: boolean) => {
+    setBadgesState(on);
+    write("badges-enabled", on ? "on" : "off");
   };
   const setPaletteId = (id: string) => {
     setPaletteState(id);
@@ -179,6 +187,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setBackgroundEnabled,
     bordersEnabled,
     setBordersEnabled,
+    badgesEnabled,
+    setBadgesEnabled,
     palettes,
     palette,
     setPaletteId,
