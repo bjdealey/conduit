@@ -121,3 +121,37 @@ the adapter.
 - New connectors self-register; never wire a connector into a capability service by hand.
 - When the repo doesn't settle a decision, pick the recommended default in
   `docs/integration-layer-plan.md` §7 and note it — don't silently invent a new one.
+
+## Implemented so far — stage 1: core abstraction
+
+Stack-agnostic TypeScript, no Supabase/vendor/frontend code yet. Tested with **Vitest**
+(`npm test`); the packages typecheck with `npm run typecheck:packages`.
+
+**Layout**
+- `packages/domain` — `Capability` enum, `SourceStamped`/`Bot` models, `MappingError` +
+  `MapContext`, and the mapping primitives `asRecord` / `requireString` / `requireEnum` / `stampId`.
+- `packages/connector-sdk` — `Connector` + `BotProvider` interfaces and `isBotProvider` guard,
+  `ConnectorRegistry` + `defineConnector`, the `ServiceResult`/`ConnectorError`/`Logger` seam,
+  and `BotService`. `packages/connector-sdk/src/testing` holds `FakeConnector` (**tests only**).
+
+**Contract details that concretized (authoritative for later stages)**
+- **Capability providers return domain models, not vendor payloads.** `BotProvider.listBots()`
+  returns `Bot[]`; mapping happens *inside* the adapter, at its boundary.
+- **Mapping fails loudly.** A normaliser returns a complete valid model or throws `MappingError`
+  (carrying `connectorId`/`platform`/`capability`/`field`/`received`). Never a partial model.
+- **Services never throw for connector failure.** A capability service returns
+  `ServiceResult<T> = { items: T[]; errors: ConnectorError[] }`. `ConnectorError.kind` is one of
+  `health` | `mapping` | `unavailable`, and every error is also passed to the injected `Logger`.
+- **Services health-gate per call.** Each connector's `health()` is checked before its provider
+  is called; an unhealthy or throwing probe yields a `health` error entry and the connector is
+  skipped — healthy connectors still return their items.
+- **Registry API (data-driven):** `defineType(factory)` + `add(config)` build instances from plain
+  config; `register(connector)` is the low-level path (tests/custom). Lifecycle: `enable(id)` /
+  `disable(id)` / `remove(id)` / `health(id)`; `enabledWith(capability)` is the set a service
+  dispatches to. Enable/disable take effect on the next call — no restart.
+- **Connectors are stateless-friendly.** The registry does not auto-run `connect()`/`disconnect()`;
+  those stay per-invocation (the Supabase Edge Function model). `connect()` is where a real
+  connector will resolve its secret via the `SecretStore`.
+
+**Not yet built** (do not assume these exist): any real connector, `SecretStore`, the other seven
+capability services, Supabase wiring, and any frontend change.
