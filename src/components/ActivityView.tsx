@@ -7,6 +7,7 @@ import { RunRow } from "./RunRow";
 import { SurfaceChart } from "./SurfaceChart";
 import { num } from "../lib/format";
 import { SplitView, DetailPane, ContextPane, PANE_WIDTH } from "./layout/SplitView";
+import { SegmentedControl } from "./SegmentedControl";
 
 const TABS = ["In progress", "Historical", "Insights"] as const;
 type Tab = (typeof TABS)[number];
@@ -233,24 +234,13 @@ export function ActivityView() {
     <SplitView>
       <DetailPane>
         <div className="flex shrink-0 items-center gap-1 border-border-default border-b-[0.5px] px-3 py-2">
-          {TABS.map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setTab(t)}
-              className="focusable rounded-md px-2.5 py-1 text-body-sm transition-colors"
-              style={{
-                background: tab === t ? "var(--color-transparent-hover)" : "transparent",
-                color: tab === t ? "var(--color-primary-foreground)" : "var(--color-tertiary-foreground)",
-                fontWeight: tab === t ? 500 : 400,
-              }}
-            >
-              {t}
-              {tabCount[t] != null && (
-                <span className="ml-1.5 font-departure-mono text-[0.65rem] text-tertiary-foreground">{tabCount[t]}</span>
-              )}
-            </button>
-          ))}
+          <SegmentedControl
+            variant="ghost"
+            ariaLabel="Activity"
+            segments={TABS.map((t) => ({ id: t, label: t, badge: tabCount[t] ?? undefined }))}
+            value={tab}
+            onChange={(id) => setTab(id as Tab)}
+          />
         </div>
 
         <div key={tab} className="animate-in fade-in-0 duration-200 ease-out flex min-h-0 flex-1 flex-col">

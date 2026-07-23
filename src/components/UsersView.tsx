@@ -26,6 +26,7 @@ import { PRIORITY_ACCENT } from "./Badges";
 import { num } from "../lib/format";
 import { SplitView, Pane, DetailPane, ContextPane, EmptyDetail, PANE_WIDTH } from "./layout/SplitView";
 import { ListSearch } from "./ListSearch";
+import { SegmentedControl } from "./SegmentedControl";
 
 /* ------------------------------------------------------------------ profile */
 
@@ -379,21 +380,13 @@ function Sessions({ user }: { user: EndUser }) {
     <DetailPane>
       {/* Tabs + tools */}
       <div className="flex shrink-0 items-center gap-1 border-border-default border-b-[0.5px] px-3 py-2">
-        {SESSION_TABS.map((t) => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => setTab(t)}
-            className="focusable rounded-md px-2.5 py-1 text-body-sm transition-colors"
-            style={{
-              background: tab === t ? "var(--color-transparent-hover)" : "transparent",
-              color: tab === t ? "var(--color-primary-foreground)" : "var(--color-tertiary-foreground)",
-              fontWeight: tab === t ? 500 : 400,
-            }}
-          >
-            {t}
-          </button>
-        ))}
+        <SegmentedControl
+          variant="ghost"
+          ariaLabel="User detail"
+          segments={SESSION_TABS.map((t) => ({ id: t, label: t }))}
+          value={tab}
+          onChange={(id) => setTab(id as SessionTab)}
+        />
         <div className="ml-auto flex items-center gap-1 text-tertiary-foreground">
           {[Search, ListFilter, ArrowUpDown].map((Icon, i) => (
             <button key={i} type="button" className="focusable flex size-7 items-center justify-center rounded-md transition-colors hover:bg-transparent-hover hover:text-primary-foreground">

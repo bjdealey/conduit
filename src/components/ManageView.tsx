@@ -4,6 +4,7 @@ import { useStore } from "../store";
 import { schedules, eventTriggers, credentials, packages, globalValues } from "../data/manage";
 import type { Credential, EventTrigger, GlobalValue, Package, Schedule } from "../data/manage";
 import { DataTable, type Column } from "./DataTable";
+import { SegmentedControl } from "./SegmentedControl";
 import { Avatar } from "./Avatar";
 import { num } from "../lib/format";
 
@@ -124,22 +125,13 @@ export function ManageView() {
     <div className="flex min-w-0 flex-1 flex-col">
       {/* Tabs + action */}
       <div className="flex shrink-0 items-center gap-1 border-border-default border-b-[0.5px] px-3 py-2">
-        {TABS.map((t) => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => setTab(t)}
-            className="focusable rounded-md px-2.5 py-1 text-body-sm transition-colors"
-            style={{
-              background: tab === t ? "var(--color-transparent-hover)" : "transparent",
-              color: tab === t ? "var(--color-primary-foreground)" : "var(--color-tertiary-foreground)",
-              fontWeight: tab === t ? 500 : 400,
-            }}
-          >
-            {t}
-            <span className="ml-1.5 font-departure-mono text-[0.65rem] text-tertiary-foreground">{counts[t]}</span>
-          </button>
-        ))}
+        <SegmentedControl
+          variant="ghost"
+          ariaLabel="Manage"
+          segments={TABS.map((t) => ({ id: t, label: t, badge: counts[t] }))}
+          value={tab}
+          onChange={(id) => setTab(id as Tab)}
+        />
         {canCreate && (
           <button
             type="button"

@@ -14,6 +14,7 @@ import {
   type RoleDef,
 } from "../data/admin";
 import { DataTable, type Column } from "./DataTable";
+import { SegmentedControl } from "./SegmentedControl";
 import { Avatar } from "./Avatar";
 import { Switch } from "./Switch";
 import { num } from "../lib/format";
@@ -202,21 +203,13 @@ export function AdministrationView() {
     <div className="flex min-w-0 flex-1 flex-col">
       {/* Tabs + role-scoped action */}
       <div className="flex shrink-0 items-center gap-1 border-border-default border-b-[0.5px] px-3 py-2">
-        {TABS.map((t) => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => setTab(t)}
-            className="focusable rounded-md px-2.5 py-1 text-body-sm transition-colors"
-            style={{
-              background: tab === t ? "var(--color-transparent-hover)" : "transparent",
-              color: tab === t ? "var(--color-primary-foreground)" : "var(--color-tertiary-foreground)",
-              fontWeight: tab === t ? 500 : 400,
-            }}
-          >
-            {t}
-          </button>
-        ))}
+        <SegmentedControl
+          variant="ghost"
+          ariaLabel="Administration"
+          segments={TABS.map((t) => ({ id: t, label: t }))}
+          value={tab}
+          onChange={(id) => setTab(id as Tab)}
+        />
         {canEdit ? (
           tab === "Users" && (
             <button

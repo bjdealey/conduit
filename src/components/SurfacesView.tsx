@@ -3,6 +3,7 @@ import { ChevronDown, Cloud, Files, GitBranch, Map, Zap } from "lucide-react";
 import { surfaces, type Integration, type Surface } from "../data/surfaces";
 import { SurfaceChart } from "./SurfaceChart";
 import { SplitView, DetailPane, ContextPane } from "./layout/SplitView";
+import { SegmentedControl } from "./SegmentedControl";
 
 const GithubMark = (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
@@ -156,21 +157,13 @@ function Detail({ surface }: { surface: Surface }) {
   return (
     <DetailPane>
       <div className="flex shrink-0 items-center gap-1 border-border-default border-b-[0.5px] px-3 py-2">
-        {SURFACE_TABS.map((t) => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => setTab(t)}
-            className="focusable rounded-md px-2.5 py-1 text-body-sm transition-colors"
-            style={{
-              background: tab === t ? "var(--color-transparent-hover)" : "transparent",
-              color: tab === t ? "var(--color-primary-foreground)" : "var(--color-tertiary-foreground)",
-              fontWeight: tab === t ? 500 : 400,
-            }}
-          >
-            {t}
-          </button>
-        ))}
+        <SegmentedControl
+          variant="ghost"
+          ariaLabel="Surface detail"
+          segments={SURFACE_TABS.map((t) => ({ id: t, label: t }))}
+          value={tab}
+          onChange={(id) => setTab(id as SurfaceTab)}
+        />
         <button
           type="button"
           className="pressable focusable ml-auto inline-flex items-center gap-1.5 rounded-lg border-border-default border-[0.5px] px-2.5 py-1 text-body-sm text-secondary-foreground transition-colors hover:bg-transparent-hover"
