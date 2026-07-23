@@ -1,9 +1,9 @@
 import { useMemo } from "react";
-import { Search } from "lucide-react";
 import { useStore } from "../store";
 import { STATUSES, type Issue, type Status } from "../data/types";
 import { IssueRow } from "./IssueRow";
 import { Pane, PANE_WIDTH } from "./layout/SplitView";
+import { ListSearch } from "./ListSearch";
 
 /** Left column: search + issues grouped by workflow status. */
 export function Inbox() {
@@ -30,18 +30,7 @@ export function Inbox() {
 
   return (
     <Pane width={PANE_WIDTH.list}>
-      {/* Search */}
-      <div className="flex flex-col gap-3 border-border-default border-b-[0.5px] px-3 py-3">
-        <label className="flex items-center gap-2 rounded-lg bg-component px-2.5 py-1.5">
-          <Search size={15} strokeWidth={1.8} className="shrink-0 text-tertiary-foreground" />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search issues…"
-            className="min-w-0 flex-1 bg-transparent text-body-sm text-primary-foreground outline-none placeholder:text-tertiary-foreground"
-          />
-        </label>
-      </div>
+      <ListSearch value={query} onChange={setQuery} placeholder="Search issues…" />
 
       {/* Grouped list */}
       <div className="scrollbar-none flex-1 overflow-y-auto px-2 py-2">
