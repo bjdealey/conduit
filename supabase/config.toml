@@ -13,29 +13,32 @@ major_version = 15
 
 # Edge Functions share the workspace TypeScript via the import map below.
 # Reads are served by PostgREST; these functions are the orchestration/write surface.
+#
+# verify_jwt is OFF on every function. The gateway JWT check assumes a legacy anon/user
+# JWT, which projects on the new API-key system (sb_publishable_/sb_secret_) reject, and
+# the frontend has no Supabase Auth session to present yet. Instead:
+#   - Write/admin functions (connectors, sync, health) guard themselves in code via
+#     requireAdminOrService(), which requires the service-role key or an admin user.
+#   - Read functions (capabilities, bots) return only non-secret domain data.
+# TODO(supabase): once Supabase Auth is wired in the frontend, re-enable verify_jwt on the
+# read functions and switch to a direct PostgREST read for bots.
 
-# Requires a valid Supabase JWT (any authenticated user). Admin gating is enforced in code.
 [functions.connectors]
-verify_jwt = true
+verify_jwt = false
 import_map = "./functions/import_map.json"
 
 [functions.capabilities]
-verify_jwt = true
+verify_jwt = false
 import_map = "./functions/import_map.json"
 
-# Read the bots cache as domain models. Requires a valid JWT (the anon key qualifies);
-# the function uses the service role internally so it works before Supabase Auth is wired.
 [functions.bots]
-verify_jwt = true
+verify_jwt = false
 import_map = "./functions/import_map.json"
 
 [functions.health]
-verify_jwt = true
+verify_jwt = false
 import_map = "./functions/import_map.json"
 
-# Invoked by pg_cron (and admins) with a service-role/scheduler bearer; the function
-# additionally checks the caller in code. verify_jwt is disabled so cron can call it with
-# the service-role key rather than a user JWT.
 [functions.sync]
 verify_jwt = false
 import_map = "./functions/import_map.json"
