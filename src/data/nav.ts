@@ -10,6 +10,7 @@ export type NavItemDef = { id: View; label: string; subpages?: SubPage[] };
 export const navItems: NavItemDef[] = [
   { id: "activity", label: "Activity" },
   { id: "inbox", label: "Inbox" },
+  { id: "automations", label: "Automations" },
   { id: "users", label: "Users" },
   { id: "surfaces", label: "Surfaces" },
   { id: "environments", label: "Environments" },

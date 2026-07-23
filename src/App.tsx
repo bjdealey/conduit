@@ -10,6 +10,7 @@ import { Inbox } from "./components/Inbox";
 import { Board } from "./components/Board";
 import { IssueDetail } from "./components/IssueDetail";
 import { ActivityView } from "./components/Views";
+import { AutomationsView } from "./components/AutomationsView";
 import { UsersView } from "./components/UsersView";
 import { SurfacesView } from "./components/SurfacesView";
 import { EnvironmentsView } from "./components/EnvironmentsView";
@@ -44,6 +45,7 @@ function Body() {
     <div key={view} className="animate-in fade-in-0 duration-200 ease-out flex min-h-0 flex-1">
       {view === "activity" && <ActivityView />}
       {view === "inbox" && <InboxView />}
+      {view === "automations" && <AutomationsView />}
       {view === "users" && <UsersView />}
       {view === "surfaces" && <SurfacesView />}
       {view === "environments" && <EnvironmentsView />}

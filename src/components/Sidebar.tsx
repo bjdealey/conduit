@@ -1,5 +1,5 @@
 import { type ReactNode } from "react";
-import { Bell, Box, Inbox, Layers, Settings, Users } from "lucide-react";
+import { Bell, Box, Inbox, Layers, Settings, Users, Workflow } from "lucide-react";
 import { useStore, type View } from "../store";
 import { navItems } from "../data/nav";
 import { endUsers } from "../data/users";
@@ -17,6 +17,7 @@ const navIconProps = { size: 20, strokeWidth: 1.7 };
 const icons: Record<View, ReactNode> = {
   activity: <Bell {...navIconProps} />,
   inbox: <Inbox {...navIconProps} />,
+  automations: <Workflow {...navIconProps} />,
   users: <Users {...navIconProps} />,
   surfaces: <Box {...navIconProps} />,
   environments: <Layers {...navIconProps} />,
@@ -27,7 +28,7 @@ const icons: Record<View, ReactNode> = {
  *  lives in the main content header (SidebarToggle) and drives `sidebarExpanded`
  *  in the store, which sets this rail's width and label visibility. */
 export function Sidebar() {
-  const { sidebarExpanded: expanded, view, openIds, issues, badgesEnabled } = useStore();
+  const { sidebarExpanded: expanded, view, openIds, issues, automations, badgesEnabled } = useStore();
   const inSettings = view === "settings";
 
   const openIssues = openIds
@@ -43,6 +44,8 @@ export function Sidebar() {
         return issues.filter((i) => i.status === "Under Investigation" || i.status === "Active").length;
       case "inbox":
         return issues.length;
+      case "automations":
+        return automations.length;
       case "users":
         return endUsers.length;
       case "environments":

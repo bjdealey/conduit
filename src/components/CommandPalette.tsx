@@ -65,6 +65,7 @@ export function CommandPalette() {
     const navDefs: [View, string][] = [
       ["activity", "Go to Activity"],
       ["inbox", "Go to Inbox"],
+      ["automations", "Go to Automations"],
       ["users", "Go to Users"],
       ["surfaces", "Go to Surfaces"],
       ["environments", "Go to Environments"],

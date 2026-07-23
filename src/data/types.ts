@@ -64,4 +64,79 @@ export type Issue = {
   findingsCount: number;
   impactedUsers: number;
   activity: ActivityEvent[];
+  /** The automation this incident concerns, if any. Optional: an issue may be
+   *  raised manually against an automation, spun off a failed run, or stand alone. */
+  automationId?: string;
+  /** The specific run whose failure spawned this incident, when applicable. */
+  sourceRunId?: string;
+};
+
+/* -------------------------------------------------------------------- automation */
+
+/** Fixed platform roles. Gates the UI (admin edits permissions; developer and
+ *  user get progressively scoped views). */
+export type Role = "admin" | "developer" | "user";
+
+/** Whether an automation / folder is shared (Public) or owner-scoped (Private). */
+export type Visibility = "public" | "private";
+
+/** A node in the automation library tree. `parentId: null` sits at a visibility
+ *  root (Public / Private). */
+export type Folder = {
+  id: string;
+  name: string;
+  parentId: string | null;
+  visibility: Visibility;
+};
+
+/** Automation run states, in the order the Activity view groups them. */
+export const RUN_STATES = ["Queued", "Running", "Completed", "Failed"] as const;
+export type RunState = (typeof RUN_STATES)[number];
+
+/** How a run was started. */
+export type RunTrigger = "Manual" | "Schedule" | "Event";
+
+/** A single execution of an automation. Its `activity` reuses the incident
+ *  timeline shape as the run log; a failed run may have spawned an incident. */
+export type Run = {
+  id: string;
+  automationId: string;
+  state: RunState;
+  trigger: RunTrigger;
+  /** Who/what started it — a member name or the trigger source. */
+  startedBy: string;
+  startedAt: string;
+  duration: string;
+  /** Execution target (device/environment label), when applicable. */
+  target?: string;
+  /** Append-only run log, rendered with the shared <ActivityFeed>. */
+  activity: ActivityEvent[];
+  /** The incident this run spawned on failure, if any. */
+  issueId?: number;
+};
+
+/** The automation lifecycle, distinct from an incident's workflow status. */
+export type AutomationStatus = "Active" | "Paused" | "Draft";
+
+/** A first-class automation definition. Lives in a Folder; produces Runs;
+ *  its failures can spin off Issues. */
+export type Automation = {
+  id: string;
+  name: string;
+  description: string;
+  folderId: string;
+  visibility: Visibility;
+  status: AutomationStatus;
+  /** Owning team member id (see `members`). */
+  ownerId: string;
+  /** Rollup stats shown in the library table and detail header. */
+  runCount: number;
+  /** Success rate across recent runs, 0..1. */
+  successRate: number;
+  lastRunAt: string;
+  updatedAgo: string;
+  /** Packages this automation depends on (Dependencies tab). */
+  packages: string[];
+  /** Other automation ids this one references (Dependencies tab). */
+  references: string[];
 };

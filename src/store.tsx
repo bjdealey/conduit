@@ -1,11 +1,13 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { issues as seedIssues, members } from "./data/issues";
+import { automations as seedAutomations, folders as seedFolders, runs as seedRuns } from "./data/automations";
+import { currentUser } from "./data/user";
 import { workspaces } from "./data/workspaces";
 import type { Workspace } from "./data/workspaces";
 import { palettes, type Palette } from "./data/palettes";
 import { applyBrand } from "./lib/palette";
 import { isDark, setTheme } from "./lib/theme";
-import type { Issue, Member, Priority, Status } from "./data/types";
+import type { Automation, Folder, Issue, Member, Priority, Role, Run, Status } from "./data/types";
 
 const read = (key: string, fallback: string): string => {
   try {
@@ -23,11 +25,20 @@ const write = (key: string, value: string): void => {
 };
 
 /** Top-level navigation destinations (the sidebar rail). */
-export type View = "activity" | "inbox" | "users" | "surfaces" | "environments" | "settings";
+export type View = "activity" | "inbox" | "automations" | "users" | "surfaces" | "environments" | "settings";
 
 type Store = {
   issues: Issue[];
   members: Member[];
+  /** Automation library (first-class entity), its folder tree, and run history. */
+  automations: Automation[];
+  folders: Folder[];
+  runs: Run[];
+  automationById: (id: string) => Automation | undefined;
+  /** Runs for one automation, newest first (seed order). */
+  runsForAutomation: (automationId: string) => Run[];
+  /** The signed-in user's role — gates permission-scoped UI. */
+  role: Role;
   selectedId: number | null;
   selected: Issue | null;
   query: string;
@@ -161,6 +172,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const value: Store = {
     issues,
     members,
+    automations: seedAutomations,
+    folders: seedFolders,
+    runs: seedRuns,
+    automationById: (id) => seedAutomations.find((a) => a.id === id),
+    runsForAutomation: (automationId) => seedRuns.filter((r) => r.automationId === automationId),
+    role: currentUser.role,
     selectedId,
     selected: issues.find((i) => i.id === selectedId) ?? null,
     query,

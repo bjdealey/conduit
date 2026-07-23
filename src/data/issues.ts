@@ -45,6 +45,8 @@ export const issues: Issue[] = [
     duration: "36 min 47 s",
     findingsCount: 146,
     impactedUsers: 12881,
+    automationId: "aut_reset_audit",
+    sourceRunId: "run_1043",
     activity: [
       {
         id: "a1",
