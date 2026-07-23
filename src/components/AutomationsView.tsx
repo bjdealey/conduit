@@ -19,6 +19,7 @@ import { AUTOMATION_STATUS_ACCENT, AutomationStatusChip } from "./Badges";
 import { RunRow } from "./RunRow";
 import { num } from "../lib/format";
 import { SplitView, Pane, DetailPane, ContextPane, EmptyDetail, PANE_WIDTH } from "./layout/SplitView";
+import { ListSearch } from "./ListSearch";
 
 /* ------------------------------------------------------------------ shared bits */
 
@@ -35,24 +36,10 @@ function folderPath(folderId: string): string {
   return names.join(" / ");
 }
 
-/* --------------------------------------------------------------- selection model */
-
-/** A selected tree node: a whole visibility root, or a specific folder. */
-type TreeSel = { kind: "vis"; visibility: Visibility } | { kind: "folder"; id: string };
-
 /* ----------------------------------------------------------------- folder tree */
 
 function childrenOf(parentId: string | null, visibility: Visibility) {
   return allFolders.filter((f) => f.visibility === visibility && f.parentId === parentId);
-}
-
-/** Every folder id at or beneath `folderId` (so selecting a folder includes its subtree). */
-function subtreeIds(folderId: string): string[] {
-  const out = [folderId];
-  for (const child of allFolders.filter((f) => f.parentId === folderId)) {
-    out.push(...subtreeIds(child.id));
-  }
-  return out;
 }
 
 function TreeRow({
@@ -64,6 +51,7 @@ function TreeRow({
   open,
   onToggle,
   onSelect,
+  trailing,
 }: {
   depth: number;
   icon: ReactNode;
@@ -73,6 +61,7 @@ function TreeRow({
   open: boolean;
   onToggle: () => void;
   onSelect: () => void;
+  trailing?: ReactNode;
 }) {
   return (
     <div
@@ -94,63 +83,120 @@ function TreeRow({
         aria-current={active ? "true" : undefined}
         className="flex min-w-0 flex-1 items-center gap-2 py-1 text-left"
       >
-        <span className="shrink-0 text-tertiary-foreground">{icon}</span>
+        <span className="flex shrink-0 items-center justify-center text-tertiary-foreground" style={{ width: 16, height: 16 }}>{icon}</span>
         <span className="truncate text-body-sm text-primary-foreground">{label}</span>
       </button>
+      {trailing && <span className="shrink-0">{trailing}</span>}
     </div>
   );
 }
 
+/** A selectable automation leaf inside the library tree (status dot + name, with
+ *  the owner avatar trailing). */
+function AutomationLeaf({
+  automation,
+  depth,
+  active,
+  onSelect,
+}: {
+  automation: Automation;
+  depth: number;
+  active: boolean;
+  onSelect: () => void;
+}) {
+  const { memberById } = useStore();
+  const owner = memberById(automation.ownerId);
+  const accent = AUTOMATION_STATUS_ACCENT[automation.status];
+  return (
+    <TreeRow
+      depth={depth}
+      icon={<span className="size-2 rounded-full" style={{ background: `var(--${accent}-9)` }} />}
+      label={automation.name}
+      active={active}
+      hasChildren={false}
+      open={false}
+      onToggle={() => {}}
+      onSelect={onSelect}
+      trailing={owner ? <Avatar member={owner} size={18} /> : undefined}
+    />
+  );
+}
+
+/** One folder branch: the folder row, then (when open) its subfolders and the
+ *  automations that live directly in it, rendered as leaf rows. */
 function FolderBranch({
   folderId,
   depth,
   expanded,
   toggle,
-  sel,
+  selectedId,
   onSelect,
 }: {
   folderId: string;
   depth: number;
   expanded: Set<string>;
   toggle: (id: string) => void;
-  sel: TreeSel;
-  onSelect: (s: TreeSel) => void;
+  selectedId: string | null;
+  onSelect: (id: string) => void;
 }) {
+  const { automations } = useStore();
   const folder = allFolders.find((f) => f.id === folderId)!;
   const kids = allFolders.filter((f) => f.parentId === folderId);
+  const autos = automations.filter((a) => a.folderId === folderId);
   const open = expanded.has(folderId);
-  const active = sel.kind === "folder" && sel.id === folderId;
   return (
     <>
       <TreeRow
         depth={depth}
         icon={<FolderIcon size={14} strokeWidth={1.8} />}
         label={folder.name}
-        active={active}
-        hasChildren={kids.length > 0}
+        active={false}
+        hasChildren={kids.length > 0 || autos.length > 0}
         open={open}
         onToggle={() => toggle(folderId)}
-        onSelect={() => onSelect({ kind: "folder", id: folderId })}
+        onSelect={() => toggle(folderId)}
       />
-      {open &&
-        kids.map((k) => (
-          <FolderBranch
-            key={k.id}
-            folderId={k.id}
-            depth={depth + 1}
-            expanded={expanded}
-            toggle={toggle}
-            sel={sel}
-            onSelect={onSelect}
-          />
-        ))}
+      {open && (
+        <>
+          {kids.map((k) => (
+            <FolderBranch
+              key={k.id}
+              folderId={k.id}
+              depth={depth + 1}
+              expanded={expanded}
+              toggle={toggle}
+              selectedId={selectedId}
+              onSelect={onSelect}
+            />
+          ))}
+          {autos.map((a) => (
+            <AutomationLeaf
+              key={a.id}
+              automation={a}
+              depth={depth + 1}
+              active={a.id === selectedId}
+              onSelect={() => onSelect(a.id)}
+            />
+          ))}
+        </>
+      )}
     </>
   );
 }
 
-function FolderTree({ sel, onSelect }: { sel: TreeSel; onSelect: (s: TreeSel) => void }) {
+/* --------------------------------------------------- merged library (nav + list) */
+
+/** The automation library: a single left panel that merges the Public/Private
+ *  folder tree with the automations inside each folder (as selectable leaves), so
+ *  navigation and selection live in one column instead of two. A search at the top
+ *  matches automations by name/id and flattens the tree to the matches. */
+function AutomationLibrary({ selectedId, onSelect }: { selectedId: string | null; onSelect: (id: string) => void }) {
+  const { automations, role } = useStore();
+  const canCreate = role !== "user";
+  const [query, setQuery] = useState("");
+  // Default to fully expanded so the merged automations are visible up front.
   const [expanded, setExpanded] = useState<Set<string>>(
-    () => new Set(["vis:public", "vis:private", "pub-root", "pub-monitoring", "prv-root"]),
+    () => new Set<string>(["vis:public", "vis:private", ...allFolders.map((f) => f.id)]),
   );
   const toggle = (id: string) =>
     setExpanded((prev) => {
@@ -159,115 +205,79 @@ function FolderTree({ sel, onSelect }: { sel: TreeSel; onSelect: (s: TreeSel) =>
       return next;
     });
 
+  const q = query.trim().toLowerCase();
+  const matches = q
+    ? automations.filter((a) => a.name.toLowerCase().includes(q) || a.id.toLowerCase().includes(q))
+    : null;
+
   const roots: { visibility: Visibility; label: string; icon: ReactNode }[] = [
     { visibility: "public", label: "Public", icon: <Globe size={14} strokeWidth={1.8} /> },
     { visibility: "private", label: "Private", icon: <Lock size={14} strokeWidth={1.8} /> },
   ];
 
-  return (
-    <Pane width={PANE_WIDTH.nav}>
-      <div className="border-border-default border-b-[0.5px] px-3 py-3">
-        <span className="font-departure-mono text-[0.65rem] uppercase tracking-wide text-tertiary-foreground">
-          Library
-        </span>
-      </div>
-      <div className="scrollbar-none flex-1 overflow-y-auto px-2 py-2">
-        {roots.map((root) => {
-          const visKey = `vis:${root.visibility}`;
-          const open = expanded.has(visKey);
-          const active = sel.kind === "vis" && sel.visibility === root.visibility;
-          const topFolders = childrenOf(null, root.visibility);
-          return (
-            <div key={root.visibility} className="mb-1">
-              <TreeRow
-                depth={0}
-                icon={root.icon}
-                label={root.label}
-                active={active}
-                hasChildren={topFolders.length > 0}
-                open={open}
-                onToggle={() => toggle(visKey)}
-                onSelect={() => onSelect({ kind: "vis", visibility: root.visibility })}
-              />
-              {open &&
-                topFolders.map((f) => (
-                  <FolderBranch
-                    key={f.id}
-                    folderId={f.id}
-                    depth={1}
-                    expanded={expanded}
-                    toggle={toggle}
-                    sel={sel}
-                    onSelect={onSelect}
-                  />
-                ))}
-            </div>
-          );
-        })}
-      </div>
-    </Pane>
-  );
-}
-
-/* ------------------------------------------------------------- automation list */
-
-function AutomationList({
-  items,
-  selectedId,
-  onSelect,
-}: {
-  items: Automation[];
-  selectedId: string | null;
-  onSelect: (id: string) => void;
-}) {
-  const { memberById, role } = useStore();
-  const canCreate = role !== "user";
+  const newButton = canCreate ? (
+    <button
+      type="button"
+      aria-label="New automation"
+      className="pressable focusable flex size-8 shrink-0 items-center justify-center rounded-lg border-border-default border-[0.5px] text-secondary-foreground transition-colors hover:bg-transparent-hover hover:text-primary-foreground"
+    >
+      <Plus size={15} strokeWidth={2} />
+    </button>
+  ) : undefined;
 
   return (
     <Pane width={PANE_WIDTH.list}>
-      <div className="flex items-center gap-2 border-border-default border-b-[0.5px] px-3 py-2.5">
-        <span className="text-body-sm font-medium text-secondary-foreground">Automations</span>
-        <span className="font-departure-mono text-[0.65rem] text-tertiary-foreground">{items.length}</span>
-        {canCreate && (
-          <button
-            type="button"
-            className="pressable focusable ml-auto inline-flex items-center gap-1 rounded-lg border-border-default border-[0.5px] px-2 py-1 text-body-sm text-secondary-foreground transition-colors hover:bg-transparent-hover"
-          >
-            <Plus size={14} strokeWidth={2} />
-            New
-          </button>
-        )}
-      </div>
+      <ListSearch value={query} onChange={setQuery} placeholder="Search automations…" trailing={newButton} />
       <div className="scrollbar-none flex-1 overflow-y-auto px-2 py-2">
-        {items.length === 0 && (
-          <p className="px-3 py-6 text-center text-body-sm text-tertiary-foreground">No automations in this folder.</p>
-        )}
-        <div className="flex flex-col gap-0.5">
-          {items.map((a) => {
-            const owner = memberById(a.ownerId);
-            const active = a.id === selectedId;
-            const accent = AUTOMATION_STATUS_ACCENT[a.status];
-            return (
-              <button
+        {matches ? (
+          matches.length === 0 ? (
+            <p className="px-3 py-6 text-center text-body-sm text-tertiary-foreground">
+              No automations match “{query}”.
+            </p>
+          ) : (
+            matches.map((a) => (
+              <AutomationLeaf
                 key={a.id}
-                type="button"
-                onClick={() => onSelect(a.id)}
-                aria-current={active ? "true" : undefined}
-                className="focusable flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors"
-                style={{ background: active ? "var(--color-transparent-hover)" : "transparent" }}
-              >
-                <span className="size-2 shrink-0 rounded-full" style={{ background: `var(--${accent}-9)` }} />
-                <div className="flex min-w-0 flex-1 flex-col leading-tight">
-                  <span className="truncate text-body-sm text-primary-foreground">{a.name}</span>
-                  <span className="truncate text-[0.72rem] text-tertiary-foreground">
-                    {pct(a.successRate)} success · {a.lastRunAt}
-                  </span>
-                </div>
-                {owner && <Avatar member={owner} size={20} />}
-              </button>
+                automation={a}
+                depth={0}
+                active={a.id === selectedId}
+                onSelect={() => onSelect(a.id)}
+              />
+            ))
+          )
+        ) : (
+          roots.map((root) => {
+            const visKey = `vis:${root.visibility}`;
+            const open = expanded.has(visKey);
+            const topFolders = childrenOf(null, root.visibility);
+            return (
+              <div key={root.visibility} className="mb-1">
+                <TreeRow
+                  depth={0}
+                  icon={root.icon}
+                  label={root.label}
+                  active={false}
+                  hasChildren={topFolders.length > 0}
+                  open={open}
+                  onToggle={() => toggle(visKey)}
+                  onSelect={() => toggle(visKey)}
+                />
+                {open &&
+                  topFolders.map((f) => (
+                    <FolderBranch
+                      key={f.id}
+                      folderId={f.id}
+                      depth={1}
+                      expanded={expanded}
+                      toggle={toggle}
+                      selectedId={selectedId}
+                      onSelect={onSelect}
+                    />
+                  ))}
+              </div>
             );
-          })}
-        </div>
+          })
+        )}
       </div>
     </Pane>
   );
@@ -527,45 +537,40 @@ function AutomationsBoard({ items, onSelect }: { items: Automation[]; onSelect: 
   );
 }
 
-/** Automations — the first-class automation library: a Public/Private folder tree,
- *  the automations within the selected folder, and a run-history / dependencies
- *  detail. List mode uses the shared shell (list → detail → collapsible summary);
- *  board mode groups automations by lifecycle status. Failed runs link back to the
- *  incidents they spawned. */
+/** Automations — the first-class automation library. List mode is the shared shell
+ *  with one merged left panel (the Public/Private folder tree and the automations
+ *  inside each folder together) → run-history / dependencies detail → collapsible
+ *  summary. Board mode fills the panel with a status board (like the inbox board).
+ *  Failed runs link back to the incidents they spawned. */
 export function AutomationsView() {
   const { automations, viewMode, setViewMode } = useStore();
-  const [sel, setSel] = useState<TreeSel>({ kind: "vis", visibility: "public" });
   const [selectedId, setSelectedId] = useState<string | null>(automations[0]?.id ?? null);
 
-  const visibleAutomations = useMemo(() => {
-    if (sel.kind === "vis") return automations.filter((a) => a.visibility === sel.visibility);
-    const ids = new Set(subtreeIds(sel.id));
-    return automations.filter((a) => ids.has(a.folderId));
-  }, [automations, sel]);
-
   const selected = automations.find((a) => a.id === selectedId) ?? null;
-  const board = viewMode("automations") === "board";
 
-  return (
-    <SplitView>
-      <FolderTree sel={sel} onSelect={setSel} />
-      {board ? (
+  // Board layout: the status board fills the panel; selecting a card opens the
+  // automation in list mode (mirroring the inbox board → detail flow).
+  if (viewMode("automations") === "board") {
+    return (
+      <SplitView>
         <AutomationsBoard
-          items={visibleAutomations}
+          items={automations}
           onSelect={(id) => {
             setSelectedId(id);
             setViewMode("automations", "list");
           }}
         />
+      </SplitView>
+    );
+  }
+
+  return (
+    <SplitView>
+      <AutomationLibrary selectedId={selectedId} onSelect={setSelectedId} />
+      {selected ? (
+        <AutomationDetail automation={selected} onSelectAutomation={setSelectedId} />
       ) : (
-        <>
-          <AutomationList items={visibleAutomations} selectedId={selectedId} onSelect={setSelectedId} />
-          {selected ? (
-            <AutomationDetail automation={selected} onSelectAutomation={setSelectedId} />
-          ) : (
-            <EmptyDetail>Select an automation.</EmptyDetail>
-          )}
-        </>
+        <EmptyDetail>Select an automation.</EmptyDetail>
       )}
     </SplitView>
   );

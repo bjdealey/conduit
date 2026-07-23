@@ -25,6 +25,7 @@ import type { Issue, Priority } from "../data/types";
 import { PRIORITY_ACCENT } from "./Badges";
 import { num } from "../lib/format";
 import { SplitView, Pane, DetailPane, ContextPane, PANE_WIDTH } from "./layout/SplitView";
+import { ListSearch } from "./ListSearch";
 
 /* ------------------------------------------------------------------ profile */
 
@@ -56,17 +57,7 @@ function UsersList({ selectedId, onSelect }: { selectedId: string; onSelect: (id
 
   return (
     <Pane width={PANE_WIDTH.list}>
-      <div className="border-border-default border-b-[0.5px] px-3 py-3">
-        <label className="flex items-center gap-2 rounded-lg bg-component px-2.5 py-1.5">
-          <Search size={15} strokeWidth={1.8} className="shrink-0 text-tertiary-foreground" />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search users…"
-            className="min-w-0 flex-1 bg-transparent text-body-sm text-primary-foreground outline-none placeholder:text-tertiary-foreground"
-          />
-        </label>
-      </div>
+      <ListSearch value={query} onChange={setQuery} placeholder="Search users…" />
 
       <div className="scrollbar-none flex-1 overflow-y-auto px-2 py-2">
         {users.length === 0 && (
