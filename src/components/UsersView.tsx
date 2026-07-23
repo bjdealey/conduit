@@ -498,17 +498,7 @@ function UsersGrid({ onOpen }: { onOpen: (id: string) => void }) {
     : endUsers;
   return (
     <DetailPane>
-      <div className="border-border-default border-b-[0.5px] px-4 py-3">
-        <label className="flex max-w-sm items-center gap-2 rounded-lg bg-component px-2.5 py-1.5">
-          <Search size={15} strokeWidth={1.8} className="shrink-0 text-tertiary-foreground" />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search users…"
-            className="min-w-0 flex-1 bg-transparent text-body-sm text-primary-foreground outline-none placeholder:text-tertiary-foreground"
-          />
-        </label>
-      </div>
+      <ListSearch value={query} onChange={setQuery} placeholder="Search users…" constrained />
       <div className="scrollbar-none flex-1 overflow-y-auto p-5">
         {users.length === 0 ? (
           <p className="py-16 text-center text-body-sm text-tertiary-foreground">No users match “{query}”.</p>
