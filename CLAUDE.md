@@ -197,3 +197,42 @@ Room; do not treat as confirmed): OAuth refresh endpoint+params; bot-list endpoi
 + list envelope; the auth header (`X-Authorization` vs `Bearer`); the per-bot status source field;
 bot `name`/`createdBy` field names; token TTL fallback; and the production Supabase `VaultClient`.
 See the connector source and the stage-2 report for the exact questions.
+
+## Implemented so far — stage 3: Supabase wiring (all-in)
+
+The Supabase backend for the `bots` data plane: schema + RLS, Vault-backed secrets, and Deno
+Edge Functions consuming the workspace TS. Deploy is scaffold + runbook (`supabase/README.md`) —
+you run `supabase db push` / `functions deploy` with your own credentials; **no secret is in the
+repo or this session.**
+
+**IMPORTANT convention change: relative imports in `packages/*` and `connectors/*` now carry
+explicit `.ts` extensions** (e.g. `from "./connector.ts"`). Deno requires them; Vite/Vitest/tsc
+(bundler + `allowImportingTsExtensions`) accept them. New shared-source files must follow suit.
+Bare `@conduit/*` specifiers stay extensionless (resolved by the Vitest alias, tsc paths, and the
+Deno import map). App code under `src/` is unchanged.
+
+**Layout**
+- `supabase/migrations` — `connector_instances` (+RLS, `updated_at`), `bots` cache (+RLS:
+  authenticated read), Vault + service-role-only RPCs (`app_vault_read/write/metadata/delete`),
+  and `pg_cron` → `sync` every 15 min (URL+token read from Vault).
+- `supabase/functions` — Deno Edge Functions: `connectors` (admin CRUD + write-only credential
+  path), `sync` (pull→normalise→upsert bots), `capabilities` (declared-capability union), `health`.
+  `_shared` holds the service client, `SupabaseVaultClient`, the registry loader, and the auth guard.
+  `import_map.json` maps `@conduit/*` → workspace TS and `@supabase/supabase-js` → `npm:`.
+
+**Contract details that concretized**
+- **Reads via PostgREST, writes/orchestration via Edge Functions.** The frontend will read
+  `bots` (RLS: `authenticated`) directly; connector admin + sync go through functions (service role).
+- **Secrets never leave the server.** Vault access is wrapped in `SECURITY DEFINER` RPCs granted to
+  `service_role` only; `anon`/`authenticated`/PostgREST cannot read `vault.decrypted_secrets`. The
+  `connectors` GET returns secret presence + field names (`describe()`), never values.
+- **Registry is rebuilt per invocation** from `connector_instances`; `secret_ref` is merged into
+  config as `secretRef`. A malformed row is recorded as `invalid`, never fails the whole build.
+- **`SupabaseVaultSecretStore` is unit-tested** in Node against a fake `VaultClient` matching the
+  RPC contract (round-trip + describe-hides-values).
+
+**Verification boundary / open flags.** The Deno functions and SQL are **not** executed in this
+sandbox (Deno egress is policy-blocked; no Postgres-with-Vault here) — validate with
+`deno check` + `supabase db push` on deploy. New `TODO(supabase)`: `pg_net`/URL shape for cron;
+admin role-claim source (`_shared/auth.ts`); stale-bot pruning in `sync`; and confirm the deploy
+bundler includes the workspace TS the import map points to (verify on first `functions deploy`).

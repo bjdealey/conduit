@@ -4,4 +4,4 @@ export {
   fakeConnectorFactory,
   type FakeBotPayload,
   type FakeConnectorOptions,
-} from "./fake-connector";
+} from "./fake-connector.ts";

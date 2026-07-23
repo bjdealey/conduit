@@ -1,0 +1,35 @@
+# Supabase project config. `project_id` is set by `supabase link`; the placeholder here
+# is a local label only and carries no secret.
+project_id = "conduit"
+
+[api]
+enabled = true
+schemas = ["public"]
+extra_search_path = ["public"]
+
+[db]
+port = 54322
+major_version = 15
+
+# Edge Functions share the workspace TypeScript via the import map below.
+# Reads are served by PostgREST; these functions are the orchestration/write surface.
+
+# Requires a valid Supabase JWT (any authenticated user). Admin gating is enforced in code.
+[functions.connectors]
+verify_jwt = true
+import_map = "./functions/import_map.json"
+
+[functions.capabilities]
+verify_jwt = true
+import_map = "./functions/import_map.json"
+
+[functions.health]
+verify_jwt = true
+import_map = "./functions/import_map.json"
+
+# Invoked by pg_cron (and admins) with a service-role/scheduler bearer; the function
+# additionally checks the caller in code. verify_jwt is disabled so cron can call it with
+# the service-role key rather than a user JWT.
+[functions.sync]
+verify_jwt = false
+import_map = "./functions/import_map.json"

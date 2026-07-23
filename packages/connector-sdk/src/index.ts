@@ -1,12 +1,12 @@
 /** The connector contract, the data-driven registry, and capability services. */
-export type { Connector, BotProvider, HealthStatus, SyncResult } from "./connector";
-export { isBotProvider } from "./connector";
+export type { Connector, BotProvider, HealthStatus, SyncResult } from "./connector.ts";
+export { isBotProvider } from "./connector.ts";
 export {
   ConnectorRegistry,
   defineConnector,
   type ConnectorFactory,
   type ConnectorInstanceConfig,
-} from "./registry";
+} from "./registry.ts";
 export {
   consoleLogger,
   recordConnectorError,
@@ -14,8 +14,8 @@ export {
   type ConnectorErrorKind,
   type Logger,
   type ServiceResult,
-} from "./service";
-export { BotService, type BotFilter } from "./bot-service";
+} from "./service.ts";
+export { BotService, type BotFilter } from "./bot-service.ts";
 export {
   InMemorySecretStore,
   SupabaseVaultSecretStore,
@@ -24,5 +24,5 @@ export {
   type SecretRecord,
   type SecretMetadata,
   type VaultClient,
-} from "./secrets";
-export { queryCapability, type CapabilitySupport } from "./capability-query";
+} from "./secrets.ts";
+export { queryCapability, type CapabilitySupport } from "./capability-query.ts";

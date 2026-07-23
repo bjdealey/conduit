@@ -4,7 +4,7 @@
  * so a normaliser either returns a complete valid model or fails loudly — never a
  * partial one.
  */
-import { MapContext, MappingError } from "./errors";
+import { MapContext, MappingError } from "./errors.ts";
 
 /** A human label for a value's shape, for error messages. */
 function describeValue(v: unknown): string {

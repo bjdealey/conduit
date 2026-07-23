@@ -3,14 +3,14 @@
  * the registry can build instances from plain config alone — one row per Control Room.
  */
 import { defineConnector, type ConnectorFactory, type SecretStore } from "@conduit/connector-sdk";
-import { A360_CAPABILITIES, A360_TYPE } from "./config";
-import { A360Connector, type A360ConnectorDeps } from "./connector";
+import { A360_CAPABILITIES, A360_TYPE } from "./config.ts";
+import { A360Connector, type A360ConnectorDeps } from "./connector.ts";
 
-export { A360Connector, type A360ConnectorDeps } from "./connector";
-export { A360_TYPE, A360_CAPABILITIES, type A360Config } from "./config";
-export { A360AuthError } from "./session";
-export { normalizeStatus, mapA360Bot } from "./map";
-export type { HttpTransport, HttpRequest, HttpResponse } from "./http";
+export { A360Connector, type A360ConnectorDeps } from "./connector.ts";
+export { A360_TYPE, A360_CAPABILITIES, type A360Config } from "./config.ts";
+export { A360AuthError } from "./session.ts";
+export { normalizeStatus, mapA360Bot } from "./map.ts";
+export type { HttpTransport, HttpRequest, HttpResponse } from "./http.ts";
 
 /**
  * Build the A360 connector factory. The `SecretStore` is shared across instances, but

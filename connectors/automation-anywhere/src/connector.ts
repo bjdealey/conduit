@@ -7,11 +7,11 @@
 import { Capability } from "@conduit/domain";
 import type { Bot, MapContext } from "@conduit/domain";
 import type { BotProvider, Connector, HealthStatus, SyncResult, SecretStore } from "@conduit/connector-sdk";
-import { A360_CAPABILITIES, A360_TYPE, assertA360Config, type A360Config, type A360Credentials } from "./config";
-import { fetchTransport, joinUrl, type HttpTransport } from "./http";
-import { A360Session } from "./session";
-import { AUTH_HEADER, BOT_LIST_PATH, botListRequestBody } from "./endpoints";
-import { extractBotRecords, mapA360Bot } from "./map";
+import { A360_CAPABILITIES, A360_TYPE, assertA360Config, type A360Config, type A360Credentials } from "./config.ts";
+import { fetchTransport, joinUrl, type HttpTransport } from "./http.ts";
+import { A360Session } from "./session.ts";
+import { AUTH_HEADER, BOT_LIST_PATH, botListRequestBody } from "./endpoints.ts";
+import { extractBotRecords, mapA360Bot } from "./map.ts";
 
 export type A360ConnectorDeps = {
   /** HTTP transport; defaults to `fetch`. Tests inject a fake Control Room here. */

@@ -5,7 +5,7 @@
  * type are just multiple `add()` calls with different config.
  */
 import { Capability } from "@conduit/domain";
-import type { Connector, HealthStatus } from "./connector";
+import type { Connector, HealthStatus } from "./connector.ts";
 
 /** Plain, serialisable description of a connector instance (a registry row). */
 export type ConnectorInstanceConfig = {

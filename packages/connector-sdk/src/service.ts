@@ -3,7 +3,7 @@
  * connector is unhealthy or returns an unmappable payload — it returns the healthy
  * connectors' items plus a per-connector error entry, and logs every error.
  */
-import type { Connector } from "./connector";
+import type { Connector } from "./connector.ts";
 
 export type ConnectorErrorKind =
   /** Health probe failed or reported not-ok; the connector was skipped. */

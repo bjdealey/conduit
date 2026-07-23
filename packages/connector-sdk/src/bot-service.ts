@@ -6,16 +6,16 @@
  */
 import { Capability, MappingError } from "@conduit/domain";
 import type { Bot } from "@conduit/domain";
-import { isBotProvider } from "./connector";
-import type { Connector } from "./connector";
-import { ConnectorRegistry } from "./registry";
+import { isBotProvider } from "./connector.ts";
+import type { Connector } from "./connector.ts";
+import { ConnectorRegistry } from "./registry.ts";
 import {
   consoleLogger,
   recordConnectorError,
   type ConnectorError,
   type Logger,
   type ServiceResult,
-} from "./service";
+} from "./service.ts";
 
 /** Narrow the aggregate result to a subset of connectors. */
 export type BotFilter = {

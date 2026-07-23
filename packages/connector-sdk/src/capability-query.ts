@@ -5,7 +5,7 @@
  * unsupported result — never an exception.
  */
 import type { Capability } from "@conduit/domain";
-import type { Connector } from "./connector";
+import type { Connector } from "./connector.ts";
 
 export type CapabilitySupport =
   | { supported: true; connectorId: string; capability: Capability }

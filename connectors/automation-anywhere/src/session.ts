@@ -4,9 +4,9 @@
  * the stored API key (long-lived) or an OAuth refresh-token grant — the credential
  * bundle already lives in the SecretStore, so neither path prompts a human.
  */
-import type { A360Config, A360Credentials, A360ApiKeyCredentials, A360OAuthCredentials } from "./config";
-import { AUTH_PATH, OAUTH_TOKEN_PATH } from "./endpoints";
-import { joinUrl, type HttpTransport } from "./http";
+import type { A360Config, A360Credentials, A360ApiKeyCredentials, A360OAuthCredentials } from "./config.ts";
+import { AUTH_PATH, OAUTH_TOKEN_PATH } from "./endpoints.ts";
+import { joinUrl, type HttpTransport } from "./http.ts";
 
 export class A360AuthError extends Error {
   constructor(message: string, readonly status?: number) {

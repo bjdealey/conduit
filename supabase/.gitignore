@@ -1,0 +1,4 @@
+# Supabase local state — never commit secrets or local runtime files.
+.branches
+.temp
+.env
