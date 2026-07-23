@@ -27,15 +27,17 @@ const icons: Record<View, ReactNode> = {
  *  lives in the main content header (SidebarToggle) and drives `sidebarExpanded`
  *  in the store, which sets this rail's width and label visibility. */
 export function Sidebar() {
-  const { sidebarExpanded: expanded, view, openIds, issues } = useStore();
+  const { sidebarExpanded: expanded, view, openIds, issues, badgesEnabled } = useStore();
   const inSettings = view === "settings";
 
   const openIssues = openIds
     .map((id) => issues.find((i) => i.id === id))
     .filter((i): i is NonNullable<typeof i> => Boolean(i));
 
-  // Data-driven counts shown as rail badges (undefined = no badge).
+  // Data-driven counts shown as rail badges (undefined = no badge). When the
+  // user turns badges off in Settings, no item gets a count.
   const badgeFor = (id: View): number | undefined => {
+    if (!badgesEnabled) return undefined;
     switch (id) {
       case "activity":
         return issues.filter((i) => i.status === "Under Investigation" || i.status === "Active").length;
