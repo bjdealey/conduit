@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { issues as seedIssues, members } from "./data/issues";
 import { automations as seedAutomations, folders as seedFolders, runs as seedRuns } from "./data/automations";
 import { endUsers } from "./data/users";
+import { environments } from "./data/environments";
 import { currentUser } from "./data/user";
 import { workspaces } from "./data/workspaces";
 import type { Workspace } from "./data/workspaces";
@@ -61,6 +62,8 @@ type Store = {
   selectUser: (id: string | null) => void;
   selectedAutomationId: string | null;
   selectAutomation: (id: string | null) => void;
+  selectedEnvironmentId: string | null;
+  selectEnvironment: (id: string | null) => void;
   query: string;
   view: View;
   /** Active subpage id within the current view, or null. */
@@ -124,6 +127,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [selectedId, setSelectedId] = useState<number | null>(seedIssues[0]?.id ?? null);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(endUsers[0]?.id ?? null);
   const [selectedAutomationId, setSelectedAutomationId] = useState<string | null>(seedAutomations[0]?.id ?? null);
+  const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<string | null>(environments[0]?.id ?? null);
   const [query, setQuery] = useState("");
   const [view, setViewRaw] = useState<View>("inbox");
   const [subview, setSubview] = useState<string | null>(null);
@@ -230,6 +234,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     selectUser: setSelectedUserId,
     selectedAutomationId,
     selectAutomation: setSelectedAutomationId,
+    selectedEnvironmentId,
+    selectEnvironment: setSelectedEnvironmentId,
     query,
     view,
     subview,

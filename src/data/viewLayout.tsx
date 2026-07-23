@@ -31,6 +31,10 @@ export const VIEW_MODES: Partial<Record<View, ViewMode[]>> = {
     { id: "list", label: "List", icon: <List {...icon} /> },
     { id: "board", label: "Board", icon: <Columns3 {...icon} /> },
   ],
+  environments: [
+    { id: "list", label: "List", icon: <List {...icon} /> },
+    { id: "grid", label: "Grid", icon: <LayoutGrid {...icon} /> },
+  ],
 };
 
 /** Default mode for a view (its first declared mode, else "list"). */
@@ -46,4 +50,5 @@ export const CONTEXT_LABEL: Partial<Record<View, string>> = {
   automations: "Summary",
   surfaces: "Overview",
   activity: "Incidents",
+  environments: "Details",
 };
