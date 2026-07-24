@@ -31,7 +31,14 @@ jobs:
         with:
           enablement: true
       - run: npm ci
+      # Vite inlines VITE_* at build time. Set these as repository Variables
+      # (Settings → Secrets and variables → Actions → Variables) to connect the
+      # deployed site to Supabase; leave them unset and the site runs on seed data.
+      # The anon/publishable key is public by design (it ships in the browser bundle).
       - run: npm run build
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

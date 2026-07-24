@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
@@ -9,4 +10,10 @@ import react from "@vitejs/plugin-react";
 export default defineConfig(({ command }) => ({
   base: command === "build" ? "/conduit/" : "/",
   plugins: [react()],
+  resolve: {
+    alias: {
+      // The frontend shares the canonical domain models with the backend/connectors.
+      "@conduit/domain": fileURLToPath(new URL("./packages/domain/src/index.ts", import.meta.url)),
+    },
+  },
 }));

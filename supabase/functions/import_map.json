@@ -1,0 +1,8 @@
+{
+  "imports": {
+    "@supabase/supabase-js": "npm:@supabase/supabase-js@2",
+    "@conduit/domain": "../../packages/domain/src/index.ts",
+    "@conduit/connector-sdk": "../../packages/connector-sdk/src/index.ts",
+    "@conduit/connector-automation-anywhere": "../../connectors/automation-anywhere/src/index.ts"
+  }
+}
