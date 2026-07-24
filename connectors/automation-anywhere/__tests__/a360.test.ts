@@ -43,7 +43,7 @@ function fakeControlRoom(opts: {
       if (!req.url.startsWith(opts.baseUrl)) return jsonResponse(404, { error: "routed to wrong control room" });
       const path = req.url.slice(opts.baseUrl.length);
 
-      if (path === "/v1/authentication") {
+      if (path === "/v2/authentication") {
         calls.auth++;
         if (authState.fail) return jsonResponse(401, { error: "auth disabled" });
         const body = JSON.parse(req.body ?? "{}") as { apiKey?: string };

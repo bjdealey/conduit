@@ -4,7 +4,7 @@
  * the stored API key (long-lived) or an OAuth refresh-token grant — the credential
  * bundle already lives in the SecretStore, so neither path prompts a human.
  */
-import type { A360Config, A360Credentials, A360ApiKeyCredentials, A360OAuthCredentials } from "./config.ts";
+import type { A360Config, A360Credentials, A360BasicCredentials, A360OAuthCredentials } from "./config.ts";
 import { AUTH_PATH, OAUTH_TOKEN_PATH } from "./endpoints.ts";
 import { joinUrl, type HttpTransport } from "./http.ts";
 
@@ -49,21 +49,27 @@ export class A360Session {
 
   /** Force a fresh token. Throws `A360AuthError` on failure — never leaks credentials. */
   async refresh(): Promise<string> {
-    const mode = this.config.authMode ?? "apiKey";
+    const mode = this.config.authMode ?? "basic";
     const token =
       mode === "oauth"
         ? await this.oauthRefresh(this.#credentials as A360OAuthCredentials)
-        : await this.apiKeyAuth(this.#credentials as A360ApiKeyCredentials);
+        : await this.basicAuth(this.#credentials as A360BasicCredentials);
     this.#cached = { token, expiresAtMs: this.computeExpiry(token) };
     return token;
   }
 
-  private async apiKeyAuth(cred: A360ApiKeyCredentials): Promise<string> {
+  private async basicAuth(cred: A360BasicCredentials): Promise<string> {
+    // Send whichever secret the Control Room issued — password or API key.
+    const payload: Record<string, string> = { username: cred.username };
+    if (cred.password) payload.password = cred.password;
+    else if (cred.apiKey) payload.apiKey = cred.apiKey;
+    else throw new A360AuthError("no password or apiKey in the resolved credentials");
+
     const res = await this.transport.request({
       url: joinUrl(this.config.controlRoomUrl, AUTH_PATH),
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ username: cred.username, apiKey: cred.apiKey }),
+      body: JSON.stringify(payload),
     });
     if (!res.ok) throw new A360AuthError(`authentication failed (status ${res.status})`, res.status);
     return this.readToken(await res.json());

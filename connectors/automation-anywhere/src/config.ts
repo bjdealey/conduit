@@ -13,7 +13,7 @@ export const A360_TYPE = "automation-anywhere";
 /** Capabilities implemented this stage. Declare only what is actually wired. */
 export const A360_CAPABILITIES: Capability[] = [Capability.Bots];
 
-export type A360AuthMode = "apiKey" | "oauth";
+export type A360AuthMode = "basic" | "oauth";
 
 /** Non-secret, per-instance connector configuration. */
 export type A360Config = {
@@ -21,7 +21,8 @@ export type A360Config = {
   controlRoomUrl: string;
   /** Pointer into the SecretStore for this instance's credentials. Never a secret. */
   secretRef: string;
-  /** "apiKey" (username + API key) or "oauth" (refresh-token grant). Default "apiKey". */
+  /** "basic" (username + password or API key) or "oauth" (refresh-token grant).
+   *  Default "basic". */
   authMode?: A360AuthMode;
   /** Fallback token lifetime when the returned JWT carries no `exp` claim. */
   tokenTtlSeconds?: number;
@@ -29,8 +30,9 @@ export type A360Config = {
   expirySkewSeconds?: number;
 };
 
-/** Credential bundle for username + API-key auth (resolved from the SecretStore). */
-export type A360ApiKeyCredentials = { username: string; apiKey: string };
+/** Credential bundle for basic auth (resolved from the SecretStore). Supply either a
+ *  `password` or an `apiKey` alongside the username — whichever the Control Room issues. */
+export type A360BasicCredentials = { username: string; password?: string; apiKey?: string };
 
 /** Credential bundle for OAuth refresh-token auth (resolved from the SecretStore). */
 export type A360OAuthCredentials = {
@@ -40,7 +42,7 @@ export type A360OAuthCredentials = {
   refreshToken: string;
 };
 
-export type A360Credentials = A360ApiKeyCredentials | A360OAuthCredentials;
+export type A360Credentials = A360BasicCredentials | A360OAuthCredentials;
 
 /** Validate the non-secret config, failing loudly on a malformed instance row. */
 export function assertA360Config(raw: unknown): A360Config {

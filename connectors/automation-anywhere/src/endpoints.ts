@@ -8,11 +8,11 @@
  */
 
 /**
- * Username + API-key (or password) authentication. Reasonably well established:
- * `POST {controlRoom}/v1/authentication` with `{ username, apiKey }` returning
- * `{ token }`.
+ * Username + password (or API-key) authentication. Confirmed against a live Control
+ * Room: `POST {controlRoom}/v2/authentication` with `{ username, password }` (or
+ * `{ username, apiKey }`) returning `{ token }`.
  */
-export const AUTH_PATH = "/v1/authentication";
+export const AUTH_PATH = "/v2/authentication";
 
 /**
  * OAuth refresh-token grant.
