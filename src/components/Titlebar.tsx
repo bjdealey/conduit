@@ -15,16 +15,17 @@ import { Avatar } from "./Avatar";
  *  Switching to a non-list mode clears the open item so the board/grid shows (the
  *  detail returns only when you click into an item), matching the inbox. */
 function ViewModeSwitcher({ view }: { view: View }) {
-  const { layout, setLayout, select, selectUser, selectAutomation, selectEnvironment } = useStore();
+  const { layout, setLayout, select, selectUser, selectAutomation, selectEnvironment, selectRun } = useStore();
   const modes = VIEW_MODES[view];
   if (!modes || modes.length < 2) return null;
   // Switching to the alternate layout clears every page's open item, so each page
-  // lands on its board/grid — not a stale detail — as you move between them.
+  // lands on its board/grid/timeline — not a stale detail — as you move between them.
   const clearAllSelections = () => {
     select(null);
     selectUser(null);
     selectAutomation(null);
     selectEnvironment(null);
+    selectRun(null);
   };
   // First mode is always "list"; the second is the page's alternate. The selected
   // segment tracks the global layout, so it persists across pages (only the
@@ -92,6 +93,10 @@ export function Titlebar() {
     selectAutomation,
     selectedEnvironmentId,
     selectEnvironment,
+    selectedRunId,
+    selectRun,
+    runById,
+    viewMode,
     automations,
     setView,
     openSubview,
@@ -105,6 +110,12 @@ export function Titlebar() {
   const openEnvironment = selectedEnvironmentId
     ? environments.find((e) => e.id === selectedEnvironmentId) ?? null
     : null;
+  // Only the Activity timeline opens a run full-pane; the list layout expands runs
+  // in place, so a stale selection never leaks into its breadcrumb.
+  const openRun =
+    view === "activity" && viewMode("activity") === "timeline" && selectedRunId
+      ? runById(selectedRunId) ?? null
+      : null;
 
   let items: Crumb[];
   // Whether the current view is showing a right-hand context pane the info toggle
@@ -138,7 +149,9 @@ export function Titlebar() {
     items = [{ label: "Surfaces", onClick: () => setView("surfaces") }, { label: "Dashboard" }];
   } else if (view === "activity") {
     hasContext = true;
-    items = [{ label: "Activity" }];
+    items = openRun
+      ? [{ label: "Activity", onClick: () => selectRun(null) }, { label: openRun.id }]
+      : [{ label: "Activity" }];
   } else if (view === "environments") {
     hasContext = !!openEnvironment;
     items = openEnvironment

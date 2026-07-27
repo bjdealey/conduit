@@ -51,6 +51,7 @@ type Store = {
   folders: Folder[];
   runs: Run[];
   automationById: (id: string) => Automation | undefined;
+  runById: (id: string) => Run | undefined;
   /** Runs for one automation, newest first (seed order). */
   runsForAutomation: (automationId: string) => Run[];
   /** Canonical domain bots from our API (live) or the seed fallback. */
@@ -79,6 +80,10 @@ type Store = {
   selectAutomation: (id: string | null) => void;
   selectedEnvironmentId: string | null;
   selectEnvironment: (id: string | null) => void;
+  /** Run opened from the Activity timeline. Null = the timeline itself is showing
+   *  (the list layout expands runs in place instead, and ignores this). */
+  selectedRunId: string | null;
+  selectRun: (id: string | null) => void;
   query: string;
   view: View;
   /** Active subpage id within the current view, or null. */
@@ -147,6 +152,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [selectedUserId, setSelectedUserId] = useState<string | null>(endUsers[0]?.id ?? null);
   const [selectedAutomationId, setSelectedAutomationId] = useState<string | null>(seedAutomations[0]?.id ?? null);
   const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<string | null>(environments[0]?.id ?? null);
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [view, setViewRaw] = useState<View>("inbox");
   const [subview, setSubview] = useState<string | null>(null);
@@ -257,6 +263,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     folders: seedFolders,
     runs: seedRuns,
     automationById: (id) => seedAutomations.find((a) => a.id === id),
+    runById: (id) => seedRuns.find((r) => r.id === id),
     runsForAutomation: (automationId) => seedRuns.filter((r) => r.automationId === automationId),
     bots,
     capabilities: [...capabilitySet],
@@ -281,6 +288,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     selectAutomation: setSelectedAutomationId,
     selectedEnvironmentId,
     selectEnvironment: setSelectedEnvironmentId,
+    selectedRunId,
+    selectRun: setSelectedRunId,
     query,
     view,
     subview,
