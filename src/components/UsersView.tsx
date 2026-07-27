@@ -6,18 +6,14 @@ import {
   Fingerprint,
   Globe,
   KeyRound,
-  ListFilter,
   LogOut,
   Monitor,
   MousePointerClick,
   Play,
-  ArrowUpDown,
-  Search,
   Smartphone,
   TriangleAlert,
   Users,
   Wifi,
-  X,
 } from "lucide-react";
 import { useStore } from "../store";
 import { endUsers, type Device, type EndUser, type SessionEvent, type UserSession } from "../data/users";
@@ -25,8 +21,36 @@ import type { Issue, Priority } from "../data/types";
 import { PRIORITY_ACCENT } from "./Badges";
 import { num } from "../lib/format";
 import { SplitView, Pane, DetailPane, ContextPane, EmptyDetail, PANE_WIDTH } from "./layout/SplitView";
-import { ListSearch } from "./ListSearch";
 import { SegmentedControl } from "./SegmentedControl";
+import { filterValue, isNarrowed, matchesQuery, passesFilter, type WorkspaceState } from "../lib/workspace";
+
+/* ----------------------------------------------------------------- selection */
+
+/** End-users narrowed and ordered by the workspace header. Shared by the list
+ *  pane and the grid, so both presentations show the same directory. */
+function visibleUsers(state: WorkspaceState): EndUser[] {
+  const problems = filterValue(state, "problems");
+  const rows = endUsers.filter(
+    (u) =>
+      matchesQuery(state.query, [u.name, u.email, u.country, u.source]) &&
+      passesFilter(state, "country", u.country) &&
+      (problems === null || (problems === "with") === u.activeProblemIds.length > 0),
+  );
+
+  const sorted = [...rows];
+  switch (state.sort) {
+    case "problems":
+      sorted.sort((a, b) => b.activeProblemIds.length - a.activeProblemIds.length);
+      break;
+    case "sessions":
+      sorted.sort((a, b) => b.sessionCount - a.sessionCount);
+      break;
+    // "name" is the default.
+    default:
+      sorted.sort((a, b) => a.name.localeCompare(b.name));
+  }
+  return sorted;
+}
 
 /* ------------------------------------------------------------------ profile */
 
@@ -48,21 +72,26 @@ function Avatar({ user, size }: { user: EndUser; size: number }) {
   );
 }
 
-/** Left column: searchable list of users to pick from (mirrors the inbox list). */
-function UsersList({ selectedId, onSelect }: { selectedId: string | null; onSelect: (id: string) => void }) {
-  const [query, setQuery] = useState("");
-  const q = query.trim().toLowerCase();
-  const users = q
-    ? endUsers.filter((u) => u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q))
-    : endUsers;
-
+/** Left column: the user directory (mirrors the inbox list). The search and
+ *  filters that narrow it live in the shared workspace header. */
+function UsersList({
+  users,
+  narrowed,
+  selectedId,
+  onSelect,
+}: {
+  users: EndUser[];
+  narrowed: boolean;
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+}) {
   return (
     <Pane width={PANE_WIDTH.list}>
-      <ListSearch value={query} onChange={setQuery} placeholder="Search users…" />
-
       <div className="scrollbar-none flex-1 overflow-y-auto px-2 py-2">
         {users.length === 0 && (
-          <p className="px-3 py-6 text-center text-body-sm text-tertiary-foreground">No users match “{query}”.</p>
+          <p className="px-3 py-6 text-center text-body-sm text-tertiary-foreground">
+            {narrowed ? "No users match the current search or filters." : "No users."}
+          </p>
         )}
         <div className="flex flex-col gap-0.5">
           {users.map((u) => {
@@ -327,34 +356,12 @@ function SessionRow({ session, onOpen }: { session: UserSession; onOpen: (id: nu
   );
 }
 
-function Chip({ field, op, value, onRemove }: { field: string; op: string; value: string; onRemove: () => void }) {
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-lg bg-component py-1 pl-2 pr-1 text-body-sm">
-      <span className="text-secondary-foreground">{field}</span>
-      <span className="text-tertiary-foreground">{op}</span>
-      <span className="text-primary-foreground">{value}</span>
-      <button
-        type="button"
-        onClick={onRemove}
-        aria-label={`Remove ${field} filter`}
-        className="focusable ml-0.5 flex size-4 items-center justify-center rounded text-tertiary-foreground transition-colors hover:bg-transparent-hover hover:text-primary-foreground"
-      >
-        <X size={12} strokeWidth={2} />
-      </button>
-    </span>
-  );
-}
-
 const SESSION_TABS = ["Sessions", "Problems"] as const;
 type SessionTab = (typeof SESSION_TABS)[number];
 
 function Sessions({ user }: { user: EndUser }) {
   const { issues, select, setView } = useStore();
   const [tab, setTab] = useState<SessionTab>("Sessions");
-  const [filters, setFilters] = useState([
-    { field: "Duration", op: "is", value: "More than 5 min" },
-    { field: "Events count", op: "is", value: "1 or more" },
-  ]);
 
   const openIssue = (id: number) => {
     select(id);
@@ -387,38 +394,10 @@ function Sessions({ user }: { user: EndUser }) {
           value={tab}
           onChange={(id) => setTab(id as SessionTab)}
         />
-        <div className="ml-auto flex items-center gap-1 text-tertiary-foreground">
-          {[Search, ListFilter, ArrowUpDown].map((Icon, i) => (
-            <button key={i} type="button" className="focusable flex size-7 items-center justify-center rounded-md transition-colors hover:bg-transparent-hover hover:text-primary-foreground">
-              <Icon size={16} strokeWidth={1.8} />
-            </button>
-          ))}
-        </div>
       </div>
 
       {tab === "Sessions" ? (
         <div className="scrollbar-none flex min-h-0 flex-1 flex-col overflow-y-auto">
-          {/* Filter chips */}
-          {filters.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2 border-border-default border-b-[0.5px] px-4 py-2.5">
-              {filters.map((f) => (
-                <Chip
-                  key={f.field}
-                  field={f.field}
-                  op={f.op}
-                  value={f.value}
-                  onRemove={() => setFilters((prev) => prev.filter((x) => x.field !== f.field))}
-                />
-              ))}
-              <button type="button" className="focusable flex size-6 items-center justify-center rounded-md text-tertiary-foreground transition-colors hover:bg-transparent-hover hover:text-primary-foreground">
-                <span className="text-body-base leading-none">+</span>
-              </button>
-              <button type="button" onClick={() => setFilters([])} className="focusable ml-auto rounded-md px-2 py-1 text-body-sm text-tertiary-foreground transition-colors hover:text-primary-foreground">
-                Clear
-              </button>
-            </div>
-          )}
-
           <div className="flex flex-col px-2 py-2">
             {groups.map(([date, sessions]) => (
               <section key={date} className="mb-2">
@@ -483,18 +462,14 @@ function UserCard({ user, onOpen }: { user: EndUser; onOpen: () => void }) {
 
 /** Grid presentation: a browseable card wall. Selecting a card returns to the
  *  list view focused on that user — mirroring the inbox board → detail flow. */
-function UsersGrid({ onOpen }: { onOpen: (id: string) => void }) {
-  const [query, setQuery] = useState("");
-  const q = query.trim().toLowerCase();
-  const users = q
-    ? endUsers.filter((u) => u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q))
-    : endUsers;
+function UsersGrid({ users, narrowed, onOpen }: { users: EndUser[]; narrowed: boolean; onOpen: (id: string) => void }) {
   return (
     <DetailPane>
-      <ListSearch value={query} onChange={setQuery} placeholder="Search users…" constrained />
       <div className="scrollbar-none flex-1 overflow-y-auto p-5">
         {users.length === 0 ? (
-          <p className="py-16 text-center text-body-sm text-tertiary-foreground">No users match “{query}”.</p>
+          <p className="py-16 text-center text-body-sm text-tertiary-foreground">
+            {narrowed ? "No users match the current search or filters." : "No users."}
+          </p>
         ) : (
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
             {users.map((u) => (
@@ -526,16 +501,23 @@ function UserDetail({ user }: { user: EndUser }) {
  *  (list → sessions → collapsible profile). Grid mode is a browseable card wall;
  *  opening a user hides the wall and shows their detail (like the inbox board). */
 export function UsersView() {
-  const { viewMode, selectedUserId, selectUser } = useStore();
+  const { viewMode, selectedUserId, selectUser, controls } = useStore();
+  const state = controls("users");
+  const users = visibleUsers(state);
+  const narrowed = isNarrowed(state);
   const user = selectedUserId ? endUsers.find((u) => u.id === selectedUserId) ?? null : null;
 
   if (viewMode("users") === "grid") {
-    return <SplitView>{user ? <UserDetail user={user} /> : <UsersGrid onOpen={selectUser} />}</SplitView>;
+    return (
+      <SplitView>
+        {user ? <UserDetail user={user} /> : <UsersGrid users={users} narrowed={narrowed} onOpen={selectUser} />}
+      </SplitView>
+    );
   }
 
   return (
     <SplitView>
-      <UsersList selectedId={selectedUserId} onSelect={selectUser} />
+      <UsersList users={users} narrowed={narrowed} selectedId={selectedUserId} onSelect={selectUser} />
       {user ? <UserDetail user={user} /> : <EmptyDetail>Select a user.</EmptyDetail>}
     </SplitView>
   );

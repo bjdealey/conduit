@@ -123,16 +123,10 @@ function Column({ status, items }: { status: Status; items: Issue[] }) {
   );
 }
 
-/** Kanban board: issues laid out in columns by workflow status. */
-export function Board() {
-  const { issues, query } = useStore();
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return issues;
-    return issues.filter((i) => i.title.toLowerCase().includes(q) || String(i.id).includes(q));
-  }, [issues, query]);
-
+/** Kanban board: issues laid out in columns by workflow status. `issues` arrives
+ *  already narrowed and ordered by the workspace header, the same set the list
+ *  pane shows. */
+export function Board({ issues }: { issues: Issue[] }) {
   const columns = useMemo(() => {
     const by: Record<Status, Issue[]> = {
       "Under Investigation": [],
@@ -140,9 +134,9 @@ export function Board() {
       "In Recovery": [],
       Resolved: [],
     };
-    for (const i of filtered) by[i.status].push(i);
+    for (const i of issues) by[i.status].push(i);
     return STATUSES.map((status) => ({ status, items: by[status] }));
-  }, [filtered]);
+  }, [issues]);
 
   return (
     <div

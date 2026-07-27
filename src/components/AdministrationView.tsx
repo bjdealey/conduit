@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Lock, Plus, ShieldCheck } from "lucide-react";
+import { Lock, ShieldCheck } from "lucide-react";
 import { useStore } from "../store";
 import type { Role } from "../data/types";
 import {
@@ -18,6 +18,7 @@ import { SegmentedControl } from "./SegmentedControl";
 import { Avatar } from "./Avatar";
 import { Switch } from "./Switch";
 import { num } from "../lib/format";
+import { isNarrowed, matchesQuery, passesFilter } from "../lib/workspace";
 
 const TABS = ["Users", "Roles", "Licenses", "Policies"] as const;
 type Tab = (typeof TABS)[number];
@@ -94,8 +95,11 @@ function AccessDenied() {
  *  from end-user monitoring in Users). Admins can edit roles and toggle policies;
  *  developers get a read-only view; users don't reach it (nav-gated). */
 export function AdministrationView() {
-  const { memberById, role } = useStore();
-  const [tab, setTab] = useState<Tab>("Users");
+  const { memberById, role, controls, sectionTab, setSectionTab } = useStore();
+  // Shared with the workspace header, so its search and filters follow the tab.
+  const tab = (sectionTab("administration") || "Users") as Tab;
+  const setTab = (next: Tab) => setSectionTab("administration", next);
+  const state = controls("administration");
   // Local, editable copies so an admin's edits are reflected in the prototype.
   const [users, setUsers] = useState<PlatformUser[]>(seedUsers);
   const [policies, setPolicies] = useState<Policy[]>(seedPolicies);
@@ -199,9 +203,20 @@ export function AdministrationView() {
     },
   ];
 
+  const visibleUsers = users.filter(
+    (u) =>
+      matchesQuery(state.query, [memberById(u.memberId)?.name, u.email, u.role, u.status]) &&
+      passesFilter(state, "role", u.role) &&
+      passesFilter(state, "status", u.status),
+  );
+  const visibleRoles = roleDefs.filter((r) => matchesQuery(state.query, [r.id, r.description, r.permissions]));
+  const visibleLicenses = licenses.filter((l) => matchesQuery(state.query, [l.name, l.plan, l.renews]));
+  const visiblePolicies = policies.filter((p) => matchesQuery(state.query, [p.name, p.description, p.scope]));
+  const empty = isNarrowed(state) ? "Nothing matches the current search or filters." : "Nothing to show yet.";
+
   return (
     <div className="flex min-w-0 flex-1 flex-col">
-      {/* Tabs + role-scoped action */}
+      {/* Tabs (search, filters, and the Invite action live in the workspace header) */}
       <div className="flex shrink-0 items-center gap-1 border-border-default border-b-[0.5px] px-3 py-2">
         <SegmentedControl
           variant="ghost"
@@ -210,17 +225,7 @@ export function AdministrationView() {
           value={tab}
           onChange={(id) => setTab(id as Tab)}
         />
-        {canEdit ? (
-          tab === "Users" && (
-            <button
-              type="button"
-              className="pressable focusable ml-auto inline-flex items-center gap-1 rounded-lg border-border-default border-[0.5px] px-2.5 py-1 text-body-sm text-secondary-foreground transition-colors hover:bg-transparent-hover"
-            >
-              <Plus size={14} strokeWidth={2} />
-              Invite
-            </button>
-          )
-        ) : (
+        {!canEdit && (
           <span className="ml-auto inline-flex items-center gap-1.5 rounded-md bg-component px-2 py-1 text-[0.72rem] text-tertiary-foreground">
             <ShieldCheck size={13} strokeWidth={1.8} />
             Read-only
@@ -231,10 +236,10 @@ export function AdministrationView() {
       {/* Table */}
       <div key={tab} className="animate-in fade-in-0 duration-200 ease-out scrollbar-none flex-1 overflow-auto">
         <div className="min-w-[720px] px-3 py-2">
-          {tab === "Users" && <DataTable columns={userCols} rows={users} empty="No platform users." />}
-          {tab === "Roles" && <DataTable columns={roleCols} rows={roleDefs} empty="No roles." />}
-          {tab === "Licenses" && <DataTable columns={licenseCols} rows={licenses} empty="No licenses." />}
-          {tab === "Policies" && <DataTable columns={policyCols} rows={policies} empty="No policies." />}
+          {tab === "Users" && <DataTable columns={userCols} rows={visibleUsers} empty={empty} />}
+          {tab === "Roles" && <DataTable columns={roleCols} rows={visibleRoles} empty={empty} />}
+          {tab === "Licenses" && <DataTable columns={licenseCols} rows={visibleLicenses} empty={empty} />}
+          {tab === "Policies" && <DataTable columns={policyCols} rows={visiblePolicies} empty={empty} />}
         </div>
       </div>
     </div>

@@ -1,9 +1,11 @@
 import { useState, type ReactNode } from "react";
 import { ChevronDown, Cloud, Files, GitBranch, Map, Zap } from "lucide-react";
+import { useStore } from "../store";
 import { surfaces, type Integration, type Surface } from "../data/surfaces";
 import { SurfaceChart } from "./SurfaceChart";
 import { SplitView, DetailPane, ContextPane } from "./layout/SplitView";
 import { SegmentedControl } from "./SegmentedControl";
+import { isNarrowed, matchesQuery } from "../lib/workspace";
 
 const GithubMark = (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
@@ -153,7 +155,11 @@ function EmptyState({ label }: { label: string }) {
 }
 
 function Detail({ surface }: { surface: Surface }) {
+  const { controls } = useStore();
   const [tab, setTab] = useState<SurfaceTab>("Events");
+  // The workspace header's search narrows the event log.
+  const state = controls("surfaces");
+  const log = surface.log.filter((row) => matchesQuery(state.query, [row.time, row.count]));
   return (
     <DetailPane>
       <div className="flex shrink-0 items-center gap-1 border-border-default border-b-[0.5px] px-3 py-2">
@@ -186,7 +192,12 @@ function Detail({ surface }: { surface: Surface }) {
                 Description
               </span>
             </div>
-            {surface.log.map((row) => (
+            {log.length === 0 && (
+              <p className="py-10 text-center text-body-sm text-tertiary-foreground">
+                {isNarrowed(state) ? "No events match the current search." : "No events recorded."}
+              </p>
+            )}
+            {log.map((row) => (
               <div key={row.time} className="flex items-center gap-6 border-border-default border-b-[0.5px] py-2.5">
                 <span className="w-28 shrink-0 font-departure-mono text-[0.72rem] text-tertiary-foreground">{row.time}</span>
                 <span className="text-body-sm text-secondary-foreground">

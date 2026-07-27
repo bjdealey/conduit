@@ -1,6 +1,8 @@
 /** Domain model for the Conduit platform prototype. */
 
-export type Priority = "High" | "Medium" | "Low";
+/** Priorities, in the order they rank (highest first). */
+export const PRIORITIES = ["High", "Medium", "Low"] as const;
+export type Priority = (typeof PRIORITIES)[number];
 
 /** Workflow states, in the order the inbox groups them. */
 export const STATUSES = ["Under Investigation", "Active", "In Recovery", "Resolved"] as const;
@@ -94,7 +96,8 @@ export const RUN_STATES = ["Queued", "Running", "Completed", "Failed"] as const;
 export type RunState = (typeof RUN_STATES)[number];
 
 /** How a run was started. */
-export type RunTrigger = "Manual" | "Schedule" | "Event";
+export const RUN_TRIGGERS = ["Manual", "Schedule", "Event"] as const;
+export type RunTrigger = (typeof RUN_TRIGGERS)[number];
 
 /** A single execution of an automation. Its `activity` reuses the incident
  *  timeline shape as the run log; a failed run may have spawned an incident. */

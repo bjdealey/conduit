@@ -8,7 +8,6 @@ import {
   Lock,
   Package,
   Play,
-  Plus,
   Workflow,
 } from "lucide-react";
 import { useStore } from "../store";
@@ -19,12 +18,40 @@ import { AUTOMATION_STATUS_ACCENT, AutomationStatusChip } from "./Badges";
 import { RunRow } from "./RunRow";
 import { num } from "../lib/format";
 import { SplitView, Pane, DetailPane, ContextPane, EmptyDetail, PANE_WIDTH } from "./layout/SplitView";
-import { ListSearch } from "./ListSearch";
 import { SegmentedControl } from "./SegmentedControl";
+import { isNarrowed, matchesQuery, passesFilter, type WorkspaceState } from "../lib/workspace";
 
 /* ------------------------------------------------------------------ shared bits */
 
 const pct = (r: number) => `${Math.round(r * 100)}%`;
+
+/** Automations narrowed and ordered by the workspace header — the same set the
+ *  library tree, the search results, and the board all draw from. */
+function visibleAutomations(automations: Automation[], state: WorkspaceState): Automation[] {
+  const rows = automations.filter(
+    (a) =>
+      matchesQuery(state.query, [a.name, a.id, a.description, a.packages.join(" ")]) &&
+      passesFilter(state, "status", a.status) &&
+      passesFilter(state, "visibility", a.visibility),
+  );
+
+  const sorted = [...rows];
+  switch (state.sort) {
+    case "runs":
+      sorted.sort((a, b) => b.runCount - a.runCount);
+      break;
+    case "success":
+      sorted.sort((a, b) => b.successRate - a.successRate);
+      break;
+    case "recent":
+      // Seed order is the library's own recency; keep it rather than parsing labels.
+      break;
+    // "name" is the default.
+    default:
+      sorted.sort((a, b) => a.name.localeCompare(b.name));
+  }
+  return sorted;
+}
 
 /** Ancestry path of a folder, e.g. "Shared / Monitoring / Synthetics". */
 function folderPath(folderId: string): string {
@@ -132,6 +159,7 @@ function FolderBranch({
   toggle,
   selectedId,
   onSelect,
+  automations,
 }: {
   folderId: string;
   depth: number;
@@ -139,8 +167,8 @@ function FolderBranch({
   toggle: (id: string) => void;
   selectedId: string | null;
   onSelect: (id: string) => void;
+  automations: Automation[];
 }) {
-  const { automations } = useStore();
   const folder = allFolders.find((f) => f.id === folderId)!;
   const kids = allFolders.filter((f) => f.parentId === folderId);
   const autos = automations.filter((a) => a.folderId === folderId);
@@ -168,6 +196,7 @@ function FolderBranch({
               toggle={toggle}
               selectedId={selectedId}
               onSelect={onSelect}
+              automations={automations}
             />
           ))}
           {autos.map((a) => (
@@ -189,12 +218,20 @@ function FolderBranch({
 
 /** The automation library: a single left panel that merges the Public/Private
  *  folder tree with the automations inside each folder (as selectable leaves), so
- *  navigation and selection live in one column instead of two. A search at the top
- *  matches automations by name/id and flattens the tree to the matches. */
-function AutomationLibrary({ selectedId, onSelect }: { selectedId: string | null; onSelect: (id: string) => void }) {
-  const { automations, role } = useStore();
-  const canCreate = role !== "user";
-  const [query, setQuery] = useState("");
+ *  navigation and selection live in one column instead of two. While the
+ *  workspace header narrows the page (a search or a filter), the tree flattens to
+ *  the matches — the folders are structure, not a second filter. */
+function AutomationLibrary({
+  automations,
+  narrowed,
+  selectedId,
+  onSelect,
+}: {
+  automations: Automation[];
+  narrowed: boolean;
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+}) {
   // Default to fully expanded so the merged automations are visible up front.
   const [expanded, setExpanded] = useState<Set<string>>(
     () => new Set<string>(["vis:public", "vis:private", ...allFolders.map((f) => f.id)]),
@@ -206,37 +243,21 @@ function AutomationLibrary({ selectedId, onSelect }: { selectedId: string | null
       return next;
     });
 
-  const q = query.trim().toLowerCase();
-  const matches = q
-    ? automations.filter((a) => a.name.toLowerCase().includes(q) || a.id.toLowerCase().includes(q))
-    : null;
-
   const roots: { visibility: Visibility; label: string; icon: ReactNode }[] = [
     { visibility: "public", label: "Public", icon: <Globe size={14} strokeWidth={1.8} /> },
     { visibility: "private", label: "Private", icon: <Lock size={14} strokeWidth={1.8} /> },
   ];
 
-  const newButton = canCreate ? (
-    <button
-      type="button"
-      aria-label="New automation"
-      className="pressable focusable flex size-8 shrink-0 items-center justify-center rounded-lg border-border-default border-[0.5px] text-secondary-foreground transition-colors hover:bg-transparent-hover hover:text-primary-foreground"
-    >
-      <Plus size={15} strokeWidth={2} />
-    </button>
-  ) : undefined;
-
   return (
     <Pane width={PANE_WIDTH.list}>
-      <ListSearch value={query} onChange={setQuery} placeholder="Search automations…" trailing={newButton} />
       <div className="scrollbar-none flex-1 overflow-y-auto px-2 py-2">
-        {matches ? (
-          matches.length === 0 ? (
+        {narrowed ? (
+          automations.length === 0 ? (
             <p className="px-3 py-6 text-center text-body-sm text-tertiary-foreground">
-              No automations match “{query}”.
+              No automations match the current search or filters.
             </p>
           ) : (
-            matches.map((a) => (
+            automations.map((a) => (
               <AutomationLeaf
                 key={a.id}
                 automation={a}
@@ -273,6 +294,7 @@ function AutomationLibrary({ selectedId, onSelect }: { selectedId: string | null
                       toggle={toggle}
                       selectedId={selectedId}
                       onSelect={onSelect}
+                      automations={automations}
                     />
                   ))}
               </div>
@@ -459,24 +481,18 @@ const AUTOMATION_STATUSES: AutomationStatus[] = ["Active", "Paused", "Draft"];
  *  inbox board → detail flow. */
 function AutomationsBoard({ items, onSelect }: { items: Automation[]; onSelect: (id: string) => void }) {
   const { memberById } = useStore();
-  const [query, setQuery] = useState("");
-  const q = query.trim().toLowerCase();
-  const filtered = q
-    ? items.filter((a) => a.name.toLowerCase().includes(q) || a.id.toLowerCase().includes(q))
-    : items;
   const columns = useMemo(() => {
     const by = new Map<AutomationStatus, Automation[]>();
-    for (const a of filtered) {
+    for (const a of items) {
       const arr = by.get(a.status) ?? [];
       arr.push(a);
       by.set(a.status, arr);
     }
     return AUTOMATION_STATUSES.map((status) => ({ status, items: by.get(status) ?? [] }));
-  }, [filtered]);
+  }, [items]);
 
   return (
     <DetailPane>
-      <ListSearch value={query} onChange={setQuery} placeholder="Search automations…" constrained />
       <div
         className="scrollbar-none flex min-w-0 flex-1 gap-5 overflow-x-auto p-5"
         style={{ background: "color-mix(in srgb, var(--color-primary-foreground) 3%, transparent)" }}
@@ -539,7 +555,9 @@ function AutomationsBoard({ items, onSelect }: { items: Automation[]; onSelect: 
  *  summary. Board mode fills the panel with a status board (like the inbox board).
  *  Failed runs link back to the incidents they spawned. */
 export function AutomationsView() {
-  const { automations, viewMode, selectedAutomationId, selectAutomation } = useStore();
+  const { automations, viewMode, selectedAutomationId, selectAutomation, controls } = useStore();
+  const state = controls("automations");
+  const visible = visibleAutomations(automations, state);
   const selected = selectedAutomationId
     ? automations.find((a) => a.id === selectedAutomationId) ?? null
     : null;
@@ -552,7 +570,7 @@ export function AutomationsView() {
         {selected ? (
           <AutomationDetail automation={selected} onSelectAutomation={selectAutomation} />
         ) : (
-          <AutomationsBoard items={automations} onSelect={selectAutomation} />
+          <AutomationsBoard items={visible} onSelect={selectAutomation} />
         )}
       </SplitView>
     );
@@ -560,7 +578,12 @@ export function AutomationsView() {
 
   return (
     <SplitView>
-      <AutomationLibrary selectedId={selectedAutomationId} onSelect={selectAutomation} />
+      <AutomationLibrary
+        automations={visible}
+        narrowed={isNarrowed(state)}
+        selectedId={selectedAutomationId}
+        onSelect={selectAutomation}
+      />
       {selected ? (
         <AutomationDetail automation={selected} onSelectAutomation={selectAutomation} />
       ) : (

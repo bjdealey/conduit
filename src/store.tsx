@@ -12,6 +12,7 @@ import { applyBrand } from "./lib/palette";
 import { isDark, setTheme } from "./lib/theme";
 import type { Automation, Folder, Issue, Member, Priority, Role, Run, Status } from "./data/types";
 import { CAPABILITIES, Capability, type Bot } from "@conduit/domain";
+import { EMPTY_WORKSPACE, type WorkspaceState } from "./lib/workspace";
 import { isSupabaseConfigured } from "./lib/supabase";
 import { getBots, getCapabilities } from "./lib/api";
 import { seedBots } from "./data/toDomain";
@@ -84,7 +85,20 @@ type Store = {
    *  (the list layout expands runs in place instead, and ignores this). */
   selectedRunId: string | null;
   selectRun: (id: string | null) => void;
-  query: string;
+  /** The shared workspace header's state for a page: search, filters, and sort.
+   *  One record per view, so each page keeps its own narrowing as you navigate.
+   *  (Named `controls` because `workspace` is the tenant workspace.) */
+  controls: (v: View) => WorkspaceState;
+  setControlsQuery: (v: View, query: string) => void;
+  /** Choose a filter option, or pass null for "All". */
+  setControlsFilter: (v: View, filterId: string, value: string | null) => void;
+  setControlsSort: (v: View, sortId: string) => void;
+  /** Reset a page's search and filters (the sort stays — it's a preference). */
+  clearControls: (v: View) => void;
+  /** Active section tab for the tabbed pages (Manage, Administration). Lifted here
+   *  so the workspace header's controls can follow the objects on screen. */
+  sectionTab: (v: View) => string;
+  setSectionTab: (v: View, tab: string) => void;
   view: View;
   /** Active subpage id within the current view, or null. */
   subview: string | null;
@@ -108,7 +122,6 @@ type Store = {
   /** Issues opened in the current session, pinned in the sidebar (in open order). */
   openIds: number[];
   select: (id: number | null) => void;
-  setQuery: (q: string) => void;
   setView: (v: View) => void;
   openSubview: (v: View, sub: string) => void;
   /** Leave the full-screen Settings mode, returning to the previous view. */
@@ -153,7 +166,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [selectedAutomationId, setSelectedAutomationId] = useState<string | null>(seedAutomations[0]?.id ?? null);
   const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<string | null>(environments[0]?.id ?? null);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
+  const [controlState, setControlState] = useState<Partial<Record<View, WorkspaceState>>>({});
+  const [sectionTabs, setSectionTabs] = useState<Partial<Record<View, string>>>({});
+
+  // Patch one page's control state, leaving every other page's untouched.
+  const patchControls = (v: View, patch: Partial<WorkspaceState>) =>
+    setControlState((prev) => ({ ...prev, [v]: { ...EMPTY_WORKSPACE, ...prev[v], ...patch } }));
   const [view, setViewRaw] = useState<View>("inbox");
   const [subview, setSubview] = useState<string | null>(null);
   const [settingsReturn, setSettingsReturn] = useState<View>("inbox");
@@ -290,7 +308,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     selectEnvironment: setSelectedEnvironmentId,
     selectedRunId,
     selectRun: setSelectedRunId,
-    query,
+    controls: (v) => controlState[v] ?? EMPTY_WORKSPACE,
+    setControlsQuery: (v, query) => patchControls(v, { query }),
+    setControlsFilter: (v, filterId, value) =>
+      setControlState((prev) => {
+        const current = prev[v] ?? EMPTY_WORKSPACE;
+        const filters = { ...current.filters };
+        if (value === null) delete filters[filterId];
+        else filters[filterId] = value;
+        return { ...prev, [v]: { ...current, filters } };
+      }),
+    setControlsSort: (v, sort) => patchControls(v, { sort }),
+    clearControls: (v) => patchControls(v, { query: "", filters: {} }),
+    sectionTab: (v) => sectionTabs[v] ?? "",
+    setSectionTab: (v, tab) => setSectionTabs((prev) => ({ ...prev, [v]: tab })),
     view,
     subview,
     sidebarExpanded,
@@ -320,7 +351,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setWorkspaceId,
     openIds,
     select,
-    setQuery,
     setView,
     openSubview,
     exitSettings,
