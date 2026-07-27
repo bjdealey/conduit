@@ -246,6 +246,24 @@ nav[data-expanded="false"] .rail-fade-collapsed {
 .pr-9              { padding-right: 2.25rem; }
 .p-\[1\.5px\]      { padding: 1.5px; }
 
+/* Activity screen (run stream, insights, timeline). */
+.pl-4              { padding-left: 1rem; }
+.gap-x-5           { column-gap: 1.25rem; }
+.gap-y-1           { row-gap: 0.25rem; }
+/* Insights' KPI row goes 4-up once there's room. */
+@media (width >= 40rem) {
+  .sm\:grid-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+/* Rounded end caps on the run-outcome stacked bar (matches .rounded-full). */
+.first\:rounded-l-full:first-child {
+  border-top-left-radius: 3.40282e38px;
+  border-bottom-left-radius: 3.40282e38px;
+}
+.last\:rounded-r-full:last-child {
+  border-top-right-radius: 3.40282e38px;
+  border-bottom-right-radius: 3.40282e38px;
+}
+
 /* Reveal on keyboard focus (pairs with the group-hover reveal already present). */
 .focus-visible\:opacity-100:focus-visible { opacity: 1; }
 
@@ -256,6 +274,21 @@ nav[data-expanded="false"] .rail-fade-collapsed {
   transition-property: width;
   transition-timing-function: var(--tw-ease, var(--ease-out, cubic-bezier(0, 0, 0.2, 1)));
   transition-duration: var(--tw-duration, 0.2s);
+}
+
+/* =============================================================================
+   Activity timeline bars
+   -----------------------------------------------------------------------------
+   A run on the Activity timeline is a bar sized to its duration, so it can get
+   very small — brightening on hover/focus (rather than a background change) keeps
+   the affordance readable at any width. `.pressable` supplies the press feedback.
+   ============================================================================= */
+.run-bar {
+  transition: filter 0.15s ease, transform 0.15s ease;
+}
+.run-bar:hover,
+.run-bar:focus-visible {
+  filter: brightness(1.15) saturate(1.1);
 }
 
 /* =============================================================================
