@@ -246,6 +246,9 @@ nav[data-expanded="false"] .rail-fade-collapsed {
 .pr-9              { padding-right: 2.25rem; }
 .p-\[1\.5px\]      { padding: 1.5px; }
 
+/* Workspace header: the inline clear affordance on an active filter chip. */
+.mr-1              { margin-right: 0.25rem; }
+
 /* Activity screen (run stream, insights, timeline). */
 .pl-4              { padding-left: 1rem; }
 .gap-x-5           { column-gap: 1.25rem; }

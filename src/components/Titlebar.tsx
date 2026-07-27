@@ -1,4 +1,4 @@
-import { MoreHorizontal, PanelRight } from "lucide-react";
+import { PanelRight } from "lucide-react";
 import { useStore, type View } from "../store";
 import { navItems } from "../data/nav";
 import { endUsers } from "../data/users";
@@ -170,7 +170,6 @@ export function Titlebar() {
   const showSwitcher = (VIEW_MODES[view]?.length ?? 0) > 1;
   const showInfoToggle = hasContext && !!CONTEXT_LABEL[view];
   const showSubscribers = view === "inbox" && !!selected;
-  const showSurfaceActions = view === "surfaces";
 
   return (
     <header
@@ -182,17 +181,6 @@ export function Titlebar() {
 
       <div className="ml-auto flex items-center gap-2">
         {showSwitcher && <ViewModeSwitcher view={view} />}
-
-        {showSurfaceActions && (
-          <button
-            type="button"
-            onClick={() => setView("inbox")}
-            className="pressable focusable inline-flex items-center gap-2 rounded-lg border-border-default border-[0.5px] px-2.5 py-1 text-body-sm text-secondary-foreground transition-colors hover:bg-transparent-hover"
-          >
-            View all problems
-            <kbd className="rounded bg-component px-1 font-departure-mono text-[0.65rem] text-tertiary-foreground">P</kbd>
-          </button>
-        )}
 
         {showSubscribers && (
           <div className="flex items-center gap-3 pl-1">
@@ -210,16 +198,6 @@ export function Titlebar() {
         )}
 
         {showInfoToggle && <InfoPaneToggle label={CONTEXT_LABEL[view] ?? "Details"} />}
-
-        {showSurfaceActions && (
-          <button
-            type="button"
-            aria-label="Surface options"
-            className="pressable focusable flex size-7 items-center justify-center rounded-md text-tertiary-foreground transition-colors hover:bg-transparent-hover hover:text-primary-foreground"
-          >
-            <MoreHorizontal size={16} strokeWidth={1.8} />
-          </button>
-        )}
       </div>
     </header>
   );

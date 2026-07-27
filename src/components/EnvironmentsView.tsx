@@ -5,8 +5,8 @@ import { environments, type Environment } from "../data/environments";
 import { SurfaceChart } from "./SurfaceChart";
 import { num } from "../lib/format";
 import { SplitView, Pane, DetailPane, ContextPane, EmptyDetail, PANE_WIDTH } from "./layout/SplitView";
-import { ListSearch } from "./ListSearch";
 import { SegmentedControl } from "./SegmentedControl";
+import { isNarrowed, matchesQuery, passesFilter, type WorkspaceState } from "../lib/workspace";
 
 const TONE_SOLID: Record<Environment["statusTone"], string> = {
   ok: "var(--grass-9)",
@@ -32,22 +32,54 @@ function StatusChip({ env }: { env: Environment }) {
   );
 }
 
+/* ----------------------------------------------------------------- selection */
+
+/** Environments narrowed and ordered by the workspace header — shared by the list
+ *  pane and the card wall. */
+function visibleEnvironments(state: WorkspaceState): Environment[] {
+  const rows = environments.filter(
+    (e) =>
+      matchesQuery(state.query, [e.name, e.url, e.branch, e.region, e.release]) &&
+      passesFilter(state, "status", e.status),
+  );
+
+  const sorted = [...rows];
+  switch (state.sort) {
+    case "events":
+      sorted.sort((a, b) => b.eventsPerMin - a.eventsPerMin);
+      break;
+    case "surfaces":
+      sorted.sort((a, b) => b.surfaces - a.surfaces);
+      break;
+    // "name" is the default.
+    default:
+      sorted.sort((a, b) => a.name.localeCompare(b.name));
+  }
+  return sorted;
+}
+
 /* ------------------------------------------------------------------ list mode */
 
-/** Left column: searchable list of environments (mirrors the users list). */
-function EnvironmentList({ selectedId, onSelect }: { selectedId: string | null; onSelect: (id: string) => void }) {
-  const [query, setQuery] = useState("");
-  const q = query.trim().toLowerCase();
-  const list = q
-    ? environments.filter((e) => e.name.toLowerCase().includes(q) || e.url.toLowerCase().includes(q))
-    : environments;
-
+/** Left column: the environment list (mirrors the users list). Search and filters
+ *  live in the shared workspace header. */
+function EnvironmentList({
+  list,
+  narrowed,
+  selectedId,
+  onSelect,
+}: {
+  list: Environment[];
+  narrowed: boolean;
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+}) {
   return (
     <Pane width={PANE_WIDTH.list}>
-      <ListSearch value={query} onChange={setQuery} placeholder="Search environments…" />
       <div className="scrollbar-none flex-1 overflow-y-auto px-2 py-2">
         {list.length === 0 && (
-          <p className="px-3 py-6 text-center text-body-sm text-tertiary-foreground">No environments match “{query}”.</p>
+          <p className="px-3 py-6 text-center text-body-sm text-tertiary-foreground">
+            {narrowed ? "No environments match the current search or filters." : "No environments."}
+          </p>
         )}
         <div className="flex flex-col gap-0.5">
           {list.map((e) => {
@@ -149,18 +181,14 @@ function EnvironmentCard({ env, onOpen }: { env: Environment; onOpen: () => void
 
 /** Grid presentation: a browseable wall of environment cards. Opening a card hides
  *  the wall and shows the environment detail (like the users grid). */
-function EnvironmentGrid({ onOpen }: { onOpen: (id: string) => void }) {
-  const [query, setQuery] = useState("");
-  const q = query.trim().toLowerCase();
-  const list = q
-    ? environments.filter((e) => e.name.toLowerCase().includes(q) || e.url.toLowerCase().includes(q))
-    : environments;
+function EnvironmentGrid({ list, narrowed, onOpen }: { list: Environment[]; narrowed: boolean; onOpen: (id: string) => void }) {
   return (
     <DetailPane>
-      <ListSearch value={query} onChange={setQuery} placeholder="Search environments…" constrained />
       <div className="scrollbar-none flex-1 overflow-y-auto p-5">
         {list.length === 0 ? (
-          <p className="py-16 text-center text-body-sm text-tertiary-foreground">No environments match “{query}”.</p>
+          <p className="py-16 text-center text-body-sm text-tertiary-foreground">
+            {narrowed ? "No environments match the current search or filters." : "No environments."}
+          </p>
         ) : (
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
             {list.map((env) => (
@@ -355,20 +383,25 @@ function EnvironmentDetail({ env }: { env: Environment }) {
  *  overview/deployments → collapsible facts). Grid mode is a browseable wall of
  *  status cards; opening one shows its detail (like the users tab). */
 export function EnvironmentsView() {
-  const { viewMode, selectedEnvironmentId, selectEnvironment } = useStore();
+  const { viewMode, selectedEnvironmentId, selectEnvironment, controls } = useStore();
+  const state = controls("environments");
+  const list = visibleEnvironments(state);
+  const narrowed = isNarrowed(state);
   const env = selectedEnvironmentId
     ? environments.find((e) => e.id === selectedEnvironmentId) ?? null
     : null;
 
   if (viewMode("environments") === "grid") {
     return (
-      <SplitView>{env ? <EnvironmentDetail env={env} /> : <EnvironmentGrid onOpen={selectEnvironment} />}</SplitView>
+      <SplitView>
+        {env ? <EnvironmentDetail env={env} /> : <EnvironmentGrid list={list} narrowed={narrowed} onOpen={selectEnvironment} />}
+      </SplitView>
     );
   }
 
   return (
     <SplitView>
-      <EnvironmentList selectedId={selectedEnvironmentId} onSelect={selectEnvironment} />
+      <EnvironmentList list={list} narrowed={narrowed} selectedId={selectedEnvironmentId} onSelect={selectEnvironment} />
       {env ? <EnvironmentDetail env={env} /> : <EmptyDetail>Select an environment.</EmptyDetail>}
     </SplitView>
   );

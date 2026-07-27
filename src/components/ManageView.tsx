@@ -1,5 +1,5 @@
-import { useState, type ReactNode } from "react";
-import { Plus, Workflow } from "lucide-react";
+import { type ReactNode } from "react";
+import { Workflow } from "lucide-react";
 import { useStore } from "../store";
 import { schedules, eventTriggers, credentials, packages, globalValues } from "../data/manage";
 import type { Credential, EventTrigger, GlobalValue, Package, Schedule } from "../data/manage";
@@ -7,6 +7,7 @@ import { DataTable, type Column } from "./DataTable";
 import { SegmentedControl } from "./SegmentedControl";
 import { Avatar } from "./Avatar";
 import { num } from "../lib/format";
+import { isNarrowed, matchesQuery, passesFilter } from "../lib/workspace";
 
 const TABS = ["Scheduled", "Event triggers", "Credentials", "Packages", "Global values"] as const;
 type Tab = (typeof TABS)[number];
@@ -57,9 +58,23 @@ function AutomationCell({ automationId }: { automationId: string }) {
  *  that start automations, plus the credentials, packages and global values runs
  *  consume. Each tab is a token-styled table; rows link back to the automation. */
 export function ManageView() {
-  const { memberById, role } = useStore();
-  const [tab, setTab] = useState<Tab>("Scheduled");
-  const canCreate = role !== "user";
+  const { memberById, automationById, controls, sectionTab, setSectionTab } = useStore();
+  // The active tab is shared with the workspace header, so its search placeholder
+  // and filters follow the objects on screen.
+  const tab = (sectionTab("manage") || "Scheduled") as Tab;
+  const setTab = (next: Tab) => setSectionTab("manage", next);
+  const state = controls("manage");
+
+  /** Rows of the open tab, narrowed by the header. `enabled` only applies to the
+   *  tabs whose objects can be paused — the header only offers it there. */
+  const narrow = <T,>(rows: T[], fields: (row: T) => (string | number | null | undefined)[], enabled?: (row: T) => boolean) =>
+    rows.filter(
+      (row) =>
+        matchesQuery(state.query, fields(row)) &&
+        (enabled === undefined || passesFilter(state, "enabled", enabled(row) ? "enabled" : "paused")),
+    );
+
+  const automationName = (id: string) => automationById(id)?.name ?? id;
 
   const scheduleCols: Column<Schedule>[] = [
     { key: "automation", header: "Automation", render: (r) => <AutomationCell automationId={r.automationId} /> },
@@ -113,17 +128,36 @@ export function ManageView() {
     { key: "updated", header: "Updated", width: 160, render: (r) => <span className="text-tertiary-foreground">{r.updatedAgo}</span> },
   ];
 
-  const counts: Record<Tab, number> = {
-    Scheduled: schedules.length,
-    "Event triggers": eventTriggers.length,
-    Credentials: credentials.length,
-    Packages: packages.length,
-    "Global values": globalValues.length,
+  const rows = {
+    Scheduled: narrow(
+      schedules,
+      (r) => [automationName(r.automationId), r.cadence, r.target, r.nextRun, r.lastRun],
+      (r) => r.enabled,
+    ),
+    "Event triggers": narrow(
+      eventTriggers,
+      (r) => [automationName(r.automationId), r.event, r.condition, r.lastFired],
+      (r) => r.enabled,
+    ),
+    Credentials: narrow(credentials, (r) => [r.name, r.kind, r.scope, memberById(r.ownerId)?.name]),
+    Packages: narrow(packages, (r) => [r.name, r.version, r.publisher]),
+    // Secret values are masked in the table, so they aren't searchable either.
+    "Global values": narrow(globalValues, (r) => [r.key, r.secret ? "" : r.value]),
   };
+
+  const counts: Record<Tab, number> = {
+    Scheduled: rows.Scheduled.length,
+    "Event triggers": rows["Event triggers"].length,
+    Credentials: rows.Credentials.length,
+    Packages: rows.Packages.length,
+    "Global values": rows["Global values"].length,
+  };
+
+  const empty = isNarrowed(state) ? "Nothing matches the current search or filters." : "Nothing to show yet.";
 
   return (
     <div className="flex min-w-0 flex-1 flex-col">
-      {/* Tabs + action */}
+      {/* Tabs (the page's search, filters, and New action live in the workspace header) */}
       <div className="flex shrink-0 items-center gap-1 border-border-default border-b-[0.5px] px-3 py-2">
         <SegmentedControl
           variant="ghost"
@@ -132,25 +166,16 @@ export function ManageView() {
           value={tab}
           onChange={(id) => setTab(id as Tab)}
         />
-        {canCreate && (
-          <button
-            type="button"
-            className="pressable focusable ml-auto inline-flex items-center gap-1 rounded-lg border-border-default border-[0.5px] px-2.5 py-1 text-body-sm text-secondary-foreground transition-colors hover:bg-transparent-hover"
-          >
-            <Plus size={14} strokeWidth={2} />
-            New
-          </button>
-        )}
       </div>
 
       {/* Table */}
       <div key={tab} className="animate-in fade-in-0 duration-200 ease-out scrollbar-none flex-1 overflow-auto">
         <div className="min-w-[720px] px-3 py-2">
-          {tab === "Scheduled" && <DataTable columns={scheduleCols} rows={schedules} empty="No schedules." />}
-          {tab === "Event triggers" && <DataTable columns={triggerCols} rows={eventTriggers} empty="No event triggers." />}
-          {tab === "Credentials" && <DataTable columns={credentialCols} rows={credentials} empty="No credentials." />}
-          {tab === "Packages" && <DataTable columns={packageCols} rows={packages} empty="No packages." />}
-          {tab === "Global values" && <DataTable columns={globalCols} rows={globalValues} empty="No global values." />}
+          {tab === "Scheduled" && <DataTable columns={scheduleCols} rows={rows.Scheduled} empty={empty} />}
+          {tab === "Event triggers" && <DataTable columns={triggerCols} rows={rows["Event triggers"]} empty={empty} />}
+          {tab === "Credentials" && <DataTable columns={credentialCols} rows={rows.Credentials} empty={empty} />}
+          {tab === "Packages" && <DataTable columns={packageCols} rows={rows.Packages} empty={empty} />}
+          {tab === "Global values" && <DataTable columns={globalCols} rows={rows["Global values"]} empty={empty} />}
         </div>
       </div>
     </div>

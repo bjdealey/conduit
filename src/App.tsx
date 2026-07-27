@@ -10,7 +10,8 @@ import { Inbox } from "./components/Inbox";
 import { Board } from "./components/Board";
 import { IssueDetail } from "./components/IssueDetail";
 import { SplitView, DetailPane, EmptyDetail } from "./components/layout/SplitView";
-import { ListSearch } from "./components/ListSearch";
+import { WorkspaceHeader } from "./components/WorkspaceHeader";
+import { visibleIssues } from "./lib/select";
 import { ActivityView } from "./components/ActivityView";
 import { AutomationsView } from "./components/AutomationsView";
 import { ManageView } from "./components/ManageView";
@@ -20,17 +21,17 @@ import { SurfacesView } from "./components/SurfacesView";
 import { EnvironmentsView } from "./components/EnvironmentsView";
 
 function InboxView() {
-  const { selected, viewMode, query, setQuery } = useStore();
+  const { issues, selected, viewMode, controls } = useStore();
+  // One narrowed set for both layouts — the workspace header drives them together.
+  const visible = visibleIssues(issues, controls("inbox"));
 
   // Board layout: the kanban fills the panel; selecting a card opens the issue
-  // (detail + collapsible context) full-width — deselect returns to the board. The
-  // search sits at the top in the same place as the list layout's search.
+  // (detail + collapsible context) full-width — deselect returns to the board.
   if (viewMode("inbox") === "board") {
     if (selected) return <IssueDetail issue={selected} />;
     return (
       <DetailPane>
-        <ListSearch value={query} onChange={setQuery} placeholder="Search issues…" constrained />
-        <Board />
+        <Board issues={visible} />
       </DetailPane>
     );
   }
@@ -39,7 +40,7 @@ function InboxView() {
   // in the shared right-hand context pane.
   return (
     <SplitView>
-      <Inbox />
+      <Inbox issues={visible} />
       {selected ? <IssueDetail issue={selected} /> : <EmptyDetail>Select an issue from the inbox.</EmptyDetail>}
     </SplitView>
   );
@@ -158,6 +159,7 @@ function Workspace({ morph }: { morph: Morph | null }) {
       >
         <div className="flex min-h-0 min-w-0 flex-1 flex-col" style={innerStyle}>
           <Titlebar />
+          <WorkspaceHeader />
           <Body />
         </div>
       </main>

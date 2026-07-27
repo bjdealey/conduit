@@ -8,8 +8,8 @@ import { ActivityFeed } from "./ActivityFeed";
 import { SurfaceChart } from "./SurfaceChart";
 import { agoLabel, durationSeconds, minutesAgo, num } from "../lib/format";
 import { SplitView, Pane, DetailPane, ContextPane, PANE_WIDTH } from "./layout/SplitView";
-import { ListSearch } from "./ListSearch";
 import { SegmentedControl } from "./SegmentedControl";
+import { isNarrowed, matchesQuery, passesFilter, type WorkspaceState } from "../lib/workspace";
 
 const TABS = ["In progress", "Historical", "Insights"] as const;
 type Tab = (typeof TABS)[number];
@@ -19,14 +19,33 @@ const HISTORICAL: RunState[] = ["Completed", "Failed"];
 
 /* ------------------------------------------------------------ filter + grouping */
 
-/** Free-text match over the fields an operator scans a run stream by — the run's
- *  own id, the automation it belongs to, who or what started it, its state, and
- *  the machine it ran on. */
-function runMatches(run: Run, automationName: string, query: string): boolean {
-  if (!query) return true;
-  return [run.id, automationName, run.startedBy, run.state, run.trigger, run.target ?? ""].some((field) =>
-    field.toLowerCase().includes(query),
+/** A run passes the workspace header's search and filters. The search spans the
+ *  fields an operator scans a run stream by — the run's own id, the automation it
+ *  belongs to, who or what started it, and the machine it ran on. */
+function runPasses(run: Run, automationName: string, state: WorkspaceState): boolean {
+  return (
+    matchesQuery(state.query, [run.id, automationName, run.startedBy, run.state, run.trigger, run.target]) &&
+    passesFilter(state, "state", run.state) &&
+    passesFilter(state, "trigger", run.trigger)
   );
+}
+
+/** Runs in the header's chosen order. Position on the timeline comes from the
+ *  clock, so this is what the grouped stream reads. */
+function sortRuns(runs: Run[], sort: string, nameOf: (id: string) => string): Run[] {
+  const sorted = [...runs];
+  switch (sort) {
+    case "duration":
+      sorted.sort((a, b) => (durationSeconds(b.duration) ?? 0) - (durationSeconds(a.duration) ?? 0));
+      break;
+    case "automation":
+      sorted.sort((a, b) => nameOf(a.automationId).localeCompare(nameOf(b.automationId)) || byRecency(a, b));
+      break;
+    // "recent" is the default.
+    default:
+      sorted.sort(byRecency);
+  }
+  return sorted;
 }
 
 /** Newest first. Queued runs have no start time and lead the order — they're what
@@ -108,32 +127,28 @@ function SourceRow({ group, active, onSelect }: { group: RunGroup; active: boole
 }
 
 /**
- * Left column: where the activity is coming from. The search narrows the whole
- * screen (stream, insights, and this list); picking an automation scopes it to
- * that automation's runs, and picking it again — or "All activity" — clears the
- * scope. Mirrors the users/environments list panes.
+ * Left column: where the activity is coming from. Picking an automation scopes
+ * the screen to that automation's runs; picking it again — or "All activity" —
+ * clears the scope. This is navigation, so it stays with the pane; the search and
+ * filters that narrow the whole page live in the workspace header.
  */
 function ActivitySources({
   groups,
   total,
   live,
+  narrowed,
   scopeId,
   onScope,
-  query,
-  onQuery,
 }: {
   groups: RunGroup[];
   total: number;
   live: number;
+  narrowed: boolean;
   scopeId: string | null;
   onScope: (id: string | null) => void;
-  query: string;
-  onQuery: (q: string) => void;
 }) {
   return (
     <Pane width={PANE_WIDTH.list}>
-      <ListSearch value={query} onChange={onQuery} placeholder="Search activity…" />
-
       <div className="scrollbar-none flex-1 overflow-y-auto px-2 py-2">
         <button
           type="button"
@@ -162,7 +177,7 @@ function ActivitySources({
 
         {groups.length === 0 ? (
           <p className="px-3 py-6 text-center text-body-sm text-tertiary-foreground">
-            No activity matches “{query}”.
+            {narrowed ? "No activity matches the current search or filters." : "No activity yet."}
           </p>
         ) : (
           <div className="flex flex-col gap-0.5">
@@ -219,9 +234,7 @@ function RunsList({ runs }: { runs: Run[] }) {
       arr.push(r);
       by.set(r.state, arr);
     }
-    return RUN_STATES.map((s) => ({ state: s, items: (by.get(s) ?? []).sort(byRecency) })).filter(
-      (g) => g.items.length > 0,
-    );
+    return RUN_STATES.map((s) => ({ state: s, items: by.get(s) ?? [] })).filter((g) => g.items.length > 0);
   }, [runs]);
 
   return (
@@ -659,22 +672,37 @@ function Insights({ runs, automations, activeIncidents }: { runs: Run[]; automat
  *    replaces it with the run's detail, like the board/grid layouts elsewhere.
  */
 export function ActivityView() {
-  const { runs, issues, automationById, viewMode, selectedRunId, selectRun, runById } = useStore();
-  const [tab, setTab] = useState<Tab>("In progress");
-  const [query, setQuery] = useState("");
+  const {
+    runs,
+    issues,
+    automationById,
+    viewMode,
+    selectedRunId,
+    selectRun,
+    runById,
+    controls,
+    sectionTab,
+    setSectionTab,
+  } = useStore();
+  // The stream tabs are this page's section tabs, so the header's State filter can
+  // offer just the states the open tab shows.
+  const tab = (sectionTab("activity") || "In progress") as Tab;
+  const setTab = (next: Tab) => setSectionTab("activity", next);
   const [scopeId, setScopeId] = useState<string | null>(null);
 
+  const state = controls("activity");
   const timeline = viewMode("activity") === "timeline";
   // The scope belongs to the sources pane, which only the list layout shows. The
   // timeline's lanes already separate the automations, so it plots all of them —
   // and the scope is still there when you switch back.
   const scope = timeline ? null : scopeId;
-  const q = query.trim().toLowerCase();
+  const nameOf = (id: string) => automationById(id)?.name ?? "";
 
-  // Search narrows the whole screen; the scope then narrows it to one automation.
+  // The header narrows the whole screen; the scope then narrows it to one automation.
   const matched = useMemo(
-    () => runs.filter((r) => runMatches(r, automationById(r.automationId)?.name ?? "", q)),
-    [runs, q, automationById],
+    () => sortRuns(runs.filter((r) => runPasses(r, nameOf(r.automationId), state)), state.sort, nameOf),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [runs, state, automationById],
   );
   const sources = useMemo(() => groupRuns(matched, automationById), [matched, automationById]);
   const visible = useMemo(
@@ -719,10 +747,9 @@ export function ActivityView() {
           groups={sources}
           total={matched.length}
           live={matched.filter(isLive).length}
+          narrowed={isNarrowed(state)}
           scopeId={scope}
           onScope={setScopeId}
-          query={query}
-          onQuery={setQuery}
         />
       )}
 
@@ -737,10 +764,6 @@ export function ActivityView() {
           />
         </div>
 
-        {/* The timeline has no list pane, so the search moves to the top of the
-            panel — same control, same place, as on the board/grid layouts. */}
-        {timeline && <ListSearch value={query} onChange={setQuery} placeholder="Search activity…" constrained />}
-
         <div key={tab} className="animate-in fade-in-0 duration-200 ease-out flex min-h-0 flex-1 flex-col">
           {tab === "Insights" ? (
             <Insights
@@ -751,8 +774,8 @@ export function ActivityView() {
           ) : tabRuns.length === 0 ? (
             <NoRuns
               hint={
-                q.length > 0 || scope !== null
-                  ? "No runs match the current search or scope."
+                isNarrowed(state) || scope !== null
+                  ? "No runs match the current search, filters, or scope."
                   : "Nothing to show in this prototype tab yet."
               }
               other={{ label: otherTab, count: tabCount[otherTab] ?? 0, onSelect: () => setTab(otherTab) }}
