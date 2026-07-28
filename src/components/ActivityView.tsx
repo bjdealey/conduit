@@ -9,7 +9,8 @@ import { SurfaceChart } from "./SurfaceChart";
 import { agoLabel, durationSeconds, minutesAgo, num } from "../lib/format";
 import { SplitView, Pane, DetailPane, ContextPane, PANE_WIDTH } from "./layout/SplitView";
 import { SegmentedControl } from "./SegmentedControl";
-import { isNarrowed, matchesQuery, passesFilter, type WorkspaceState } from "../lib/workspace";
+import { isNarrowed, matchesQuery, ordered, passesFilter, resolveSort, type WorkspaceState } from "../lib/workspace";
+import { workspaceControls } from "../data/workspaceControls";
 
 const TABS = ["In progress", "Historical", "Insights"] as const;
 type Tab = (typeof TABS)[number];
@@ -30,22 +31,17 @@ function runPasses(run: Run, automationName: string, state: WorkspaceState): boo
   );
 }
 
-/** Runs in the header's chosen order. Position on the timeline comes from the
- *  clock, so this is what the grouped stream reads. */
-function sortRuns(runs: Run[], sort: string, nameOf: (id: string) => string): Run[] {
-  const sorted = [...runs];
-  switch (sort) {
-    case "duration":
-      sorted.sort((a, b) => (durationSeconds(b.duration) ?? 0) - (durationSeconds(a.duration) ?? 0));
-      break;
-    case "automation":
-      sorted.sort((a, b) => nameOf(a.automationId).localeCompare(nameOf(b.automationId)) || byRecency(a, b));
-      break;
-    // "recent" is the default.
-    default:
-      sorted.sort(byRecency);
-  }
-  return sorted;
+/** Runs in the header's chosen order and direction. Position on the timeline comes
+ *  from the clock, so this is what the grouped stream reads. */
+function sortRuns(runs: Run[], state: WorkspaceState, tab: string, nameOf: (id: string) => string): Run[] {
+  const { id, dir } = resolveSort(state, workspaceControls("activity", tab)?.sorts ?? []);
+  const compare: Record<string, (a: Run, b: Run) => number> = {
+    // Oldest first, so the descending default reads newest-first.
+    recent: (a, b) => -byRecency(a, b),
+    duration: (a, b) => (durationSeconds(a.duration) ?? 0) - (durationSeconds(b.duration) ?? 0),
+    automation: (a, b) => nameOf(a.automationId).localeCompare(nameOf(b.automationId)) || byRecency(a, b),
+  };
+  return ordered(runs, dir, compare[id] ?? compare.recent);
 }
 
 /** Newest first. Queued runs have no start time and lead the order — they're what
@@ -700,7 +696,7 @@ export function ActivityView() {
 
   // The header narrows the whole screen; the scope then narrows it to one automation.
   const matched = useMemo(
-    () => sortRuns(runs.filter((r) => runPasses(r, nameOf(r.automationId), state)), state.sort, nameOf),
+    () => sortRuns(runs.filter((r) => runPasses(r, nameOf(r.automationId), state)), state, tab, nameOf),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [runs, state, automationById],
   );

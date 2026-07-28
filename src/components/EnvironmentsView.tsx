@@ -6,7 +6,8 @@ import { SurfaceChart } from "./SurfaceChart";
 import { num } from "../lib/format";
 import { SplitView, Pane, DetailPane, ContextPane, EmptyDetail, PANE_WIDTH } from "./layout/SplitView";
 import { SegmentedControl } from "./SegmentedControl";
-import { isNarrowed, matchesQuery, passesFilter, type WorkspaceState } from "../lib/workspace";
+import { isNarrowed, matchesQuery, ordered, passesFilter, resolveSort, type WorkspaceState } from "../lib/workspace";
+import { workspaceControls } from "../data/workspaceControls";
 
 const TONE_SOLID: Record<Environment["statusTone"], string> = {
   ok: "var(--grass-9)",
@@ -43,19 +44,13 @@ function visibleEnvironments(state: WorkspaceState): Environment[] {
       passesFilter(state, "status", e.status),
   );
 
-  const sorted = [...rows];
-  switch (state.sort) {
-    case "events":
-      sorted.sort((a, b) => b.eventsPerMin - a.eventsPerMin);
-      break;
-    case "surfaces":
-      sorted.sort((a, b) => b.surfaces - a.surfaces);
-      break;
-    // "name" is the default.
-    default:
-      sorted.sort((a, b) => a.name.localeCompare(b.name));
-  }
-  return sorted;
+  const { id, dir } = resolveSort(state, workspaceControls("environments", "")?.sorts ?? []);
+  const compare: Record<string, (a: Environment, b: Environment) => number> = {
+    name: (a, b) => a.name.localeCompare(b.name),
+    events: (a, b) => a.eventsPerMin - b.eventsPerMin,
+    surfaces: (a, b) => a.surfaces - b.surfaces,
+  };
+  return ordered(rows, dir, compare[id] ?? compare.name);
 }
 
 /* ------------------------------------------------------------------ list mode */

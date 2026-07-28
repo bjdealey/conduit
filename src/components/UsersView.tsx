@@ -22,7 +22,8 @@ import { PRIORITY_ACCENT } from "./Badges";
 import { num } from "../lib/format";
 import { SplitView, Pane, DetailPane, ContextPane, EmptyDetail, PANE_WIDTH } from "./layout/SplitView";
 import { SegmentedControl } from "./SegmentedControl";
-import { isNarrowed, matchesQuery, passesFilter, type WorkspaceState } from "../lib/workspace";
+import { isNarrowed, matchesQuery, ordered, passesFilter, resolveSort, type WorkspaceState } from "../lib/workspace";
+import { workspaceControls } from "../data/workspaceControls";
 
 /* ----------------------------------------------------------------- selection */
 
@@ -36,19 +37,13 @@ function visibleUsers(state: WorkspaceState): EndUser[] {
       passesFilter(state, "problems", u.activeProblemIds.length > 0 ? "with" : "without"),
   );
 
-  const sorted = [...rows];
-  switch (state.sort) {
-    case "problems":
-      sorted.sort((a, b) => b.activeProblemIds.length - a.activeProblemIds.length);
-      break;
-    case "sessions":
-      sorted.sort((a, b) => b.sessionCount - a.sessionCount);
-      break;
-    // "name" is the default.
-    default:
-      sorted.sort((a, b) => a.name.localeCompare(b.name));
-  }
-  return sorted;
+  const { id, dir } = resolveSort(state, workspaceControls("users", "")?.sorts ?? []);
+  const compare: Record<string, (a: EndUser, b: EndUser) => number> = {
+    name: (a, b) => a.name.localeCompare(b.name),
+    problems: (a, b) => a.activeProblemIds.length - b.activeProblemIds.length,
+    sessions: (a, b) => a.sessionCount - b.sessionCount,
+  };
+  return ordered(rows, dir, compare[id] ?? compare.name);
 }
 
 /* ------------------------------------------------------------------ profile */

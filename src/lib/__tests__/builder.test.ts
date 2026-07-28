@@ -191,7 +191,7 @@ describe("the palette under the workspace header", () => {
 describe("the builder's chrome", () => {
   it("declares the same controls every other page gets", () => {
     const definition = workspaceControls("builder", "");
-    expect(definition?.search).toBe("Search actions…");
+    expect(definition?.search).toBe("Search or filter actions…");
     expect(definition?.filters?.[0].id).toBe("package");
     expect(definition?.sorts?.map((s) => s.id)).toEqual(["package", "name"]);
   });

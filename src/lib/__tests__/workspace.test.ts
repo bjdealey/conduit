@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { EMPTY_WORKSPACE, isNarrowed, matchesQuery, passesFilter, type WorkspaceState } from "../workspace";
+import {
+  EMPTY_WORKSPACE,
+  isNarrowed,
+  matchesQuery,
+  ordered,
+  passesFilter,
+  resolveSort,
+  type WorkspaceState,
+} from "../workspace";
 import { visibleIssues } from "../select";
 import { issues } from "../../data/issues";
 import { workspaceControls } from "../../data/workspaceControls";
@@ -147,5 +155,55 @@ describe("the filter menu's type-ahead", () => {
     expect(status.options.find((o) => o.id === "Active")?.accent).toBe("tomato");
     const priority = inbox.filters!.find((f) => f.id === "priority")!;
     expect(priority.options.find((o) => o.id === "High")?.accent).toBe("tomato");
+  });
+});
+
+describe("sort direction", () => {
+  const sorts = [
+    { id: "name", defaultDir: "asc" as const },
+    { id: "impact", defaultDir: "desc" as const },
+    { id: "plain" },
+  ];
+
+  it("falls back to the first sort, in that sort's own direction", () => {
+    expect(resolveSort(state(), sorts)).toEqual({ id: "name", dir: "asc" });
+    expect(resolveSort(state({ sort: "impact" }), sorts)).toEqual({ id: "impact", dir: "desc" });
+    // A sort with no declared default runs ascending.
+    expect(resolveSort(state({ sort: "plain" }), sorts).dir).toBe("asc");
+  });
+
+  it("lets a chosen direction override the sort's default", () => {
+    expect(resolveSort(state({ sort: "impact", dir: "asc" }), sorts).dir).toBe("asc");
+    expect(resolveSort(state({ sort: "name", dir: "desc" }), sorts).dir).toBe("desc");
+  });
+
+  it("flips an ascending comparator, keeping ties in their original order", () => {
+    const rows = [
+      { id: "a", n: 2 },
+      { id: "b", n: 1 },
+      { id: "c", n: 2 },
+    ];
+    const byN = (x: { n: number }, y: { n: number }) => x.n - y.n;
+    expect(ordered(rows, "asc", byN).map((r) => r.id)).toEqual(["b", "a", "c"]);
+    expect(ordered(rows, "desc", byN).map((r) => r.id)).toEqual(["a", "c", "b"]);
+    // The input is left alone.
+    expect(rows.map((r) => r.id)).toEqual(["a", "b", "c"]);
+  });
+
+  it("reverses the rows a page shows when the direction flips", () => {
+    const down = visibleIssues(issues, state({ sort: "impact" }));
+    const up = visibleIssues(issues, state({ sort: "impact", dir: "asc" }));
+    expect(up.map((i) => i.id)).toEqual([...down.map((i) => i.id)].reverse());
+    expect(up[0].impactedUsers).toBeLessThan(down[0].impactedUsers);
+  });
+
+  it("declares a direction for every sort on every page, so chips never guess", () => {
+    for (const view of ["inbox", "activity", "automations", "users", "environments", "builder"] as const) {
+      for (const sort of workspaceControls(view, "")?.sorts ?? []) {
+        expect(sort.defaultDir, `${view}/${sort.id}`).toBeDefined();
+        // Labels name the field; the arrow says which way it runs.
+        expect(sort.label, `${view}/${sort.id}`).not.toMatch(/^(most|least|newest|oldest|longest|busiest)/i);
+      }
+    }
   });
 });

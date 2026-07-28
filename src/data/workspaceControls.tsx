@@ -13,6 +13,7 @@ import {
   Zap,
 } from "lucide-react";
 import type { View } from "../store";
+import type { SortDir } from "../lib/workspace";
 import { PRIORITIES, RUN_STATES, RUN_TRIGGERS, STATUSES, type Role, type RunState } from "./types";
 import { members } from "./issues";
 import { AUTOMATION_STATUS_ACCENT, PRIORITY_ACCENT, RUN_STATE_ACCENT, STATUS_ACCENT } from "../components/Badges";
@@ -44,8 +45,10 @@ export type FilterOption = { id: string; label: string; accent?: string };
  *  filter menu and on the chip it becomes once applied. */
 export type FilterDef = { id: string; label: string; icon?: ReactNode; options: FilterOption[] };
 
-/** One sort order. The first declared sort is a page's default. */
-export type SortDef = { id: string; label: string };
+/** One sort order. The first declared sort is a page's default; `defaultDir` is
+ *  the direction it starts in, which the reader can flip on the chip. Labels name
+ *  the field, never the direction — the arrow says which way it runs. */
+export type SortDef = { id: string; label: string; defaultDir?: SortDir };
 
 /** A page-level action, pinned to the right of the bar. `roles`, when present,
  *  restricts it (permission gating, same as the nav); `iconOnly` renders a square
@@ -88,7 +91,7 @@ const PLATFORM_USER_ACCENT: Record<string, string> = { Active: "grass", Invited:
 /* ------------------------------------------------------------------- per page */
 
 const INBOX: WorkspaceControls = {
-  search: "Search issues…",
+  search: "Search or filter issues…",
   filters: [
     { id: "status", label: "Status", icon: <CircleDashed {...dim} />, options: STATUSES.map(fromPalette(STATUS_ACCENT)) },
     { id: "priority", label: "Priority", icon: <ChartNoAxesColumn {...dim} />, options: PRIORITIES.map(fromPalette(PRIORITY_ACCENT)) },
@@ -100,9 +103,9 @@ const INBOX: WorkspaceControls = {
     },
   ],
   sorts: [
-    { id: "priority", label: "Priority" },
-    { id: "impact", label: "Impacted users" },
-    { id: "id", label: "Newest" },
+    { id: "priority", label: "Priority", defaultDir: "desc" },
+    { id: "impact", label: "Impacted users", defaultDir: "desc" },
+    { id: "id", label: "Created", defaultDir: "desc" },
   ],
 };
 
@@ -116,7 +119,7 @@ const ACTIVITY_TAB_STATES: Record<string, readonly RunState[]> = {
 function activity(tab: string): WorkspaceControls {
   const states = ACTIVITY_TAB_STATES[tab] ?? RUN_STATES;
   return {
-    search: "Search activity…",
+    search: "Search or filter activity…",
     filters: [
       { id: "state", label: "State", icon: <CircleDashed {...dim} />, options: states.map(fromPalette(RUN_STATE_ACCENT)) },
       { id: "trigger", label: "Trigger", icon: <Zap {...dim} />, options: RUN_TRIGGERS.map((t) => option(t)) },
@@ -126,15 +129,15 @@ function activity(tab: string): WorkspaceControls {
       tab === "Insights"
         ? undefined
         : [
-            { id: "recent", label: "Most recent" },
-            { id: "duration", label: "Longest" },
-            { id: "automation", label: "Automation" },
+            { id: "recent", label: "Started", defaultDir: "desc" },
+            { id: "duration", label: "Duration", defaultDir: "desc" },
+            { id: "automation", label: "Automation", defaultDir: "asc" },
           ],
   };
 }
 
 const AUTOMATIONS: WorkspaceControls = {
-  search: "Search automations…",
+  search: "Search or filter automations…",
   filters: [
     {
       id: "status",
@@ -153,16 +156,16 @@ const AUTOMATIONS: WorkspaceControls = {
     },
   ],
   sorts: [
-    { id: "name", label: "Name" },
-    { id: "runs", label: "Most runs" },
-    { id: "success", label: "Success rate" },
-    { id: "recent", label: "Recently run" },
+    { id: "name", label: "Name", defaultDir: "asc" },
+    { id: "runs", label: "Runs", defaultDir: "desc" },
+    { id: "success", label: "Success rate", defaultDir: "desc" },
+    { id: "recent", label: "Last run", defaultDir: "desc" },
   ],
   actions: [{ id: "new-automation", label: "New automation", icon: newIcon, roles: ["admin", "developer"] }],
 };
 
 const USERS: WorkspaceControls = {
-  search: "Search users…",
+  search: "Search or filter users…",
   filters: [
     {
       id: "country",
@@ -182,14 +185,14 @@ const USERS: WorkspaceControls = {
     },
   ],
   sorts: [
-    { id: "name", label: "Name" },
-    { id: "problems", label: "Most problems" },
-    { id: "sessions", label: "Most sessions" },
+    { id: "name", label: "Name", defaultDir: "asc" },
+    { id: "problems", label: "Problems", defaultDir: "desc" },
+    { id: "sessions", label: "Sessions", defaultDir: "desc" },
   ],
 };
 
 const ENVIRONMENTS: WorkspaceControls = {
-  search: "Search environments…",
+  search: "Search or filter environments…",
   filters: [
     {
       id: "status",
@@ -199,16 +202,16 @@ const ENVIRONMENTS: WorkspaceControls = {
     },
   ],
   sorts: [
-    { id: "name", label: "Name" },
-    { id: "events", label: "Busiest" },
-    { id: "surfaces", label: "Most surfaces" },
+    { id: "name", label: "Name", defaultDir: "asc" },
+    { id: "events", label: "Events / min", defaultDir: "desc" },
+    { id: "surfaces", label: "Surfaces", defaultDir: "desc" },
   ],
 };
 
 /** The builder's controls act on its palette — the only collection on that
  *  screen. Sorting by name flattens the grouping into one alphabetical list. */
 const BUILDER: WorkspaceControls = {
-  search: "Search actions…",
+  search: "Search or filter actions…",
   filters: [
     {
       id: "package",
@@ -218,8 +221,8 @@ const BUILDER: WorkspaceControls = {
     },
   ],
   sorts: [
-    { id: "package", label: "Package" },
-    { id: "name", label: "Name" },
+    { id: "package", label: "Package", defaultDir: "asc" },
+    { id: "name", label: "Name", defaultDir: "asc" },
   ],
 };
 
@@ -246,7 +249,7 @@ const MANAGE_ENABLED: FilterDef = {
 function manage(tab: string): WorkspaceControls {
   const togglable = tab === "Scheduled" || tab === "Event triggers";
   return {
-    search: `Search ${tab.toLowerCase()}…`,
+    search: `Search or filter ${tab.toLowerCase()}…`,
     filters: togglable ? [MANAGE_ENABLED] : undefined,
     actions: [{ id: "new", label: "New", icon: newIcon, roles: ["admin", "developer"] }],
   };
@@ -255,7 +258,7 @@ function manage(tab: string): WorkspaceControls {
 function administration(tab: string): WorkspaceControls {
   const isUsers = tab === "Users";
   return {
-    search: `Search ${tab.toLowerCase()}…`,
+    search: `Search or filter ${tab.toLowerCase()}…`,
     filters: isUsers
       ? [
           {

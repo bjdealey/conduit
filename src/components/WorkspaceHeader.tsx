@@ -1,27 +1,7 @@
 import { useEffect } from "react";
-import { Search } from "lucide-react";
 import { useStore } from "../store";
 import { workspaceControls, type ActionDef } from "../data/workspaceControls";
-import { FilterBar } from "./FilterBar";
-
-/** The page's search field. Capped in width so the bar keeps room for the filters
- *  and stays legible on a wide workspace. */
-function SearchField({ placeholder, value, onChange }: { placeholder: string; value: string; onChange: (v: string) => void }) {
-  return (
-    <label
-      className="flex min-w-0 flex-1 items-center gap-2 rounded-lg bg-component px-2.5 py-1.5"
-      style={{ maxWidth: "20rem" }}
-    >
-      <Search size={15} strokeWidth={1.8} className="shrink-0 text-tertiary-foreground" />
-      <input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="min-w-0 flex-1 bg-transparent text-body-sm text-primary-foreground outline-none placeholder:text-tertiary-foreground"
-      />
-    </label>
-  );
-}
+import { FilterBar, SearchFilterField } from "./FilterBar";
 
 function Action({ action, onSelect }: { action: ActionDef; onSelect: () => void }) {
   if (action.iconOnly) {
@@ -116,7 +96,14 @@ export function WorkspaceHeader() {
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-2 border-border-default border-b-[0.5px] px-3 py-2">
       {search && (
-        <SearchField placeholder={search} value={state.query} onChange={(q) => setControlsQuery(view, q)} />
+        <SearchFilterField
+          controls={definition}
+          placeholder={search}
+          value={state.query}
+          onChange={(q) => setControlsQuery(view, q)}
+          onApply={(fieldId, value) => setControlsFilter(view, fieldId, value)}
+          onSort={(sortId) => setControlsSort(view, sortId)}
+        />
       )}
 
       <FilterBar
@@ -125,7 +112,7 @@ export function WorkspaceHeader() {
         onApply={(fieldId, value) => setControlsFilter(view, fieldId, value)}
         onOp={(fieldId, op) => setControlsFilter(view, fieldId, state.filters[fieldId]?.value ?? "", op)}
         onRemove={(fieldId) => setControlsFilter(view, fieldId, null)}
-        onSort={(sortId) => setControlsSort(view, sortId)}
+        onSort={(sortId, dir) => setControlsSort(view, sortId, dir)}
         onClear={() => clearControls(view)}
       />
 
