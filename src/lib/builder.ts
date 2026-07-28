@@ -1,0 +1,139 @@
+import { actionById, defaultConfig, packagesForSteps } from "../data/actions";
+import type { Automation, AutomationDraft, AutomationStep, Run } from "../data/types";
+
+/* =============================================================================
+   Automation builder logic
+   -----------------------------------------------------------------------------
+   The pure half of the authoring screen: starting a draft, adding and moving
+   steps, committing a draft back to the library, and firing a test run. Kept out
+   of the component so the rules — ids, derived packages, where a saved draft
+   lands — can be read and tested on their own.
+   ============================================================================= */
+
+/** A blank automation, ready to author. New work starts private and as a Draft;
+ *  it isn't in the library until it's saved. */
+export function blankDraft(ownerId: string, folderId: string): AutomationDraft {
+  return {
+    id: "",
+    name: "",
+    description: "",
+    folderId,
+    visibility: "private",
+    status: "Draft",
+    ownerId,
+    trigger: { kind: "Manual", detail: "Owner and admins" },
+    steps: [],
+    runCount: 0,
+    successRate: 0,
+    lastRunAt: "never",
+    updatedAgo: "just now",
+    packages: [],
+    references: [],
+    isNew: true,
+  };
+}
+
+/** Next free step id for a flow. Ids only need to be unique within the flow, so
+ *  they stay readable rather than random. */
+export function nextStepId(steps: AutomationStep[]): string {
+  const taken = new Set(steps.map((s) => s.id));
+  let n = steps.length + 1;
+  while (taken.has(`stp_${n}`)) n++;
+  return `stp_${n}`;
+}
+
+/** A new step for an action, with the action's defaults filled in. */
+export function newStep(actionId: string, steps: AutomationStep[]): AutomationStep {
+  const action = actionById(actionId);
+  return { id: nextStepId(steps), actionId, config: action ? defaultConfig(action) : {} };
+}
+
+/** Move a step one place earlier or later. Out-of-range moves are no-ops, so the
+ *  first step's "up" and the last step's "down" simply do nothing. */
+export function moveStep(steps: AutomationStep[], id: string, direction: -1 | 1): AutomationStep[] {
+  const from = steps.findIndex((s) => s.id === id);
+  const to = from + direction;
+  if (from === -1 || to < 0 || to >= steps.length) return steps;
+  const next = [...steps];
+  [next[from], next[to]] = [next[to], next[from]];
+  return next;
+}
+
+/** A readable, collision-free id for a new automation, from its name. */
+export function automationId(name: string, taken: string[]): string {
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  const base = `aut_${slug || "automation"}`;
+  if (!taken.includes(base)) return base;
+  let n = 2;
+  while (taken.includes(`${base}_${n}`)) n++;
+  return `${base}_${n}`;
+}
+
+/** What a draft still needs before it can be saved or run. Empty = good to go. */
+export function draftProblems(draft: AutomationDraft): string[] {
+  const problems: string[] = [];
+  if (!draft.name.trim()) problems.push("Give the automation a name.");
+  if (draft.steps.length === 0) problems.push("Add at least one step.");
+  return problems;
+}
+
+/**
+ * Commit a draft to the library: a new automation is appended with a generated
+ * id, an existing one is replaced in place. `packages` is recomputed from the
+ * steps, so an automation's dependencies always match what it actually does.
+ */
+export function commitDraft(
+  automations: Automation[],
+  draft: AutomationDraft,
+): { automations: Automation[]; id: string } {
+  const { isNew, ...rest } = draft;
+  const id = isNew ? automationId(draft.name, automations.map((a) => a.id)) : draft.id;
+  const saved: Automation = {
+    ...rest,
+    id,
+    name: draft.name.trim() || "Untitled automation",
+    packages: packagesForSteps(draft.steps),
+    updatedAgo: "just now",
+  };
+  return {
+    automations: isNew ? [...automations, saved] : automations.map((a) => (a.id === id ? saved : a)),
+    id,
+  };
+}
+
+/** Next run id, continuing the library's numbering. */
+export function nextRunId(runs: Run[]): string {
+  const highest = runs.reduce((max, run) => {
+    const n = Number(run.id.replace(/\D/g, ""));
+    return Number.isFinite(n) && n > max ? n : max;
+  }, 1000);
+  return `run_${highest + 1}`;
+}
+
+/**
+ * A test run of the automation as it stands: in-flight, manually triggered, with
+ * a log that walks the flow — so the Activity stream shows what the builder just
+ * launched instead of a placeholder.
+ */
+export function testRun(automation: Automation, startedBy: string, runs: Run[]): Run {
+  const id = nextRunId(runs);
+  return {
+    id,
+    automationId: automation.id,
+    state: "Running",
+    trigger: "Manual",
+    startedBy,
+    startedAt: "just now",
+    duration: "2 s",
+    target: "prod-runner-1",
+    activity: [
+      { id: `${id}-1`, kind: "status", time: "just now", title: "Test run started from the builder" },
+      ...automation.steps.map((step, i) => ({
+        id: `${id}-s${i + 1}`,
+        kind: "fact" as const,
+        time: "just now",
+        title: `${i + 1}. ${actionById(step.actionId)?.label ?? step.actionId}`,
+      })),
+    ],
+  };
+}

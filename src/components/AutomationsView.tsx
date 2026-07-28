@@ -7,6 +7,7 @@ import {
   Link2,
   Lock,
   Package,
+  Pencil,
   Play,
   Workflow,
 } from "lucide-react";
@@ -321,7 +322,7 @@ function MetaRow({ label, children }: { label: string; children: ReactNode }) {
 }
 
 function AutomationDetail({ automation, onSelectAutomation }: { automation: Automation; onSelectAutomation: (id: string) => void }) {
-  const { memberById, runsForAutomation, automationById } = useStore();
+  const { memberById, runsForAutomation, automationById, editAutomation, role } = useStore();
   const [tab, setTab] = useState<DetailTab>("History");
   const owner = memberById(automation.ownerId);
   const runs = runsForAutomation(automation.id);
@@ -352,7 +353,12 @@ function AutomationDetail({ automation, onSelectAutomation }: { automation: Auto
           <div key="deps" className="animate-in fade-in-0 duration-200 ease-out scrollbar-none flex-1 overflow-y-auto px-6 py-6">
             <div className="mx-auto flex max-w-xl flex-col gap-8">
               <section className="flex flex-col gap-3">
-                <h3 className="text-body-base font-medium text-primary-foreground">Packages</h3>
+                <div className="flex flex-col gap-0.5">
+                  <h3 className="text-body-base font-medium text-primary-foreground">Packages</h3>
+                  <span className="text-body-sm text-tertiary-foreground">
+                    Derived from the {automation.steps.length} step{automation.steps.length === 1 ? "" : "s"} in the flow.
+                  </span>
+                </div>
                 <div className="flex flex-wrap gap-2">
                   {automation.packages.map((p) => (
                     <span
@@ -411,14 +417,26 @@ function AutomationDetail({ automation, onSelectAutomation }: { automation: Auto
               <h2 className="font-sans font-medium text-heading-4 text-primary-foreground">{automation.name}</h2>
               <p className="text-body-base text-secondary-foreground">{automation.description}</p>
             </div>
-            <button
-              type="button"
-              className="pressable focusable inline-flex w-fit items-center gap-1.5 rounded-lg px-3 py-1.5 text-body-sm font-medium"
-              style={{ background: "var(--color-brand-solid)", color: "#fff" }}
-            >
-              <Play size={14} strokeWidth={2} />
-              Run now
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="pressable focusable inline-flex w-fit items-center gap-1.5 rounded-lg px-3 py-1.5 text-body-sm font-medium"
+                style={{ background: "var(--color-brand-solid)", color: "#fff" }}
+              >
+                <Play size={14} strokeWidth={2} />
+                Run now
+              </button>
+              {role !== "user" && (
+                <button
+                  type="button"
+                  onClick={() => editAutomation(automation.id)}
+                  className="pressable focusable inline-flex w-fit items-center gap-1.5 rounded-lg border-border-default border-[0.5px] px-3 py-1.5 text-body-sm text-secondary-foreground transition-colors hover:bg-transparent-hover hover:text-primary-foreground"
+                >
+                  <Pencil size={14} strokeWidth={1.8} />
+                  Edit flow
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="h-px w-full" style={{ background: "var(--color-border-default)" }} />

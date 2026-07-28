@@ -96,6 +96,8 @@ export function Titlebar() {
     selectedRunId,
     selectRun,
     runById,
+    draft,
+    closeBuilder,
     viewMode,
     automations,
     setView,
@@ -116,6 +118,25 @@ export function Titlebar() {
     view === "activity" && viewMode("activity") === "timeline" && selectedRunId
       ? runById(selectedRunId) ?? null
       : null;
+
+  // The builder is a full-screen mode: its trail leads back to the library, and
+  // the layout/info controls don't apply to it.
+  if (draft) {
+    return (
+      <header
+        className="flex shrink-0 items-center gap-2 border-border-default border-b-[0.5px] px-4"
+        style={{ height: 56 }}
+      >
+        <SidebarToggle />
+        <Breadcrumb
+          items={[
+            { label: "Automations", onClick: closeBuilder },
+            { label: draft.isNew ? "New automation" : draft.name || "Untitled automation" },
+          ]}
+        />
+      </header>
+    );
+  }
 
   let items: Crumb[];
   // Whether the current view is showing a right-hand context pane the info toggle

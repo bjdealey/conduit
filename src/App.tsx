@@ -11,6 +11,7 @@ import { Board } from "./components/Board";
 import { IssueDetail } from "./components/IssueDetail";
 import { SplitView, DetailPane, EmptyDetail } from "./components/layout/SplitView";
 import { WorkspaceHeader } from "./components/WorkspaceHeader";
+import { AutomationBuilder } from "./components/AutomationBuilder";
 import { visibleIssues } from "./lib/select";
 import { ActivityView } from "./components/ActivityView";
 import { AutomationsView } from "./components/AutomationsView";
@@ -47,7 +48,16 @@ function InboxView() {
 }
 
 function Body() {
-  const { view } = useStore();
+  const { view, draft } = useStore();
+  // The automation builder is a mode, not a destination: while a draft is open it
+  // takes the whole workspace (the titlebar keeps the trail back out).
+  if (draft) {
+    return (
+      <div key="builder" className="animate-in fade-in-0 duration-200 ease-out flex min-h-0 flex-1">
+        <AutomationBuilder />
+      </div>
+    );
+  }
   return (
     <div key={view} className="animate-in fade-in-0 duration-200 ease-out flex min-h-0 flex-1">
       {view === "activity" && <ActivityView />}

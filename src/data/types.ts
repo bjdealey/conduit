@@ -121,6 +121,21 @@ export type Run = {
 /** The automation lifecycle, distinct from an incident's workflow status. */
 export type AutomationStatus = "Active" | "Paused" | "Draft";
 
+/** How an automation starts. `detail` carries the cadence for a schedule
+ *  ("Every 15 minutes"), the event key for an event ("user.signup"), or who may
+ *  run it by hand — the same vocabulary a Run's `startedBy` reads in. */
+export type AutomationTrigger = { kind: RunTrigger; detail: string };
+
+/** One step in an automation's flow: an action from the palette
+ *  (`src/data/actions.ts`) plus the values filled in for that action's fields.
+ *  `config` is keyed by field id; a missing key means the field is unset. */
+export type AutomationStep = {
+  id: string;
+  /** Action id from the palette — resolves to its label, package, and fields. */
+  actionId: string;
+  config: Record<string, string>;
+};
+
 /** A first-class automation definition. Lives in a Folder; produces Runs;
  *  its failures can spin off Issues. */
 export type Automation = {
@@ -132,6 +147,11 @@ export type Automation = {
   status: AutomationStatus;
   /** Owning team member id (see `members`). */
   ownerId: string;
+  /** What starts it. Edited in the builder; mirrored by the runs it produces. */
+  trigger: AutomationTrigger;
+  /** The flow itself, in execution order. Authored in the builder; the
+   *  `packages` list is derived from these steps' actions on save. */
+  steps: AutomationStep[];
   /** Rollup stats shown in the library table and detail header. */
   runCount: number;
   /** Success rate across recent runs, 0..1. */
@@ -143,3 +163,7 @@ export type Automation = {
   /** Other automation ids this one references (Dependencies tab). */
   references: string[];
 };
+
+/** The automation open in the builder: one loaded from the library for editing,
+ *  or a new one that isn't in it yet (`isNew`, committed on save). */
+export type AutomationDraft = Automation & { isNew: boolean };
