@@ -45,9 +45,9 @@ function Action({ action, onSelect }: { action: ActionDef; onSelect: () => void 
  * store per page (so narrowing survives navigating away and back); what a filter
  * or sort *means* is applied by the page itself.
  *
- * The search field stands on its own; filters and sort live behind one Filter
- * button (<FilterBar>) that opens a searchable menu of everything the page can be
- * narrowed or ordered by, and reads back as chips.
+ * Search and filtering are one control: the search field carries the filter glyph
+ * inside its frame (<SearchFilterField>), so a filter can be typed or browsed
+ * from the same box, and what's chosen reads back as chips (<FilterBar>).
  *
  * Pages that declare no controls (Settings) render no bar at all.
  */
@@ -109,6 +109,7 @@ export function WorkspaceHeader() {
       <FilterBar
         controls={definition}
         state={state}
+        hasSearch={Boolean(search)}
         onApply={(fieldId, value) => setControlsFilter(view, fieldId, value)}
         onOp={(fieldId, op) => setControlsFilter(view, fieldId, state.filters[fieldId]?.value ?? "", op)}
         onRemove={(fieldId) => setControlsFilter(view, fieldId, null)}

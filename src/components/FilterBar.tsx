@@ -15,15 +15,16 @@ import { Menu } from "./Menu";
 /* =============================================================================
    The filter bar
    -----------------------------------------------------------------------------
-   One Filter button instead of a control per dimension. It opens a searchable
-   menu of everything the page can be narrowed or ordered by; picking a dimension
-   drills into its values, and what you choose comes back as a chip that reads
-   "Status is Active" — editable in place, removable on its own, and clearable all
-   at once.
+   Search and filtering are one control, not two. The page's search field holds
+   the filter glyph inside its own frame (<SearchFilterField>): type to search the
+   rows and your text simultaneously suggests the filters and sorts it matches, or
+   press the glyph to browse everything the page can be narrowed or ordered by.
+   Picking a dimension drills into its values.
 
-   The page's search field is the same door: typing in it suggests the filters and
-   sorts your text matches, so a filter can be typed or picked. Free text still
-   searches — the suggestions are an offer, not a hijack.
+   What you choose comes back as a chip reading "Status is Active" — editable in
+   place, removable on its own, and clearable all at once. <FilterBar> is those
+   chips; it only grows a Filter button of its own on a page that declares filters
+   but no search field, so there is exactly one door either way.
 
    The bar renders what `data/workspaceControls` declares for the page, so adding
    a filter to a page is still a matter of declaring it, never of touching this.
@@ -216,7 +217,8 @@ function stepRows(controls: WorkspaceControls, step: Step, query: string): Row[]
   });
 }
 
-/** The Filter button and its two-step menu. */
+/** The fallback door: a Filter button and its two-step menu, for a page that
+ *  declares filters but no search field to host the glyph. */
 function FilterButton({
   controls,
   compact,
@@ -286,10 +288,14 @@ function FilterButton({
 }
 
 /**
- * The page's search field, which is also a way into the filters: what you type
- * searches the rows *and* suggests the filters and sorts it matches, so a filter
- * can be typed as readily as picked. Choosing a suggestion applies it and clears
- * the text — the chip now says what the text was reaching for.
+ * The search field *is* the filter control — one frame, both doors.
+ *
+ * Type and the text searches the rows while suggesting the filters and sorts it
+ * matches, so a filter can be typed as readily as picked; taking one of those
+ * suggestions clears the text, because the chip now says what the text was
+ * reaching for. Or press the filter glyph inside the field to browse everything
+ * the page offers, ignoring what's typed — there the text is a real search, and
+ * applying a filter from the list leaves it standing.
  */
 export function SearchFilterField({
   controls,
@@ -309,12 +315,16 @@ export function SearchFilterField({
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<Step>({ kind: "fields" });
   const [highlight, setHighlight] = useState(-1);
+  // "suggest" follows what's typed; "browse" is the glyph's list of everything.
+  const [mode, setMode] = useState<"suggest" | "browse">("suggest");
   const wrapper = useRef<HTMLDivElement>(null);
+  const input = useRef<HTMLInputElement>(null);
 
   const suggestible = (controls.filters?.length ?? 0) > 0 || (controls.sorts?.length ?? 0) > 0;
-  // The typed text picks the suggestions; once you've drilled into a dimension it
-  // goes back to being the page's search, so that step shows all of its options.
-  const stepQuery = step.kind === "fields" ? value : "";
+  // The typed text picks the suggestions. Browsing ignores it, and once you've
+  // drilled into a dimension the text is the page's search again — so that step
+  // shows all of its options either way.
+  const stepQuery = step.kind === "fields" && mode === "suggest" ? value : "";
   const rows = stepRows(controls, step, stepQuery);
 
   // Dismiss on a click outside the field and its panel — not on blur, so a click
@@ -332,7 +342,23 @@ export function SearchFilterField({
     setOpen(false);
     setStep({ kind: "fields" });
     setHighlight(-1);
+    setMode("suggest");
   };
+
+  /** The glyph inside the field: browse everything, or close what's open. */
+  const toggleBrowse = () => {
+    if (open && mode === "browse") return reset();
+    setStep({ kind: "fields" });
+    setHighlight(-1);
+    setMode("browse");
+    setOpen(true);
+    input.current?.focus();
+  };
+
+  // Text that led to a suggestion was navigation, not a search, so taking the
+  // suggestion consumes it. Text that was merely sitting there while you browsed
+  // the glyph's list is a real search — leave it alone.
+  const consumeText = () => mode === "suggest" && onChange("");
 
   const choose: Choose = {
     onDrill: (next) => {
@@ -341,13 +367,12 @@ export function SearchFilterField({
     },
     onApply: (fieldId, v) => {
       onApply(fieldId, v);
-      onChange("");
+      consumeText();
       reset();
     },
     onSort: (sortId) => {
       onSort(sortId);
-      // Text typed to reach the sorter was navigation, not a search.
-      onChange("");
+      consumeText();
       reset();
     },
   };
@@ -371,22 +396,47 @@ export function SearchFilterField({
   };
 
   return (
-    <div ref={wrapper} className="relative flex min-w-0 flex-1 items-center" style={{ maxWidth: "20rem" }}>
-      <label className="flex min-w-0 flex-1 items-center gap-2 rounded-lg bg-component px-2.5 py-1.5">
+    <div ref={wrapper} className="relative flex min-w-0 flex-1 items-center" style={{ maxWidth: "22rem" }}>
+      <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg bg-component py-1 pl-2.5 pr-1">
         <Search size={15} strokeWidth={1.8} className="shrink-0 text-tertiary-foreground" />
         <input
+          ref={input}
           value={value}
           onChange={(e) => {
             onChange(e.target.value);
             setHighlight(-1);
+            setMode("suggest");
             if (suggestible) setOpen(true);
           }}
           onFocus={() => suggestible && setOpen(true)}
           onKeyDown={onKeyDown}
           placeholder={placeholder}
+          aria-label={placeholder}
           className="min-w-0 flex-1 bg-transparent text-body-sm text-primary-foreground outline-none placeholder:text-tertiary-foreground"
         />
-      </label>
+        {suggestible && (
+          <>
+            <span aria-hidden className="h-4 w-px shrink-0" style={{ background: "var(--color-border-default)" }} />
+            <button
+              type="button"
+              onClick={toggleBrowse}
+              aria-haspopup="menu"
+              aria-expanded={open && mode === "browse"}
+              aria-label="Filter"
+              title="Filter"
+              className="focusable flex size-6 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-transparent-hover"
+              // Held down while its list is up, so the open panel has a visible owner.
+              style={
+                open && mode === "browse"
+                  ? { color: "var(--color-primary-foreground)", background: "var(--color-transparent-hover)" }
+                  : { color: "var(--color-tertiary-foreground)" }
+              }
+            >
+              <ListFilter size={15} strokeWidth={1.8} />
+            </button>
+          </>
+        )}
+      </div>
 
       {open && suggestible && (
         <div
@@ -496,12 +546,14 @@ function directionLabel(sortId: string, dir: SortDir): string {
   return dir === "asc" ? "lowest" : "highest";
 }
 
-/** The whole bar: a chip per applied filter, the sort once it's been chosen (with
- *  its direction on the chip), Clear, and the Filter button (which shrinks to its
- *  icon once chips are up). */
+/** What the bar reads back: a chip per applied filter, the sort once it's been
+ *  chosen (with its direction on the chip), and Clear. `hasSearch` says the page
+ *  has a <SearchFilterField> carrying the filter glyph; without one, the bar
+ *  grows its own Filter button so the page is still filterable. */
 export function FilterBar({
   controls,
   state,
+  hasSearch,
   onApply,
   onOp,
   onRemove,
@@ -510,6 +562,7 @@ export function FilterBar({
 }: {
   controls: WorkspaceControls;
   state: WorkspaceState;
+  hasSearch: boolean;
   onApply: (fieldId: string, value: string) => void;
   onOp: (fieldId: string, op: FilterOp) => void;
   onRemove: (fieldId: string) => void;
@@ -585,7 +638,7 @@ export function FilterBar({
         </button>
       )}
 
-      <FilterButton controls={controls} compact={anything} onApply={onApply} onSort={onSort} />
+      {!hasSearch && <FilterButton controls={controls} compact={anything} onApply={onApply} onSort={onSort} />}
     </>
   );
 }
