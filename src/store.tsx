@@ -10,7 +10,8 @@ import { palettes, type Palette } from "./data/palettes";
 import { VIEW_MODES } from "./data/viewLayout";
 import { applyBrand } from "./lib/palette";
 import { isDark, setTheme } from "./lib/theme";
-import type { Automation, Folder, Issue, Member, Priority, Role, Run, Status } from "./data/types";
+import type { Automation, AutomationDraft, Folder, Issue, Member, Priority, Role, Run, Status } from "./data/types";
+import { blankDraft, commitDraft, testRun } from "./lib/builder";
 import { CAPABILITIES, Capability, type Bot } from "@conduit/domain";
 import { EMPTY_WORKSPACE, type WorkspaceState } from "./lib/workspace";
 import { isSupabaseConfigured } from "./lib/supabase";
@@ -53,6 +54,19 @@ type Store = {
   runs: Run[];
   automationById: (id: string) => Automation | undefined;
   runById: (id: string) => Run | undefined;
+  /** The automation open in the builder, or null when it isn't showing. The
+   *  builder is a full-screen mode over the workspace, not a nav destination. */
+  draft: AutomationDraft | null;
+  /** Open the builder on a blank automation. */
+  newAutomation: () => void;
+  /** Open the builder on an existing automation. */
+  editAutomation: (id: string) => void;
+  updateDraft: (patch: Partial<AutomationDraft>) => void;
+  /** Commit the draft to the library and open it. Returns its id. */
+  saveDraft: () => string | null;
+  /** Save the draft, then start a manual run of it and jump to Activity. */
+  testRunDraft: () => void;
+  closeBuilder: () => void;
   /** Runs for one automation, newest first (seed order). */
   runsForAutomation: (automationId: string) => Run[];
   /** Canonical domain bots from our API (live) or the seed fallback. */
@@ -161,6 +175,11 @@ const StoreContext = createContext<Store | null>(null);
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [issues, setIssues] = useState<Issue[]>(seedIssues);
+  // The library and its run history are editable in the prototype: the builder
+  // writes automations, and a test run appends to the stream.
+  const [automations, setAutomations] = useState<Automation[]>(seedAutomations);
+  const [runs, setRuns] = useState<Run[]>(seedRuns);
+  const [draft, setDraft] = useState<AutomationDraft | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(seedIssues[0]?.id ?? null);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(endUsers[0]?.id ?? null);
   const [selectedAutomationId, setSelectedAutomationId] = useState<string | null>(seedAutomations[0]?.id ?? null);
@@ -277,12 +296,42 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const value: Store = {
     issues,
     members,
-    automations: seedAutomations,
+    automations,
     folders: seedFolders,
-    runs: seedRuns,
-    automationById: (id) => seedAutomations.find((a) => a.id === id),
-    runById: (id) => seedRuns.find((r) => r.id === id),
-    runsForAutomation: (automationId) => seedRuns.filter((r) => r.automationId === automationId),
+    runs,
+    automationById: (id) => automations.find((a) => a.id === id),
+    runById: (id) => runs.find((r) => r.id === id),
+    runsForAutomation: (id) => runs.filter((r) => r.automationId === id),
+    draft,
+    // New work lands in the private Drafts folder. The signed-in demo account
+    // isn't one of the team members, so ownership defaults to the first and is
+    // editable in the builder.
+    newAutomation: () => setDraft(blankDraft(members[0]?.id ?? "", "prv-drafts")),
+    editAutomation: (id) => {
+      const automation = automations.find((a) => a.id === id);
+      if (automation) setDraft({ ...automation, isNew: false });
+    },
+    updateDraft: (patch) => setDraft((prev) => (prev ? { ...prev, ...patch } : prev)),
+    saveDraft: () => {
+      if (!draft) return null;
+      const { automations: next, id } = commitDraft(automations, draft);
+      setAutomations(next);
+      setSelectedAutomationId(id);
+      setDraft(null);
+      setViewRaw("automations");
+      return id;
+    },
+    testRunDraft: () => {
+      if (!draft) return;
+      const { automations: next, id } = commitDraft(automations, draft);
+      const saved = next.find((a) => a.id === id)!;
+      setAutomations(next.map((a) => (a.id === id ? { ...a, runCount: a.runCount + 1, lastRunAt: "just now" } : a)));
+      setRuns((prev) => [testRun(saved, currentUser.name, prev), ...prev]);
+      setSelectedAutomationId(id);
+      setDraft(null);
+      setViewRaw("activity");
+    },
+    closeBuilder: () => setDraft(null),
     bots,
     capabilities: [...capabilitySet],
     hasCapability: (capability) => capabilitySet.has(capability),

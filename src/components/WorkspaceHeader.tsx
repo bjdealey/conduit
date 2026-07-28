@@ -69,10 +69,22 @@ function Action({ action, onSelect }: { action: ActionDef; onSelect: () => void 
  * Pages that declare no controls (Settings) render no bar at all.
  */
 export function WorkspaceHeader() {
-  const { view, role, controls, setControlsQuery, setControlsFilter, setControlsSort, clearControls, sectionTab, setView } =
-    useStore();
+  const {
+    view,
+    role,
+    controls,
+    setControlsQuery,
+    setControlsFilter,
+    setControlsSort,
+    clearControls,
+    sectionTab,
+    setView,
+    draft,
+    newAutomation,
+  } = useStore();
 
-  const definition = workspaceControls(view, sectionTab(view));
+  // The builder brings its own controls, so the page bar stands down while it's open.
+  const definition = draft ? null : workspaceControls(view, sectionTab(view));
   const state = controls(view);
   const { search, filters = [], sorts = [], actions = [] } = definition ?? {};
 
@@ -92,6 +104,7 @@ export function WorkspaceHeader() {
   // are wired here, so the descriptor stays presentation-only.
   const runAction = (id: string) => {
     if (id === "all-problems") setView("inbox");
+    if (id === "new-automation") newAutomation();
   };
 
   const allowed = actions.filter((a) => !a.roles || a.roles.includes(role));
