@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { ChartGantt, Columns3, LayoutGrid, List } from "lucide-react";
+import { ChartGantt, Columns3, LayoutGrid, List, Workflow } from "lucide-react";
 import type { View } from "../store";
 
 /* =============================================================================
@@ -19,6 +19,10 @@ const icon = { size: 14, strokeWidth: 1.8 } as const;
 /** Views that offer more than one presentation. The switcher only appears when a
  *  view has an entry here; the first mode is the default. */
 export const VIEW_MODES: Partial<Record<View, ViewMode[]>> = {
+  builder: [
+    { id: "steps", label: "Steps", icon: <List {...icon} /> },
+    { id: "diagram", label: "Diagram", icon: <Workflow {...icon} /> },
+  ],
   activity: [
     { id: "list", label: "List", icon: <List {...icon} /> },
     { id: "timeline", label: "Timeline", icon: <ChartGantt {...icon} /> },
@@ -55,4 +59,5 @@ export const CONTEXT_LABEL: Partial<Record<View, string>> = {
   surfaces: "Overview",
   activity: "Incidents",
   environments: "Details",
+  builder: "Configuration",
 };

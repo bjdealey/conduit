@@ -3,10 +3,11 @@ import { ArrowDown, ArrowUp, Package, Play, Plus, Trash2, Workflow, Zap } from "
 import { useStore } from "../store";
 import { folders as allFolders } from "../data/automations";
 import { members } from "../data/issues";
-import { actionById, actionsByPackage, packagesForSteps, stepSummary, type ActionField } from "../data/actions";
-import { RUN_TRIGGERS, type AutomationStep, type RunTrigger, type Visibility } from "../data/types";
-import { draftProblems, moveStep, newStep } from "../lib/builder";
-import { Pane, PANE_WIDTH } from "./layout/SplitView";
+import { actionById, packagesForSteps, stepSummary, type ActionField } from "../data/actions";
+import { RUN_TRIGGERS, type AutomationDraft, type AutomationStep, type RunTrigger, type Visibility } from "../data/types";
+import { draftProblems, moveStep, newStep, paletteGroups, type PaletteGroup } from "../lib/builder";
+import { isNarrowed } from "../lib/workspace";
+import { SplitView, Pane, DetailPane, ContextPane, PANE_WIDTH } from "./layout/SplitView";
 import { Avatar } from "./Avatar";
 
 /* =============================================================================
@@ -21,6 +22,11 @@ import { Avatar } from "./Avatar";
    selectable, and whatever is selected is configured in the right-hand pane.
    Nothing is written to the library until Save — see `lib/builder.ts` for what
    committing a draft does.
+
+   It's a view like any other, so it inherits the shared chrome: the workspace
+   header's search and Package filter narrow the palette, the titlebar's switcher
+   picks between the Steps list and the Diagram, and the info-pane toggle hides
+   the configuration column.
    ============================================================================= */
 
 /** What the right-hand pane is configuring. */
@@ -108,41 +114,26 @@ function ActionInput({ field, value, onChange }: { field: ActionField; value: st
 
 /* ------------------------------------------------------------------- palette */
 
-/** Left column: the actions a flow can be built from, grouped by the package
- *  that provides them. Clicking one appends it to the flow and selects it. */
-function Palette({ onAdd }: { onAdd: (actionId: string) => void }) {
-  const [query, setQuery] = useState("");
-  const q = query.trim().toLowerCase();
-  const groups = actionsByPackage()
-    .map((g) => ({
-      ...g,
-      actions: g.actions.filter(
-        (a) => !q || a.label.toLowerCase().includes(q) || a.package.includes(q) || a.summary.toLowerCase().includes(q),
-      ),
-    }))
-    .filter((g) => g.actions.length > 0);
-
+/** Left column: the actions a flow can be built from. The workspace header's
+ *  search, Package filter, and sort decide what's in `groups` — sorting by name
+ *  flattens the package grouping into one alphabetical list. */
+function Palette({ groups, narrowed, onAdd }: { groups: PaletteGroup[]; narrowed: boolean; onAdd: (actionId: string) => void }) {
   return (
     <Pane width={PANE_WIDTH.list}>
-      <div className="flex items-center gap-2 border-border-default border-b-[0.5px] px-3 py-3">
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search actions…"
-          className="min-w-0 flex-1 rounded-lg bg-component px-2.5 py-1.5 text-body-sm text-primary-foreground outline-none placeholder:text-tertiary-foreground"
-        />
-      </div>
-
       <div className="scrollbar-none flex-1 overflow-y-auto px-2 py-2">
         {groups.length === 0 && (
-          <p className="px-3 py-6 text-center text-body-sm text-tertiary-foreground">No actions match “{query}”.</p>
+          <p className="px-3 py-6 text-center text-body-sm text-tertiary-foreground">
+            {narrowed ? "No actions match the current search or filter." : "No actions available."}
+          </p>
         )}
         {groups.map((group) => (
-          <section key={group.package} className="mb-2">
-            <header className="flex items-center gap-2 px-3 py-2">
-              <Package size={13} strokeWidth={1.8} className="text-tertiary-foreground" />
-              <span className="font-departure-mono text-[0.72rem] text-secondary-foreground">{group.package}</span>
-            </header>
+          <section key={group.package ?? "all"} className="mb-2">
+            {group.package && (
+              <header className="flex items-center gap-2 px-3 py-2">
+                <Package size={13} strokeWidth={1.8} className="text-tertiary-foreground" />
+                <span className="font-departure-mono text-[0.72rem] text-secondary-foreground">{group.package}</span>
+              </header>
+            )}
             <div className="flex flex-col gap-0.5">
               {group.actions.map((action) => (
                 <button
@@ -153,6 +144,11 @@ function Palette({ onAdd }: { onAdd: (actionId: string) => void }) {
                 >
                   <span className="flex items-center gap-2">
                     <span className="min-w-0 flex-1 truncate text-body-sm text-primary-foreground">{action.label}</span>
+                    {!group.package && (
+                      <span className="shrink-0 font-departure-mono text-[0.65rem] text-tertiary-foreground">
+                        {action.package}
+                      </span>
+                    )}
                     <Plus size={13} strokeWidth={2} className="shrink-0 text-tertiary-foreground" />
                   </span>
                   <span className="text-[0.72rem] leading-tight text-tertiary-foreground">{action.summary}</span>
@@ -247,13 +243,181 @@ function IconButton({
   );
 }
 
+/* ---------------------------------------------------------------- flow modes */
+
+/** What both flow presentations need: the draft, what's selected, and the ways to
+ *  change the order or drop a step. */
+type FlowProps = {
+  draft: AutomationDraft;
+  selection: Selection;
+  onSelect: (selection: Selection) => void;
+  onMove: (id: string, direction: -1 | 1) => void;
+  onRemove: (id: string) => void;
+};
+
+/** The trigger, as the head of the flow in either presentation. */
+function TriggerCard({ draft, active, onSelect, wide }: { draft: AutomationDraft; active: boolean; onSelect: () => void; wide: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={"focusable flex items-center gap-3 rounded-xl border-border-default border-[0.5px] px-3 py-2.5 text-left transition-colors " + (wide ? "w-full" : "w-72")}
+      style={{
+        background: active ? "var(--color-transparent-hover)" : "var(--color-page)",
+        borderColor: active ? "var(--color-border-strong)" : undefined,
+      }}
+    >
+      <span
+        className="flex size-7 shrink-0 items-center justify-center rounded-lg"
+        style={{ background: "var(--amber-a3)", color: "var(--amber-a11)" }}
+      >
+        <Zap size={15} strokeWidth={1.8} />
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="text-body-sm text-primary-foreground">{draft.trigger.kind}</span>
+        <span className="truncate text-[0.72rem] text-tertiary-foreground">
+          {draft.trigger.detail || TRIGGER_HINT[draft.trigger.kind]}
+        </span>
+      </span>
+      <span className="shrink-0 font-departure-mono text-[0.65rem] uppercase tracking-wide text-tertiary-foreground">
+        Trigger
+      </span>
+    </button>
+  );
+}
+
+function NoSteps() {
+  return (
+    <div className="flex flex-col items-center gap-2 rounded-xl border-border-default border-[0.5px] px-6 py-10 text-center">
+      <Workflow size={20} strokeWidth={1.6} className="text-tertiary-foreground" />
+      <span className="text-body-base font-medium text-secondary-foreground">No steps yet</span>
+      <span className="max-w-xs text-body-sm text-tertiary-foreground">
+        Pick an action from the palette to start the flow. Its package is added to the automation's dependencies
+        automatically.
+      </span>
+    </div>
+  );
+}
+
+/** Steps mode: the flow as an ordered list — dense, and quickest to reorder. */
+function FlowSteps({ draft, selection, onSelect, onMove, onRemove }: FlowProps) {
+  return (
+    <>
+      <TriggerCard
+        draft={draft}
+        wide
+        active={selection.kind === "trigger"}
+        onSelect={() => onSelect({ kind: "trigger" })}
+      />
+      <div className="flex flex-col gap-2">
+        {draft.steps.map((step, i) => (
+          <StepRow
+            key={step.id}
+            step={step}
+            index={i}
+            count={draft.steps.length}
+            active={selection.kind === "step" && selection.id === step.id}
+            onSelect={() => onSelect({ kind: "step", id: step.id })}
+            onMove={(direction) => onMove(step.id, direction)}
+            onRemove={() => onRemove(step.id)}
+          />
+        ))}
+        {draft.steps.length === 0 && <NoSteps />}
+      </div>
+    </>
+  );
+}
+
+/** The line joining one node to the next. */
+function Connector() {
+  return (
+    <span aria-hidden className="flex flex-col items-center" style={{ height: 22 }}>
+      <span className="w-px flex-1" style={{ background: "var(--color-border-strong)" }} />
+    </span>
+  );
+}
+
+/** Diagram mode: the same flow as connected nodes, read top to bottom — what the
+ *  automation does at a glance, rather than a list to edit. */
+function FlowDiagram({ draft, selection, onSelect, onMove, onRemove }: FlowProps) {
+  return (
+    <div className="flex flex-col items-center">
+      <TriggerCard
+        draft={draft}
+        wide={false}
+        active={selection.kind === "trigger"}
+        onSelect={() => onSelect({ kind: "trigger" })}
+      />
+      {draft.steps.length === 0 ? (
+        <>
+          <Connector />
+          <NoSteps />
+        </>
+      ) : (
+        draft.steps.map((step, i) => {
+          const action = actionById(step.actionId);
+          const summary = stepSummary(step.actionId, step.config);
+          const active = selection.kind === "step" && selection.id === step.id;
+          return (
+            <div key={step.id} className="flex flex-col items-center">
+              <Connector />
+              <div className="group relative flex items-center">
+                <button
+                  type="button"
+                  onClick={() => onSelect({ kind: "step", id: step.id })}
+                  className="focusable flex w-72 flex-col gap-1 rounded-xl border-border-default border-[0.5px] px-3 py-2.5 text-left transition-colors"
+                  style={{
+                    background: active ? "var(--color-transparent-hover)" : "var(--color-page)",
+                    borderColor: active ? "var(--color-border-strong)" : undefined,
+                  }}
+                >
+                  <span className="flex items-center gap-2">
+                    <span className="font-departure-mono text-[0.72rem] text-tertiary-foreground">{i + 1}</span>
+                    <span className="min-w-0 flex-1 truncate text-body-sm text-primary-foreground">
+                      {action?.label ?? step.actionId}
+                    </span>
+                    <span className="shrink-0 rounded-md bg-component px-1.5 py-0.5 font-departure-mono text-[0.65rem] text-tertiary-foreground">
+                      {action?.package}
+                    </span>
+                  </span>
+                  {summary && <span className="truncate text-[0.72rem] text-tertiary-foreground">{summary}</span>}
+                </button>
+                <span
+                  className="absolute flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100"
+                  style={{ left: "100%", marginLeft: 8 }}
+                >
+                  <IconButton label="Move up" disabled={i === 0} onClick={() => onMove(step.id, -1)}>
+                    <ArrowUp size={13} strokeWidth={2} />
+                  </IconButton>
+                  <IconButton label="Move down" disabled={i === draft.steps.length - 1} onClick={() => onMove(step.id, 1)}>
+                    <ArrowDown size={13} strokeWidth={2} />
+                  </IconButton>
+                  <IconButton label="Remove step" onClick={() => onRemove(step.id)}>
+                    <Trash2 size={13} strokeWidth={2} />
+                  </IconButton>
+                </span>
+              </div>
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
 /* ------------------------------------------------------------------- builder */
 
 export function AutomationBuilder() {
-  const { draft, updateDraft, saveDraft, testRunDraft, closeBuilder, memberById } = useStore();
+  const { draft, updateDraft, saveDraft, testRunDraft, closeBuilder, memberById, controls, viewMode } = useStore();
   const [selection, setSelection] = useState<Selection>({ kind: "automation" });
 
   if (!draft) return null;
+
+  // The workspace header narrows the palette; the titlebar switcher picks the
+  // flow's presentation; the info-pane toggle hides the configuration column.
+  const state = controls("builder");
+  const groups = paletteGroups(state);
+  const diagram = viewMode("builder") === "diagram";
 
   const problems = draftProblems(draft);
   const owner = memberById(draft.ownerId);
@@ -272,13 +436,20 @@ export function AutomationBuilder() {
     if (selection.kind === "step" && selection.id === id) setSelection({ kind: "automation" });
   };
 
+  const flow: FlowProps = {
+    draft,
+    selection,
+    onSelect: setSelection,
+    onMove: (id, direction) => updateDraft({ steps: moveStep(draft.steps, id, direction) }),
+    onRemove: removeStep,
+  };
+
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <div className="flex min-h-0 min-w-0 flex-1">
-        <Palette onAdd={addStep} />
+      <SplitView>
+        <Palette groups={groups} narrowed={isNarrowed(state)} onAdd={addStep} />
 
-        {/* ------------------------------------------------------------ flow */}
-        <div className="flex min-w-0 flex-1 flex-col">
+        <DetailPane>
           <div className="scrollbar-none flex-1 overflow-y-auto px-6 py-6">
             <div className="mx-auto flex max-w-2xl flex-col gap-4">
               {/* Title — the document's own header. */}
@@ -291,68 +462,14 @@ export function AutomationBuilder() {
                 className="w-full bg-transparent font-sans text-heading-4 font-medium text-primary-foreground outline-none placeholder:text-tertiary-foreground"
               />
 
-              {/* Trigger — what starts the flow. */}
-              <button
-                type="button"
-                onClick={() => setSelection({ kind: "trigger" })}
-                className="focusable flex items-center gap-3 rounded-xl border-border-default border-[0.5px] px-3 py-2.5 text-left transition-colors"
-                style={{
-                  background: selection.kind === "trigger" ? "var(--color-transparent-hover)" : "var(--color-page)",
-                  borderColor: selection.kind === "trigger" ? "var(--color-border-strong)" : undefined,
-                }}
-              >
-                <span
-                  className="flex size-7 shrink-0 items-center justify-center rounded-lg"
-                  style={{ background: "var(--amber-a3)", color: "var(--amber-a11)" }}
-                >
-                  <Zap size={15} strokeWidth={1.8} />
-                </span>
-                <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="text-body-sm text-primary-foreground">{draft.trigger.kind}</span>
-                  <span className="truncate text-[0.72rem] text-tertiary-foreground">
-                    {draft.trigger.detail || TRIGGER_HINT[draft.trigger.kind]}
-                  </span>
-                </span>
-                <span className="shrink-0 font-departure-mono text-[0.65rem] uppercase tracking-wide text-tertiary-foreground">
-                  Trigger
-                </span>
-              </button>
-
-              {/* Steps */}
-              <div className="flex flex-col gap-2">
-                {draft.steps.map((step, i) => (
-                  <StepRow
-                    key={step.id}
-                    step={step}
-                    index={i}
-                    count={draft.steps.length}
-                    active={selection.kind === "step" && selection.id === step.id}
-                    onSelect={() => setSelection({ kind: "step", id: step.id })}
-                    onMove={(direction) => updateDraft({ steps: moveStep(draft.steps, step.id, direction) })}
-                    onRemove={() => removeStep(step.id)}
-                  />
-                ))}
-
-                {draft.steps.length === 0 && (
-                  <div className="flex flex-col items-center gap-2 rounded-xl border-border-default border-[0.5px] px-6 py-10 text-center">
-                    <Workflow size={20} strokeWidth={1.6} className="text-tertiary-foreground" />
-                    <span className="text-body-base font-medium text-secondary-foreground">No steps yet</span>
-                    <span className="max-w-xs text-body-sm text-tertiary-foreground">
-                      Pick an action from the palette to start the flow. Its package is added to the automation's
-                      dependencies automatically.
-                    </span>
-                  </div>
-                )}
+              <div key={diagram ? "diagram" : "steps"} className="animate-in fade-in-0 duration-200 ease-out flex flex-col gap-4">
+                {diagram ? <FlowDiagram {...flow} /> : <FlowSteps {...flow} />}
               </div>
             </div>
           </div>
-        </div>
+        </DetailPane>
 
-        {/* --------------------------------------------------------- config */}
-        <div
-          className="flex shrink-0 flex-col"
-          style={{ width: PANE_WIDTH.context, borderLeft: "0.5px solid var(--color-border-default)" }}
-        >
+        <ContextPane>
           <div className="scrollbar-none flex-1 overflow-y-auto px-5 py-5">
             {selectedStep ? (
               <StepConfig
@@ -438,13 +555,15 @@ export function AutomationBuilder() {
               </div>
             )}
           </div>
-        </div>
-      </div>
+        </ContextPane>
+      </SplitView>
 
       {/* --------------------------------------------------------------- footer */}
       <div className="flex shrink-0 items-center gap-3 border-border-default border-t-[0.5px] px-4 py-2.5">
         <span className="text-body-sm text-tertiary-foreground">
-          {problems.length > 0 ? problems[0] : `${draft.steps.length} step${draft.steps.length === 1 ? "" : "s"} · ${packages.length} package${packages.length === 1 ? "" : "s"}`}
+          {problems.length > 0
+            ? problems[0]
+            : `${draft.steps.length} step${draft.steps.length === 1 ? "" : "s"} · ${packages.length} package${packages.length === 1 ? "" : "s"}`}
         </span>
         <div className="ml-auto flex items-center gap-2">
           <button

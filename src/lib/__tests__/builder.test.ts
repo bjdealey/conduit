@@ -9,9 +9,14 @@ import {
   nextRunId,
   testRun,
 } from "../builder";
+import { paletteGroups } from "../builder";
+import { EMPTY_WORKSPACE, type WorkspaceState } from "../workspace";
 import { ACTIONS, actionById, packagesForSteps } from "../../data/actions";
 import { automations, runs } from "../../data/automations";
+import { workspaceControls } from "../../data/workspaceControls";
 import type { AutomationDraft } from "../../data/types";
+
+const controls = (patch: Partial<WorkspaceState> = {}): WorkspaceState => ({ ...EMPTY_WORKSPACE, ...patch });
 
 const draftWith = (patch: Partial<AutomationDraft> = {}): AutomationDraft => ({
   ...blankDraft("ls", "prv-drafts"),
@@ -142,5 +147,57 @@ describe("the action palette", () => {
         for (const key of Object.keys(step.config)) expect(fields, `${step.actionId}.${key}`).toContain(key);
       }
     }
+  });
+});
+
+describe("the palette under the workspace header", () => {
+  it("groups by package by default, with every action present", () => {
+    const groups = paletteGroups(controls());
+    expect(groups.every((g) => g.package !== null)).toBe(true);
+    expect(groups.flatMap((g) => g.actions)).toHaveLength(ACTIONS.length);
+  });
+
+  it("searches label, package, and summary", () => {
+    expect(paletteGroups(controls({ query: "browser" })).flatMap((g) => g.actions.map((a) => a.id))).toContain(
+      "browser.open",
+    );
+    // Matched on the summary rather than the label.
+    expect(paletteGroups(controls({ query: "object storage" })).flatMap((g) => g.actions.map((a) => a.id))).toEqual([
+      "storage.put",
+    ]);
+    expect(paletteGroups(controls({ query: "nothing-matches-this" }))).toEqual([]);
+  });
+
+  it("keeps one package when the filter is set", () => {
+    const groups = paletteGroups(controls({ filters: { package: "assertions" } }));
+    expect(groups).toHaveLength(1);
+    expect(groups[0].package).toBe("assertions");
+  });
+
+  it("flattens to one alphabetical list when sorted by name", () => {
+    const groups = paletteGroups(controls({ sort: "name" }));
+    expect(groups).toHaveLength(1);
+    expect(groups[0].package).toBeNull();
+    const labels = groups[0].actions.map((a) => a.label);
+    expect(labels).toEqual([...labels].sort((a, b) => a.localeCompare(b)));
+  });
+
+  it("stacks the search with the filter", () => {
+    const groups = paletteGroups(controls({ query: "assert", filters: { package: "browser" } }));
+    expect(groups).toEqual([]);
+  });
+});
+
+describe("the builder's chrome", () => {
+  it("declares the same controls every other page gets", () => {
+    const definition = workspaceControls("builder", "");
+    expect(definition?.search).toBe("Search actions…");
+    expect(definition?.filters?.[0].id).toBe("package");
+    expect(definition?.sorts?.map((s) => s.id)).toEqual(["package", "name"]);
+  });
+
+  it("offers every package the palette actually provides", () => {
+    const offered = workspaceControls("builder", "")?.filters?.[0].options.map((o) => o.id) ?? [];
+    expect(new Set(offered)).toEqual(new Set(ACTIONS.map((a) => a.package)));
   });
 });
