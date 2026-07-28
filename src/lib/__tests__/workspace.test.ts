@@ -109,6 +109,31 @@ describe("workspace control descriptors", () => {
     const newAutomation = workspaceControls("automations", "")?.actions?.[0];
     expect(newAutomation?.roles).toEqual(["admin", "developer"]);
   });
+
+  it("gives every filterable page a search field to host the filter glyph", () => {
+    // Search and filtering are one control: the filter glyph lives inside the
+    // search field. A page that declared filters but no search would fall back to
+    // a standalone Filter button — a second door, which is what this pins shut.
+    const pages: [Parameters<typeof workspaceControls>[0], string][] = [
+      ["inbox", ""],
+      ["automations", ""],
+      ["users", ""],
+      ["environments", ""],
+      ["surfaces", ""],
+      ["builder", ""],
+      ...(["In progress", "Historical", "Insights"] as const).map((t) => ["activity", t] as [never, string]),
+      ...(["Scheduled", "Event triggers", "Credentials", "Packages", "Global values"] as const).map(
+        (t) => ["manage", t] as [never, string],
+      ),
+      ...(["Users", "Roles", "Licenses", "Policies"] as const).map((t) => ["administration", t] as [never, string]),
+    ];
+
+    for (const [view, tab] of pages) {
+      const definition = workspaceControls(view, tab);
+      const filterable = (definition?.filters?.length ?? 0) > 0 || (definition?.sorts?.length ?? 0) > 0;
+      if (filterable) expect(definition?.search, `${view}/${tab}`).toBeTruthy();
+    }
+  });
 });
 
 describe("the filter menu's type-ahead", () => {
