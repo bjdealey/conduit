@@ -3,6 +3,7 @@ import { EMPTY_WORKSPACE, isNarrowed, matchesQuery, passesFilter, type Workspace
 import { visibleIssues } from "../select";
 import { issues } from "../../data/issues";
 import { workspaceControls } from "../../data/workspaceControls";
+import { menuEntries, optionsFor } from "../filterMenu";
 
 const state = (patch: Partial<WorkspaceState> = {}): WorkspaceState => ({ ...EMPTY_WORKSPACE, ...patch });
 
@@ -22,15 +23,21 @@ describe("workspace control helpers", () => {
 
   it("passes a filter when it is unset or equal", () => {
     expect(passesFilter(state(), "status", "Active")).toBe(true);
-    expect(passesFilter(state({ filters: { status: "Active" } }), "status", "Active")).toBe(true);
-    expect(passesFilter(state({ filters: { status: "Active" } }), "status", "Resolved")).toBe(false);
+    expect(passesFilter(state({ filters: { status: { op: "is", value: "Active" } } }), "status", "Active")).toBe(true);
+    expect(passesFilter(state({ filters: { status: { op: "is", value: "Active" } } }), "status", "Resolved")).toBe(false);
+  });
+
+  it("inverts the match under \"is not\"", () => {
+    const negated = state({ filters: { status: { op: "is not", value: "Active" } } });
+    expect(passesFilter(negated, "status", "Active")).toBe(false);
+    expect(passesFilter(negated, "status", "Resolved")).toBe(true);
   });
 
   it("reports whether a page is narrowed (sort alone is not narrowing)", () => {
     expect(isNarrowed(state())).toBe(false);
     expect(isNarrowed(state({ sort: "impact" }))).toBe(false);
     expect(isNarrowed(state({ query: "auth" }))).toBe(true);
-    expect(isNarrowed(state({ filters: { status: "Active" } }))).toBe(true);
+    expect(isNarrowed(state({ filters: { status: { op: "is", value: "Active" } } }))).toBe(true);
   });
 });
 
@@ -54,10 +61,10 @@ describe("visibleIssues (shared by the inbox list and the board)", () => {
     expect(searched.length).toBeGreaterThan(0);
     expect(searched.every((i) => i.title.toLowerCase().includes("password"))).toBe(true);
 
-    const active = visibleIssues(issues, state({ filters: { status: "Active" } }));
+    const active = visibleIssues(issues, state({ filters: { status: { op: "is", value: "Active" } } }));
     expect(active.every((i) => i.status === "Active")).toBe(true);
 
-    const both = visibleIssues(issues, state({ filters: { status: "Active", priority: "High" } }));
+    const both = visibleIssues(issues, state({ filters: { status: { op: "is", value: "Active" }, priority: { op: "is", value: "High" } } }));
     expect(both.every((i) => i.status === "Active" && i.priority === "High")).toBe(true);
     expect(both.length).toBeLessThanOrEqual(active.length);
   });
@@ -93,5 +100,52 @@ describe("workspace control descriptors", () => {
     expect(invite?.roles).toEqual(["admin"]);
     const newAutomation = workspaceControls("automations", "")?.actions?.[0];
     expect(newAutomation?.roles).toEqual(["admin", "developer"]);
+  });
+});
+
+describe("the filter menu's type-ahead", () => {
+  const inbox = workspaceControls("inbox", "")!;
+
+  it("lists every dimension, then sorting, when nothing is typed", () => {
+    const entries = menuEntries(inbox, "");
+    expect(entries.filter((e) => e.kind === "field").map((e) => (e.kind === "field" ? e.field.id : ""))).toEqual([
+      "status",
+      "priority",
+      "assignee",
+    ]);
+    expect(entries[entries.length - 1].kind).toBe("sort");
+  });
+
+  it("matches dimensions by name", () => {
+    const entries = menuEntries(inbox, "prio");
+    expect(entries.some((e) => e.kind === "field" && e.field.id === "priority")).toBe(true);
+  });
+
+  it("offers values directly, so a known value skips the second step", () => {
+    const entries = menuEntries(inbox, "recovery");
+    const value = entries.find((e) => e.kind === "value");
+    expect(value).toBeDefined();
+    if (value?.kind === "value") {
+      expect(value.field.id).toBe("status");
+      expect(value.option.id).toBe("In Recovery");
+    }
+  });
+
+  it("finds sorting by its own name", () => {
+    expect(menuEntries(inbox, "impacted").some((e) => e.kind === "sort")).toBe(true);
+    expect(menuEntries(inbox, "zzz")).toEqual([]);
+  });
+
+  it("narrows a dimension's own options in the second step", () => {
+    const status = inbox.filters!.find((f) => f.id === "status")!;
+    expect(optionsFor(status, "res").map((o) => o.id)).toEqual(["Resolved"]);
+    expect(optionsFor(status, "")).toHaveLength(status.options.length);
+  });
+
+  it("gives statuses and priorities the accent their rows use", () => {
+    const status = inbox.filters!.find((f) => f.id === "status")!;
+    expect(status.options.find((o) => o.id === "Active")?.accent).toBe("tomato");
+    const priority = inbox.filters!.find((f) => f.id === "priority")!;
+    expect(priority.options.find((o) => o.id === "High")?.accent).toBe("tomato");
   });
 });

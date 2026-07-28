@@ -1,8 +1,21 @@
 import type { ReactNode } from "react";
-import { MoreHorizontal, Plus } from "lucide-react";
+import {
+  ChartNoAxesColumn,
+  CircleDashed,
+  CircleUser,
+  Globe,
+  MoreHorizontal,
+  Package,
+  Play,
+  Plus,
+  ShieldCheck,
+  Tag,
+  Zap,
+} from "lucide-react";
 import type { View } from "../store";
 import { PRIORITIES, RUN_STATES, RUN_TRIGGERS, STATUSES, type Role, type RunState } from "./types";
 import { members } from "./issues";
+import { AUTOMATION_STATUS_ACCENT, PRIORITY_ACCENT, RUN_STATE_ACCENT, STATUS_ACCENT } from "../components/Badges";
 import { endUsers } from "./users";
 import { ACTIONS } from "./actions";
 
@@ -22,12 +35,14 @@ import { ACTIONS } from "./actions";
    detail's content tabs, the Activity sources list — stay with that pane.
    ============================================================================= */
 
-/** One choice in a filter menu. The implicit "All" option is added by the header. */
-export type FilterOption = { id: string; label: string };
+/** One choice in a filter menu. `accent` is a Radix scale prefix, drawn as a dot
+ *  beside the option so states and priorities read the same in the menu as they
+ *  do in the rows. */
+export type FilterOption = { id: string; label: string; accent?: string };
 
-/** A filter menu: `label` names the dimension ("Status"), and the selected
- *  option's label replaces it once one is chosen. */
-export type FilterDef = { id: string; label: string; options: FilterOption[] };
+/** A filterable dimension: `label` names it ("Status"), `icon` marks it in the
+ *  filter menu and on the chip it becomes once applied. */
+export type FilterDef = { id: string; label: string; icon?: ReactNode; options: FilterOption[] };
 
 /** One sort order. The first declared sort is a page's default. */
 export type SortDef = { id: string; label: string };
@@ -55,17 +70,34 @@ export type WorkspaceControls = {
   actions?: ActionDef[];
 };
 
-const option = <T extends string>(id: T): FilterOption => ({ id, label: id });
+const option = <T extends string>(id: T, accent?: string): FilterOption => ({ id, label: id, accent });
 const newIcon = <Plus size={14} strokeWidth={2} />;
+const dim = { size: 15, strokeWidth: 1.7 } as const;
+
+/** Options carrying the accent their own rows use. Each dimension passes its own
+ *  palette, because a value's colour is per-vocabulary — "Active" is tomato for an
+ *  incident and grass for an automation. */
+const fromPalette =
+  (palette: Record<string, string>) =>
+  <T extends string>(id: T): FilterOption =>
+    option(id, palette[id]);
+
+const ENVIRONMENT_ACCENT: Record<string, string> = { Healthy: "grass", Building: "amber", Degraded: "tomato" };
+const PLATFORM_USER_ACCENT: Record<string, string> = { Active: "grass", Invited: "amber", Suspended: "tomato" };
 
 /* ------------------------------------------------------------------- per page */
 
 const INBOX: WorkspaceControls = {
   search: "Search issues…",
   filters: [
-    { id: "status", label: "Status", options: STATUSES.map(option) },
-    { id: "priority", label: "Priority", options: PRIORITIES.map(option) },
-    { id: "assignee", label: "Assignee", options: members.map((m) => ({ id: m.id, label: m.name })) },
+    { id: "status", label: "Status", icon: <CircleDashed {...dim} />, options: STATUSES.map(fromPalette(STATUS_ACCENT)) },
+    { id: "priority", label: "Priority", icon: <ChartNoAxesColumn {...dim} />, options: PRIORITIES.map(fromPalette(PRIORITY_ACCENT)) },
+    {
+      id: "assignee",
+      label: "Assignee",
+      icon: <CircleUser {...dim} />,
+      options: members.map((m) => ({ id: m.id, label: m.name, accent: m.accent })),
+    },
   ],
   sorts: [
     { id: "priority", label: "Priority" },
@@ -86,8 +118,8 @@ function activity(tab: string): WorkspaceControls {
   return {
     search: "Search activity…",
     filters: [
-      { id: "state", label: "State", options: states.map(option) },
-      { id: "trigger", label: "Trigger", options: RUN_TRIGGERS.map(option) },
+      { id: "state", label: "State", icon: <CircleDashed {...dim} />, options: states.map(fromPalette(RUN_STATE_ACCENT)) },
+      { id: "trigger", label: "Trigger", icon: <Zap {...dim} />, options: RUN_TRIGGERS.map((t) => option(t)) },
     ],
     // Insights is a report over the narrowed set — there's no row order to choose.
     sorts:
@@ -104,10 +136,16 @@ function activity(tab: string): WorkspaceControls {
 const AUTOMATIONS: WorkspaceControls = {
   search: "Search automations…",
   filters: [
-    { id: "status", label: "Status", options: [option("Active"), option("Paused"), option("Draft")] },
+    {
+      id: "status",
+      label: "Status",
+      icon: <CircleDashed {...dim} />,
+      options: ["Active", "Paused", "Draft"].map(fromPalette(AUTOMATION_STATUS_ACCENT)),
+    },
     {
       id: "visibility",
       label: "Visibility",
+      icon: <Globe {...dim} />,
       options: [
         { id: "public", label: "Public" },
         { id: "private", label: "Private" },
@@ -129,12 +167,14 @@ const USERS: WorkspaceControls = {
     {
       id: "country",
       label: "Country",
+      icon: <Globe {...dim} />,
       // Derived from the seed directory, so the menu can't drift from the data.
-      options: [...new Set(endUsers.map((u) => u.country))].sort().map(option),
+      options: [...new Set(endUsers.map((u) => u.country))].sort().map((c) => option(c)),
     },
     {
       id: "problems",
       label: "Problems",
+      icon: <Tag {...dim} />,
       options: [
         { id: "with", label: "With problems" },
         { id: "without", label: "No problems" },
@@ -151,7 +191,12 @@ const USERS: WorkspaceControls = {
 const ENVIRONMENTS: WorkspaceControls = {
   search: "Search environments…",
   filters: [
-    { id: "status", label: "Status", options: [option("Healthy"), option("Building"), option("Degraded")] },
+    {
+      id: "status",
+      label: "Status",
+      icon: <CircleDashed {...dim} />,
+      options: ["Healthy", "Building", "Degraded"].map(fromPalette(ENVIRONMENT_ACCENT)),
+    },
   ],
   sorts: [
     { id: "name", label: "Name" },
@@ -168,7 +213,8 @@ const BUILDER: WorkspaceControls = {
     {
       id: "package",
       label: "Package",
-      options: [...new Set(ACTIONS.map((a) => a.package))].map(option),
+      icon: <Package {...dim} />,
+      options: [...new Set(ACTIONS.map((a) => a.package))].map((p) => option(p)),
     },
   ],
   sorts: [
@@ -190,9 +236,10 @@ const SURFACES: WorkspaceControls = {
 const MANAGE_ENABLED: FilterDef = {
   id: "enabled",
   label: "State",
+  icon: <Play {...dim} />,
   options: [
-    { id: "enabled", label: "Enabled" },
-    { id: "paused", label: "Paused" },
+    { id: "enabled", label: "Enabled", accent: "grass" },
+    { id: "paused", label: "Paused", accent: "gray" },
   ],
 };
 
@@ -214,13 +261,19 @@ function administration(tab: string): WorkspaceControls {
           {
             id: "role",
             label: "Role",
+            icon: <ShieldCheck {...dim} />,
             options: [
-              { id: "admin", label: "Admin" },
-              { id: "developer", label: "Developer" },
-              { id: "user", label: "User" },
+              { id: "admin", label: "Admin", accent: "violet" },
+              { id: "developer", label: "Developer", accent: "blue" },
+              { id: "user", label: "User", accent: "gray" },
             ],
           },
-          { id: "status", label: "Status", options: [option("Active"), option("Invited"), option("Suspended")] },
+          {
+            id: "status",
+            label: "Status",
+            icon: <CircleUser {...dim} />,
+            options: ["Active", "Invited", "Suspended"].map(fromPalette(PLATFORM_USER_ACCENT)),
+          },
         ]
       : undefined,
     actions: isUsers ? [{ id: "invite", label: "Invite", icon: newIcon, roles: ["admin"] }] : undefined,

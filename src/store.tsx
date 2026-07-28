@@ -13,7 +13,7 @@ import { isDark, setTheme } from "./lib/theme";
 import type { Automation, AutomationDraft, Folder, Issue, Member, Priority, Role, Run, Status } from "./data/types";
 import { blankDraft, commitDraft, testRun } from "./lib/builder";
 import { CAPABILITIES, Capability, type Bot } from "@conduit/domain";
-import { EMPTY_WORKSPACE, type WorkspaceState } from "./lib/workspace";
+import { EMPTY_WORKSPACE, type FilterOp, type WorkspaceState } from "./lib/workspace";
 import { isSupabaseConfigured } from "./lib/supabase";
 import { getBots, getCapabilities } from "./lib/api";
 import { seedBots } from "./data/toDomain";
@@ -109,10 +109,11 @@ type Store = {
    *  (Named `controls` because `workspace` is the tenant workspace.) */
   controls: (v: View) => WorkspaceState;
   setControlsQuery: (v: View, query: string) => void;
-  /** Choose a filter option, or pass null for "All". */
-  setControlsFilter: (v: View, filterId: string, value: string | null) => void;
+  /** Apply a filter option (with an optional operator), or pass null to drop it. */
+  setControlsFilter: (v: View, filterId: string, value: string | null, op?: FilterOp) => void;
   setControlsSort: (v: View, sortId: string) => void;
-  /** Reset a page's search and filters (the sort stays — it's a preference). */
+  /** Reset everything the filter bar shows: the search, the filters, and the sort
+   *  (back to the page's default). */
   clearControls: (v: View) => void;
   /** Active section tab for the tabbed pages (Manage, Administration). Lifted here
    *  so the workspace header's controls can follow the objects on screen. */
@@ -378,16 +379,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     selectRun: setSelectedRunId,
     controls: (v) => controlState[v] ?? EMPTY_WORKSPACE,
     setControlsQuery: (v, query) => patchControls(v, { query }),
-    setControlsFilter: (v, filterId, value) =>
+    setControlsFilter: (v, filterId, value, op) =>
       setControlState((prev) => {
         const current = prev[v] ?? EMPTY_WORKSPACE;
         const filters = { ...current.filters };
         if (value === null) delete filters[filterId];
-        else filters[filterId] = value;
+        // Keep the operator when only the value changes, and vice versa.
+        else filters[filterId] = { op: op ?? filters[filterId]?.op ?? "is", value };
         return { ...prev, [v]: { ...current, filters } };
       }),
     setControlsSort: (v, sort) => patchControls(v, { sort }),
-    clearControls: (v) => patchControls(v, { query: "", filters: {} }),
+    clearControls: (v) => patchControls(v, { query: "", filters: {}, sort: "" }),
     sectionTab: (v) => sectionTabs[v] ?? "",
     setSectionTab: (v, tab) => setSectionTabs((prev) => ({ ...prev, [v]: tab })),
     view,
