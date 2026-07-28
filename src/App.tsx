@@ -48,16 +48,7 @@ function InboxView() {
 }
 
 function Body() {
-  const { view, draft } = useStore();
-  // The automation builder is a mode, not a destination: while a draft is open it
-  // takes the whole workspace (the titlebar keeps the trail back out).
-  if (draft) {
-    return (
-      <div key="builder" className="animate-in fade-in-0 duration-200 ease-out flex min-h-0 flex-1">
-        <AutomationBuilder />
-      </div>
-    );
-  }
+  const { view } = useStore();
   return (
     <div key={view} className="animate-in fade-in-0 duration-200 ease-out flex min-h-0 flex-1">
       {view === "activity" && <ActivityView />}
@@ -68,6 +59,7 @@ function Body() {
       {view === "users" && <UsersView />}
       {view === "surfaces" && <SurfacesView />}
       {view === "environments" && <EnvironmentsView />}
+      {view === "builder" && <AutomationBuilder />}
       {view === "settings" && <SettingsContent />}
     </div>
   );

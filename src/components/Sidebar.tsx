@@ -14,7 +14,10 @@ import { SettingsBack, SettingsNav } from "./SettingsRail";
 
 const navIconProps = { size: 20, strokeWidth: 1.7 };
 
+// Keyed by view so the rail can't miss one; the modes that aren't nav
+// destinations (Settings' full-screen rail, the builder) never render from here.
 const icons: Record<View, ReactNode> = {
+  builder: <Workflow {...navIconProps} />,
   activity: <Bell {...navIconProps} />,
   inbox: <Inbox {...navIconProps} />,
   automations: <Workflow {...navIconProps} />,

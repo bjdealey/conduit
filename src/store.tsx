@@ -33,7 +33,11 @@ const write = (key: string, value: string): void => {
   }
 };
 
-/** Top-level navigation destinations (the sidebar rail). */
+/** Top-level navigation destinations (the sidebar rail), plus the two full-screen
+ *  modes that aren't destinations: Settings and the automation builder. They're
+ *  views so they inherit the shared chrome — the workspace header's search and
+ *  filters, the layout switcher, and the info-pane toggle — rather than each
+ *  reinventing it. */
 export type View =
   | "activity"
   | "inbox"
@@ -43,7 +47,8 @@ export type View =
   | "administration"
   | "surfaces"
   | "environments"
-  | "settings";
+  | "settings"
+  | "builder";
 
 type Store = {
   issues: Issue[];
@@ -265,16 +270,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const memberIndex = useMemo(() => new Map(members.map((m) => [m.id, m])), []);
 
-  // Navigating to a top-level page clears any active subpage. Entering Settings
-  // (a full-screen mode) remembers the view to return to on "Back".
-  const setView = (v: View) => {
-    if (v === "settings" && view !== "settings") setSettingsReturn(view);
+  // Navigating to a top-level page clears any active subpage. Entering a
+  // full-screen mode (Settings, the builder) remembers the view to return to;
+  // leaving the builder for anywhere else drops the draft with it.
+  const enter = (v: View) => {
+    if ((v === "settings" || v === "builder") && view !== v) setSettingsReturn(view);
+    if (view === "builder" && v !== "builder") setDraft(null);
     setViewRaw(v);
+  };
+  const setView = (v: View) => {
+    enter(v);
     setSubview(null);
   };
   const openSubview = (v: View, sub: string) => {
-    if (v === "settings" && view !== "settings") setSettingsReturn(view);
-    setViewRaw(v);
+    enter(v);
     setSubview(sub);
   };
   const exitSettings = () => setView(settingsReturn);
@@ -306,10 +315,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // New work lands in the private Drafts folder. The signed-in demo account
     // isn't one of the team members, so ownership defaults to the first and is
     // editable in the builder.
-    newAutomation: () => setDraft(blankDraft(members[0]?.id ?? "", "prv-drafts")),
+    newAutomation: () => {
+      setDraft(blankDraft(members[0]?.id ?? "", "prv-drafts"));
+      if (view !== "builder") setSettingsReturn(view);
+      setViewRaw("builder");
+    },
     editAutomation: (id) => {
       const automation = automations.find((a) => a.id === id);
-      if (automation) setDraft({ ...automation, isNew: false });
+      if (!automation) return;
+      setDraft({ ...automation, isNew: false });
+      if (view !== "builder") setSettingsReturn(view);
+      setViewRaw("builder");
     },
     updateDraft: (patch) => setDraft((prev) => (prev ? { ...prev, ...patch } : prev)),
     saveDraft: () => {
@@ -331,7 +347,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setDraft(null);
       setViewRaw("activity");
     },
-    closeBuilder: () => setDraft(null),
+    closeBuilder: () => {
+      setDraft(null);
+      setViewRaw(settingsReturn === "builder" ? "automations" : settingsReturn);
+    },
     bots,
     capabilities: [...capabilitySet],
     hasCapability: (capability) => capabilitySet.has(capability),

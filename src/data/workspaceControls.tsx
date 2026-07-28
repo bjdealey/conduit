@@ -4,6 +4,7 @@ import type { View } from "../store";
 import { PRIORITIES, RUN_STATES, RUN_TRIGGERS, STATUSES, type Role, type RunState } from "./types";
 import { members } from "./issues";
 import { endUsers } from "./users";
+import { ACTIONS } from "./actions";
 
 /* =============================================================================
    Per-page workspace controls
@@ -159,6 +160,23 @@ const ENVIRONMENTS: WorkspaceControls = {
   ],
 };
 
+/** The builder's controls act on its palette — the only collection on that
+ *  screen. Sorting by name flattens the grouping into one alphabetical list. */
+const BUILDER: WorkspaceControls = {
+  search: "Search actions…",
+  filters: [
+    {
+      id: "package",
+      label: "Package",
+      options: [...new Set(ACTIONS.map((a) => a.package))].map(option),
+    },
+  ],
+  sorts: [
+    { id: "package", label: "Package" },
+    { id: "name", label: "Name" },
+  ],
+};
+
 const SURFACES: WorkspaceControls = {
   search: "Search events…",
   actions: [
@@ -231,6 +249,8 @@ export function workspaceControls(view: View, tab: string): WorkspaceControls | 
       return ENVIRONMENTS;
     case "surfaces":
       return SURFACES;
+    case "builder":
+      return BUILDER;
     case "manage":
       return manage(tab || "Scheduled");
     case "administration":

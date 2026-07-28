@@ -79,12 +79,10 @@ export function WorkspaceHeader() {
     clearControls,
     sectionTab,
     setView,
-    draft,
     newAutomation,
   } = useStore();
 
-  // The builder brings its own controls, so the page bar stands down while it's open.
-  const definition = draft ? null : workspaceControls(view, sectionTab(view));
+  const definition = workspaceControls(view, sectionTab(view));
   const state = controls(view);
   const { search, filters = [], sorts = [], actions = [] } = definition ?? {};
 

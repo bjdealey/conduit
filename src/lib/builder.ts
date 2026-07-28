@@ -1,5 +1,6 @@
-import { actionById, defaultConfig, packagesForSteps } from "../data/actions";
+import { ACTIONS, actionById, actionsByPackage, defaultConfig, packagesForSteps, type StepAction } from "../data/actions";
 import type { Automation, AutomationDraft, AutomationStep, Run } from "../data/types";
+import { matchesQuery, passesFilter, type WorkspaceState } from "./workspace";
 
 /* =============================================================================
    Automation builder logic
@@ -9,6 +10,30 @@ import type { Automation, AutomationDraft, AutomationStep, Run } from "../data/t
    of the component so the rules — ids, derived packages, where a saved draft
    lands — can be read and tested on their own.
    ============================================================================= */
+
+/** A section of the palette. `package` is null for the flat, alphabetical
+ *  presentation (sorting by name drops the grouping). */
+export type PaletteGroup = { package: string | null; actions: StepAction[] };
+
+/**
+ * The palette, narrowed by the workspace header: its search matches an action's
+ * label, package, or summary, its Package filter keeps one package, and its sort
+ * chooses between the grouped view and one alphabetical list.
+ */
+export function paletteGroups(state: WorkspaceState): PaletteGroup[] {
+  const keep = (action: StepAction) =>
+    matchesQuery(state.query, [action.label, action.package, action.summary]) &&
+    passesFilter(state, "package", action.package);
+
+  if (state.sort === "name") {
+    const actions = ACTIONS.filter(keep).sort((a, b) => a.label.localeCompare(b.label));
+    return actions.length > 0 ? [{ package: null, actions }] : [];
+  }
+
+  return actionsByPackage()
+    .map((group) => ({ package: group.package as string | null, actions: group.actions.filter(keep) }))
+    .filter((group) => group.actions.length > 0);
+}
 
 /** A blank automation, ready to author. New work starts private and as a Draft;
  *  it isn't in the library until it's saved. */

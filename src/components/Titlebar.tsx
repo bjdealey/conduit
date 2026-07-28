@@ -68,6 +68,7 @@ function InfoPaneToggle({ label }: { label: string }) {
 }
 
 const VIEW_LABEL: Record<Exclude<View, "inbox">, string> = {
+  builder: "Automation builder",
   activity: "Activity",
   automations: "Automations",
   manage: "Manage",
@@ -119,25 +120,6 @@ export function Titlebar() {
       ? runById(selectedRunId) ?? null
       : null;
 
-  // The builder is a full-screen mode: its trail leads back to the library, and
-  // the layout/info controls don't apply to it.
-  if (draft) {
-    return (
-      <header
-        className="flex shrink-0 items-center gap-2 border-border-default border-b-[0.5px] px-4"
-        style={{ height: 56 }}
-      >
-        <SidebarToggle />
-        <Breadcrumb
-          items={[
-            { label: "Automations", onClick: closeBuilder },
-            { label: draft.isNew ? "New automation" : draft.name || "Untitled automation" },
-          ]}
-        />
-      </header>
-    );
-  }
-
   let items: Crumb[];
   // Whether the current view is showing a right-hand context pane the info toggle
   // can act on — mirrors each view's render conditions so the control is never dead.
@@ -168,6 +150,14 @@ export function Titlebar() {
     // The Surfaces section always opens on the surface "Dashboard".
     hasContext = true;
     items = [{ label: "Surfaces", onClick: () => setView("surfaces") }, { label: "Dashboard" }];
+  } else if (view === "builder") {
+    // The builder's trail leads back to the library; its context pane is the
+    // step configuration, so the info toggle acts on that.
+    hasContext = true;
+    items = [
+      { label: "Automations", onClick: closeBuilder },
+      { label: draft?.isNew ? "New automation" : draft?.name || "Untitled automation" },
+    ];
   } else if (view === "activity") {
     hasContext = true;
     items = openRun
