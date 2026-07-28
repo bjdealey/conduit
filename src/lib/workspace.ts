@@ -18,16 +18,21 @@ export type FilterOp = (typeof FILTER_OPS)[number];
 /** One applied filter: the chosen option, and how it's compared. */
 export type FilterValue = { op: FilterOp; value: string };
 
+/** Which way a sort runs. Every comparator is written ascending; the direction
+ *  flips it, so "Impacted users" and "Priority" need one comparator, not two. */
+export type SortDir = "asc" | "desc";
+
 /** One page's live control state. `filters` is keyed by filter id; a missing key
  *  means the filter isn't applied. An empty `sort` means the page's first
- *  (default) sort. */
+ *  (default) sort, and an empty `dir` means that sort's own default direction. */
 export type WorkspaceState = {
   query: string;
   filters: Record<string, FilterValue>;
   sort: string;
+  dir: SortDir | "";
 };
 
-export const EMPTY_WORKSPACE: WorkspaceState = { query: "", filters: {}, sort: "" };
+export const EMPTY_WORKSPACE: WorkspaceState = { query: "", filters: {}, sort: "", dir: "" };
 
 /** Case-insensitive "does any field contain the query". An empty query matches
  *  everything; nullish fields are skipped. */
@@ -55,9 +60,25 @@ export function activeFilters(state: WorkspaceState): { id: string; filter: Filt
   return Object.entries(state.filters).map(([id, filter]) => ({ id, filter }));
 }
 
-/** The effective sort id: what's chosen, else the page's default (first declared). */
-export function activeSort(state: WorkspaceState, fallback: string): string {
-  return state.sort || fallback;
+/**
+ * The sort in effect: the chosen one, else the page's first; and its direction,
+ * which is whatever the reader picked, else that sort's own default (names read
+ * A→Z, magnitudes read biggest-first).
+ */
+export function resolveSort(
+  state: WorkspaceState,
+  sorts: { id: string; defaultDir?: SortDir }[],
+): { id: string; dir: SortDir } {
+  const id = state.sort || sorts[0]?.id || "";
+  const dir = state.dir || sorts.find((s) => s.id === id)?.defaultDir || "asc";
+  return { id, dir };
+}
+
+/** Sort by an ascending comparator, flipped when the direction is descending.
+ *  Equal rows keep their original order either way. */
+export function ordered<T>(rows: T[], dir: SortDir, compare: (a: T, b: T) => number): T[] {
+  const sign = dir === "desc" ? -1 : 1;
+  return [...rows].sort((a, b) => sign * compare(a, b));
 }
 
 /** Whether the page is narrowed — drives the "Clear" affordance and the wording of

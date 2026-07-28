@@ -1,6 +1,7 @@
 import type { Issue } from "../data/types";
 import { PRIORITIES } from "../data/types";
-import { matchesQuery, passesFilter, type WorkspaceState } from "./workspace";
+import { workspaceControls } from "../data/workspaceControls";
+import { matchesQuery, ordered, passesFilter, resolveSort, type WorkspaceState } from "./workspace";
 
 /* =============================================================================
    Shared selectors
@@ -11,11 +12,18 @@ import { matchesQuery, passesFilter, type WorkspaceState } from "./workspace";
    must always show the same narrowed set.
    ============================================================================= */
 
-/** High → Low, matching the order priorities are declared in. */
-const priorityRank = (issue: Issue) => PRIORITIES.indexOf(issue.priority);
+/** Least urgent → most, so the shared descending default reads High first. */
+const urgency = (issue: Issue) => PRIORITIES.length - 1 - PRIORITIES.indexOf(issue.priority);
 
-/** Issues narrowed by the inbox's search + filters, in the chosen sort order.
- *  Shared by the list pane (<Inbox>) and the kanban (<Board>). */
+/** Ascending comparators; the header's direction flips them (see `ordered`). */
+const COMPARE: Record<string, (a: Issue, b: Issue) => number> = {
+  priority: (a, b) => urgency(a) - urgency(b) || a.impactedUsers - b.impactedUsers,
+  impact: (a, b) => a.impactedUsers - b.impactedUsers,
+  id: (a, b) => a.id - b.id,
+};
+
+/** Issues narrowed by the inbox's search + filters, in the chosen sort order and
+ *  direction. Shared by the list pane (<Inbox>) and the kanban (<Board>). */
 export function visibleIssues(issues: Issue[], state: WorkspaceState): Issue[] {
   const rows = issues.filter(
     (issue) =>
@@ -25,17 +33,6 @@ export function visibleIssues(issues: Issue[], state: WorkspaceState): Issue[] {
       passesFilter(state, "assignee", issue.assigneeId),
   );
 
-  const sorted = [...rows];
-  switch (state.sort) {
-    case "impact":
-      sorted.sort((a, b) => b.impactedUsers - a.impactedUsers);
-      break;
-    case "id":
-      sorted.sort((a, b) => b.id - a.id);
-      break;
-    // "priority" is the default: rank first, then by blast radius.
-    default:
-      sorted.sort((a, b) => priorityRank(a) - priorityRank(b) || b.impactedUsers - a.impactedUsers);
-  }
-  return sorted;
+  const { id, dir } = resolveSort(state, workspaceControls("inbox", "")?.sorts ?? []);
+  return ordered(rows, dir, COMPARE[id] ?? COMPARE.priority);
 }

@@ -13,7 +13,7 @@ import { isDark, setTheme } from "./lib/theme";
 import type { Automation, AutomationDraft, Folder, Issue, Member, Priority, Role, Run, Status } from "./data/types";
 import { blankDraft, commitDraft, testRun } from "./lib/builder";
 import { CAPABILITIES, Capability, type Bot } from "@conduit/domain";
-import { EMPTY_WORKSPACE, type FilterOp, type WorkspaceState } from "./lib/workspace";
+import { EMPTY_WORKSPACE, type FilterOp, type SortDir, type WorkspaceState } from "./lib/workspace";
 import { isSupabaseConfigured } from "./lib/supabase";
 import { getBots, getCapabilities } from "./lib/api";
 import { seedBots } from "./data/toDomain";
@@ -111,7 +111,8 @@ type Store = {
   setControlsQuery: (v: View, query: string) => void;
   /** Apply a filter option (with an optional operator), or pass null to drop it. */
   setControlsFilter: (v: View, filterId: string, value: string | null, op?: FilterOp) => void;
-  setControlsSort: (v: View, sortId: string) => void;
+  /** Choose a sort, and optionally its direction (omit to use the sort's own). */
+  setControlsSort: (v: View, sortId: string, dir?: SortDir | "") => void;
   /** Reset everything the filter bar shows: the search, the filters, and the sort
    *  (back to the page's default). */
   clearControls: (v: View) => void;
@@ -388,8 +389,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         else filters[filterId] = { op: op ?? filters[filterId]?.op ?? "is", value };
         return { ...prev, [v]: { ...current, filters } };
       }),
-    setControlsSort: (v, sort) => patchControls(v, { sort }),
-    clearControls: (v) => patchControls(v, { query: "", filters: {}, sort: "" }),
+    setControlsSort: (v, sort, dir) => patchControls(v, { sort, dir: dir ?? "" }),
+    clearControls: (v) => patchControls(v, { query: "", filters: {}, sort: "", dir: "" }),
     sectionTab: (v) => sectionTabs[v] ?? "",
     setSectionTab: (v, tab) => setSectionTabs((prev) => ({ ...prev, [v]: tab })),
     view,

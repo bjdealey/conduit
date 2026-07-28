@@ -1,6 +1,7 @@
 import { ACTIONS, actionById, actionsByPackage, defaultConfig, packagesForSteps, type StepAction } from "../data/actions";
 import type { Automation, AutomationDraft, AutomationStep, Run } from "../data/types";
-import { matchesQuery, passesFilter, type WorkspaceState } from "./workspace";
+import { workspaceControls } from "../data/workspaceControls";
+import { matchesQuery, ordered, passesFilter, resolveSort, type WorkspaceState } from "./workspace";
 
 /* =============================================================================
    Automation builder logic
@@ -25,14 +26,17 @@ export function paletteGroups(state: WorkspaceState): PaletteGroup[] {
     matchesQuery(state.query, [action.label, action.package, action.summary]) &&
     passesFilter(state, "package", action.package);
 
-  if (state.sort === "name") {
-    const actions = ACTIONS.filter(keep).sort((a, b) => a.label.localeCompare(b.label));
+  const { id, dir } = resolveSort(state, workspaceControls("builder", "")?.sorts ?? []);
+
+  if (id === "name") {
+    const actions = ordered(ACTIONS.filter(keep), dir, (a, b) => a.label.localeCompare(b.label));
     return actions.length > 0 ? [{ package: null, actions }] : [];
   }
 
-  return actionsByPackage()
+  const groups = actionsByPackage()
     .map((group) => ({ package: group.package as string | null, actions: group.actions.filter(keep) }))
     .filter((group) => group.actions.length > 0);
+  return dir === "desc" ? [...groups].reverse() : groups;
 }
 
 /** A blank automation, ready to author. New work starts private and as a Draft;

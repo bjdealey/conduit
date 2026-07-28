@@ -17,10 +17,11 @@ import { folders as allFolders } from "../data/automations";
 import { Avatar } from "./Avatar";
 import { AUTOMATION_STATUS_ACCENT, AutomationStatusChip } from "./Badges";
 import { RunRow } from "./RunRow";
-import { num } from "../lib/format";
+import { minutesAgo, num } from "../lib/format";
 import { SplitView, Pane, DetailPane, ContextPane, EmptyDetail, PANE_WIDTH } from "./layout/SplitView";
 import { SegmentedControl } from "./SegmentedControl";
-import { isNarrowed, matchesQuery, passesFilter, type WorkspaceState } from "../lib/workspace";
+import { isNarrowed, matchesQuery, ordered, passesFilter, resolveSort, type WorkspaceState } from "../lib/workspace";
+import { workspaceControls } from "../data/workspaceControls";
 
 /* ------------------------------------------------------------------ shared bits */
 
@@ -36,22 +37,15 @@ function visibleAutomations(automations: Automation[], state: WorkspaceState): A
       passesFilter(state, "visibility", a.visibility),
   );
 
-  const sorted = [...rows];
-  switch (state.sort) {
-    case "runs":
-      sorted.sort((a, b) => b.runCount - a.runCount);
-      break;
-    case "success":
-      sorted.sort((a, b) => b.successRate - a.successRate);
-      break;
-    case "recent":
-      // Seed order is the library's own recency; keep it rather than parsing labels.
-      break;
-    // "name" is the default.
-    default:
-      sorted.sort((a, b) => a.name.localeCompare(b.name));
-  }
-  return sorted;
+  const { id, dir } = resolveSort(state, workspaceControls("automations", "")?.sorts ?? []);
+  const compare: Record<string, (a: Automation, b: Automation) => number> = {
+    name: (a, b) => a.name.localeCompare(b.name),
+    runs: (a, b) => a.runCount - b.runCount,
+    success: (a, b) => a.successRate - b.successRate,
+    // Oldest run first, so the descending default reads most-recently-run.
+    recent: (a, b) => (minutesAgo(b.lastRunAt) ?? Infinity) - (minutesAgo(a.lastRunAt) ?? Infinity),
+  };
+  return ordered(rows, dir, compare[id] ?? compare.name);
 }
 
 /** Ancestry path of a folder, e.g. "Shared / Monitoring / Synthetics". */

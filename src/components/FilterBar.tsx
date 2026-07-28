@@ -1,8 +1,15 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ArrowUpDown, Check, ListFilter, Search, X } from "lucide-react";
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Check, ListFilter, Search, X } from "lucide-react";
 import type { FilterDef, FilterOption, SortDef, WorkspaceControls } from "../data/workspaceControls";
-import { menuEntries, optionsFor } from "../lib/filterMenu";
-import { FILTER_OPS, type FilterOp, type FilterValue, type WorkspaceState } from "../lib/workspace";
+import { menuEntries, optionsFor, type MenuEntry } from "../lib/filterMenu";
+import {
+  FILTER_OPS,
+  resolveSort,
+  type FilterOp,
+  type FilterValue,
+  type SortDir,
+  type WorkspaceState,
+} from "../lib/workspace";
 import { Menu } from "./Menu";
 
 /* =============================================================================
@@ -13,6 +20,10 @@ import { Menu } from "./Menu";
    drills into its values, and what you choose comes back as a chip that reads
    "Status is Active" — editable in place, removable on its own, and clearable all
    at once.
+
+   The page's search field is the same door: typing in it suggests the filters and
+   sorts your text matches, so a filter can be typed or picked. Free text still
+   searches — the suggestions are an offer, not a hijack.
 
    The bar renders what `data/workspaceControls` declares for the page, so adding
    a filter to a page is still a matter of declaring it, never of touching this.
@@ -75,11 +86,13 @@ function MenuRow({
   icon,
   label,
   trailing,
+  highlighted,
   onSelect,
 }: {
   icon?: ReactNode;
   label: string;
   trailing?: ReactNode;
+  highlighted?: boolean;
   onSelect: () => void;
 }) {
   return (
@@ -88,6 +101,7 @@ function MenuRow({
       role="menuitem"
       onClick={onSelect}
       className="focusable flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-transparent-hover"
+      style={{ background: highlighted ? "var(--color-transparent-hover)" : undefined }}
     >
       <span className="flex size-4 shrink-0 items-center justify-center text-tertiary-foreground">{icon}</span>
       <span className="min-w-0 flex-1 truncate text-body-sm text-primary-foreground">{label}</span>
@@ -96,8 +110,111 @@ function MenuRow({
   );
 }
 
-/** What the menu is showing: the dimensions, or one dimension's values. */
+/** What a menu is showing: the dimensions, or one dimension's values, or sorts. */
 type Step = { kind: "fields" } | { kind: "values"; field: FilterDef } | { kind: "sort"; sorts: SortDef[] };
+
+type Choose = {
+  onDrill: (step: Step) => void;
+  onApply: (fieldId: string, value: string) => void;
+  onSort: (sortId: string) => void;
+};
+
+/** The rows for the current step. Shared by the Filter button's menu and the
+ *  search field's suggestions, so both offer exactly the same things. */
+function EntryList({
+  controls,
+  step,
+  query,
+  highlight,
+  choose,
+}: {
+  controls: WorkspaceControls;
+  step: Step;
+  query: string;
+  /** Index of the keyboard-highlighted row, or -1 when the pointer is leading. */
+  highlight?: number;
+  choose: Choose;
+}) {
+  const rows = stepRows(controls, step, query);
+
+  if (rows.length === 0) {
+    return <p className="px-2 py-3 text-center text-body-sm text-tertiary-foreground">Nothing matches.</p>;
+  }
+
+  return (
+    <div className="flex flex-col p-1.5">
+      {rows.map((row, i) => (
+        <span key={row.key} className="flex flex-col">
+          {row.rule && <span className="my-1 h-px w-full" style={{ background: "var(--color-border-default)" }} />}
+          <MenuRow
+            icon={row.icon}
+            label={row.label}
+            trailing={row.trailing}
+            highlighted={i === highlight}
+            onSelect={() => row.select(choose)}
+          />
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/** One rendered row, flattened from the step so the keyboard and the pointer walk
+ *  the same list. */
+type Row = {
+  key: string;
+  icon?: ReactNode;
+  label: string;
+  trailing?: ReactNode;
+  /** Draw a separator above this row (the sort group). */
+  rule?: boolean;
+  select: (choose: Choose) => void;
+};
+
+function stepRows(controls: WorkspaceControls, step: Step, query: string): Row[] {
+  if (step.kind === "values")
+    return optionsFor(step.field, query).map((option) => ({
+      key: option.id,
+      icon: option.accent ? <Dot accent={option.accent} /> : step.field.icon,
+      label: option.label,
+      select: (choose: Choose) => choose.onApply(step.field.id, option.id),
+    }));
+
+  if (step.kind === "sort")
+    return step.sorts
+      .filter((s) => s.label.toLowerCase().includes(query.trim().toLowerCase()))
+      .map((s) => ({
+        key: s.id,
+        icon: <ArrowUpDown size={14} strokeWidth={1.8} />,
+        label: s.label,
+        select: (choose: Choose) => choose.onSort(s.id),
+      }));
+
+  return menuEntries(controls, query).map((entry: MenuEntry, i) => {
+    if (entry.kind === "field")
+      return {
+        key: `f-${entry.field.id}`,
+        icon: entry.field.icon,
+        label: entry.field.label,
+        select: (choose: Choose) => choose.onDrill({ kind: "values", field: entry.field }),
+      };
+    if (entry.kind === "value")
+      return {
+        key: `v-${entry.field.id}-${entry.option.id}`,
+        icon: entry.option.accent ? <Dot accent={entry.option.accent} /> : entry.field.icon,
+        label: entry.option.label,
+        trailing: <span className="shrink-0 text-[0.72rem] text-tertiary-foreground">{entry.field.label}</span>,
+        select: (choose: Choose) => choose.onApply(entry.field.id, entry.option.id),
+      };
+    return {
+      key: `sort-${i}`,
+      icon: <ArrowUpDown size={14} strokeWidth={1.8} />,
+      label: "Sort by",
+      rule: true,
+      select: (choose: Choose) => choose.onDrill({ kind: "sort", sorts: entry.sorts }),
+    };
+  });
+}
 
 /** The Filter button and its two-step menu. */
 function FilterButton({
@@ -120,10 +237,8 @@ function FilterButton({
     setStep({ kind: "fields" });
     setQuery("");
   };
-  const drill = (next: Step) => {
-    setStep(next);
-    setQuery("");
-  };
+
+  const placeholder = step.kind === "values" ? step.field.label : step.kind === "sort" ? "Sort by" : "Filter…";
 
   return (
     <span className="relative inline-flex shrink-0 items-center">
@@ -144,98 +259,156 @@ function FilterButton({
 
       {open && (
         <Popover onDismiss={close}>
-          {step.kind === "fields" && (
-            <>
-              <MenuSearch value={query} onChange={setQuery} placeholder="Filter…" />
-              <div className="flex flex-col p-1.5">
-                {menuEntries(controls, query).map((entry, i) => {
-                  if (entry.kind === "field")
-                    return (
-                      <MenuRow
-                        key={`f-${entry.field.id}`}
-                        icon={entry.field.icon}
-                        label={entry.field.label}
-                        onSelect={() => drill({ kind: "values", field: entry.field })}
-                      />
-                    );
-                  if (entry.kind === "value")
-                    return (
-                      <MenuRow
-                        key={`v-${entry.field.id}-${entry.option.id}`}
-                        icon={entry.option.accent ? <Dot accent={entry.option.accent} /> : entry.field.icon}
-                        label={entry.option.label}
-                        trailing={
-                          <span className="shrink-0 text-[0.72rem] text-tertiary-foreground">{entry.field.label}</span>
-                        }
-                        onSelect={() => {
-                          onApply(entry.field.id, entry.option.id);
-                          close();
-                        }}
-                      />
-                    );
-                  return (
-                    <span key={`s-${i}`} className="flex flex-col">
-                      <span className="my-1 h-px w-full" style={{ background: "var(--color-border-default)" }} />
-                      <MenuRow
-                        icon={<ArrowUpDown size={14} strokeWidth={1.8} />}
-                        label="Sort by"
-                        onSelect={() => drill({ kind: "sort", sorts: entry.sorts })}
-                      />
-                    </span>
-                  );
-                })}
-                {menuEntries(controls, query).length === 0 && (
-                  <p className="px-2 py-3 text-center text-body-sm text-tertiary-foreground">Nothing matches.</p>
-                )}
-              </div>
-            </>
-          )}
-
-          {step.kind === "values" && (
-            <>
-              <MenuSearch value={query} onChange={setQuery} placeholder={step.field.label} />
-              <div className="flex flex-col p-1.5">
-                {optionsFor(step.field, query).map((option) => (
-                  <MenuRow
-                    key={option.id}
-                    icon={option.accent ? <Dot accent={option.accent} /> : step.field.icon}
-                    label={option.label}
-                    onSelect={() => {
-                      onApply(step.field.id, option.id);
-                      close();
-                    }}
-                  />
-                ))}
-                {optionsFor(step.field, query).length === 0 && (
-                  <p className="px-2 py-3 text-center text-body-sm text-tertiary-foreground">Nothing matches.</p>
-                )}
-              </div>
-            </>
-          )}
-
-          {step.kind === "sort" && (
-            <>
-              <MenuSearch value={query} onChange={setQuery} placeholder="Sort by" />
-              <div className="flex flex-col p-1.5">
-                {step.sorts
-                  .filter((s) => s.label.toLowerCase().includes(query.trim().toLowerCase()))
-                  .map((s) => (
-                    <MenuRow
-                      key={s.id}
-                      icon={<ArrowUpDown size={14} strokeWidth={1.8} />}
-                      label={s.label}
-                      onSelect={() => {
-                        onSort(s.id);
-                        close();
-                      }}
-                    />
-                  ))}
-              </div>
-            </>
-          )}
+          <MenuSearch value={query} onChange={setQuery} placeholder={placeholder} />
+          <EntryList
+            controls={controls}
+            step={step}
+            query={query}
+            choose={{
+              onDrill: (next) => {
+                setStep(next);
+                setQuery("");
+              },
+              onApply: (fieldId, value) => {
+                onApply(fieldId, value);
+                close();
+              },
+              onSort: (sortId) => {
+                onSort(sortId);
+                close();
+              },
+            }}
+          />
         </Popover>
       )}
     </span>
+  );
+}
+
+/**
+ * The page's search field, which is also a way into the filters: what you type
+ * searches the rows *and* suggests the filters and sorts it matches, so a filter
+ * can be typed as readily as picked. Choosing a suggestion applies it and clears
+ * the text — the chip now says what the text was reaching for.
+ */
+export function SearchFilterField({
+  controls,
+  placeholder,
+  value,
+  onChange,
+  onApply,
+  onSort,
+}: {
+  controls: WorkspaceControls;
+  placeholder: string;
+  value: string;
+  onChange: (v: string) => void;
+  onApply: (fieldId: string, value: string) => void;
+  onSort: (sortId: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [step, setStep] = useState<Step>({ kind: "fields" });
+  const [highlight, setHighlight] = useState(-1);
+  const wrapper = useRef<HTMLDivElement>(null);
+
+  const suggestible = (controls.filters?.length ?? 0) > 0 || (controls.sorts?.length ?? 0) > 0;
+  // The typed text picks the suggestions; once you've drilled into a dimension it
+  // goes back to being the page's search, so that step shows all of its options.
+  const stepQuery = step.kind === "fields" ? value : "";
+  const rows = stepRows(controls, step, stepQuery);
+
+  // Dismiss on a click outside the field and its panel — not on blur, so a click
+  // on a suggestion lands before the panel goes away.
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      if (!wrapper.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
+  }, [open]);
+
+  const reset = () => {
+    setOpen(false);
+    setStep({ kind: "fields" });
+    setHighlight(-1);
+  };
+
+  const choose: Choose = {
+    onDrill: (next) => {
+      setStep(next);
+      setHighlight(-1);
+    },
+    onApply: (fieldId, v) => {
+      onApply(fieldId, v);
+      onChange("");
+      reset();
+    },
+    onSort: (sortId) => {
+      onSort(sortId);
+      // Text typed to reach the sorter was navigation, not a search.
+      onChange("");
+      reset();
+    },
+  };
+
+  // Typing searches; the arrows walk the suggestions and Enter takes one. Enter
+  // with nothing highlighted leaves the text alone — it's already the search.
+  const onKeyDown = (e: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (!open || rows.length === 0) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlight((h) => (h + 1) % rows.length);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlight((h) => (h <= 0 ? rows.length - 1 : h - 1));
+    } else if (e.key === "Enter" && highlight >= 0) {
+      e.preventDefault();
+      rows[highlight].select(choose);
+    } else if (e.key === "Escape") {
+      reset();
+    }
+  };
+
+  return (
+    <div ref={wrapper} className="relative flex min-w-0 flex-1 items-center" style={{ maxWidth: "20rem" }}>
+      <label className="flex min-w-0 flex-1 items-center gap-2 rounded-lg bg-component px-2.5 py-1.5">
+        <Search size={15} strokeWidth={1.8} className="shrink-0 text-tertiary-foreground" />
+        <input
+          value={value}
+          onChange={(e) => {
+            onChange(e.target.value);
+            setHighlight(-1);
+            if (suggestible) setOpen(true);
+          }}
+          onFocus={() => suggestible && setOpen(true)}
+          onKeyDown={onKeyDown}
+          placeholder={placeholder}
+          className="min-w-0 flex-1 bg-transparent text-body-sm text-primary-foreground outline-none placeholder:text-tertiary-foreground"
+        />
+      </label>
+
+      {open && suggestible && (
+        <div
+          className="pop-in absolute flex flex-col rounded-xl border-border-default border-[0.5px] bg-page"
+          style={{
+            zIndex: 50,
+            top: "calc(100% + 6px)",
+            left: 0,
+            width: 264,
+            transformOrigin: "top left",
+            boxShadow: "0 12px 32px -8px rgba(0,0,0,0.18), 0 0 0 0.5px rgba(0,0,0,0.04)",
+          }}
+        >
+          {step.kind !== "fields" && (
+            <span className="border-border-default border-b-[0.5px] px-3 py-2 text-[0.72rem] text-tertiary-foreground">
+              {step.kind === "values" ? step.field.label : "Sort by"}
+            </span>
+          )}
+          <EntryList controls={controls} step={step} query={stepQuery} highlight={highlight} choose={choose} />
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -314,8 +487,18 @@ function Chip({
   );
 }
 
-/** The whole bar: a chip per applied filter, the sort when it isn't the default,
- *  Clear, and the Filter button (which shrinks to its icon once chips are up). */
+/** What a direction means in words. Names read alphabetically; everything else is
+ *  a magnitude or a moment, where "most" and "newest" say more than "descending". */
+function directionLabel(sortId: string, dir: SortDir): string {
+  if (sortId === "name" || sortId === "automation" || sortId === "package")
+    return dir === "asc" ? "A–Z" : "Z–A";
+  if (sortId === "recent" || sortId === "id") return dir === "asc" ? "oldest" : "newest";
+  return dir === "asc" ? "lowest" : "highest";
+}
+
+/** The whole bar: a chip per applied filter, the sort once it's been chosen (with
+ *  its direction on the chip), Clear, and the Filter button (which shrinks to its
+ *  icon once chips are up). */
 export function FilterBar({
   controls,
   state,
@@ -330,7 +513,7 @@ export function FilterBar({
   onApply: (fieldId: string, value: string) => void;
   onOp: (fieldId: string, op: FilterOp) => void;
   onRemove: (fieldId: string) => void;
-  onSort: (sortId: string) => void;
+  onSort: (sortId: string, dir?: SortDir | "") => void;
   onClear: () => void;
 }) {
   const fields = controls.filters ?? [];
@@ -339,9 +522,11 @@ export function FilterBar({
     .map((field) => ({ field, value: state.filters[field.id] }))
     .filter((entry): entry is { field: FilterDef; value: FilterValue } => entry.value !== undefined);
 
-  const sort = sorts.find((s) => s.id === state.sort);
-  const showSort = sort !== undefined && sort.id !== sorts[0]?.id;
-  const anything = applied.length > 0 || showSort;
+  // The sort shows once it's been chosen — that's when its direction becomes
+  // something to flip.
+  const active = resolveSort(state, sorts);
+  const sort = state.sort || state.dir ? sorts.find((s) => s.id === active.id) : undefined;
+  const anything = applied.length > 0 || sort !== undefined;
 
   if (fields.length === 0 && sorts.length === 0) return null;
 
@@ -358,16 +543,32 @@ export function FilterBar({
         />
       ))}
 
-      {showSort && (
-        <span className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border-border-default border-[0.5px] py-1 pl-2 pr-1 text-body-sm">
-          <ArrowUpDown size={14} strokeWidth={1.8} className="shrink-0 text-tertiary-foreground" />
-          <span className="text-tertiary-foreground">Sort</span>
-          <span className="text-primary-foreground">{sort.label}</span>
+      {sort && (
+        <span className="inline-flex shrink-0 items-center rounded-lg border-border-default border-[0.5px] bg-page">
+          <span className="inline-flex items-center gap-1.5 py-1 pl-2 pr-1 text-body-sm text-primary-foreground">
+            <ArrowUpDown size={14} strokeWidth={1.8} className="shrink-0 text-tertiary-foreground" />
+            <span className="text-tertiary-foreground">Sort</span>
+            {sort.label}
+          </span>
+
+          {/* The direction is the arrow itself: click it to flip, and it always
+              points the way the rows currently read. */}
           <button
             type="button"
-            onClick={() => onSort(sorts[0].id)}
+            onClick={() => onSort(active.id, active.dir === "asc" ? "desc" : "asc")}
+            aria-label={active.dir === "asc" ? "Sort descending" : "Sort ascending"}
+            title={active.dir === "asc" ? "Ascending — click for descending" : "Descending — click for ascending"}
+            className="focusable inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-body-sm text-secondary-foreground transition-colors hover:bg-transparent-hover hover:text-primary-foreground"
+          >
+            {active.dir === "asc" ? <ArrowUp size={13} strokeWidth={2} /> : <ArrowDown size={13} strokeWidth={2} />}
+            <span className="text-[0.72rem]">{directionLabel(sort.id, active.dir)}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onSort("", "")}
             aria-label="Reset sort"
-            className="focusable flex size-5 items-center justify-center rounded text-tertiary-foreground transition-colors hover:bg-transparent-hover hover:text-primary-foreground"
+            className="focusable mr-1 flex size-5 items-center justify-center rounded text-tertiary-foreground transition-colors hover:bg-transparent-hover hover:text-primary-foreground"
           >
             <X size={13} strokeWidth={2} />
           </button>
