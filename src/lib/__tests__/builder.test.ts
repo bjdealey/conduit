@@ -169,7 +169,7 @@ describe("the palette under the workspace header", () => {
   });
 
   it("keeps one package when the filter is set", () => {
-    const groups = paletteGroups(controls({ filters: { package: "assertions" } }));
+    const groups = paletteGroups(controls({ filters: { package: { op: "is", value: "assertions" } } }));
     expect(groups).toHaveLength(1);
     expect(groups[0].package).toBe("assertions");
   });
@@ -183,7 +183,7 @@ describe("the palette under the workspace header", () => {
   });
 
   it("stacks the search with the filter", () => {
-    const groups = paletteGroups(controls({ query: "assert", filters: { package: "browser" } }));
+    const groups = paletteGroups(controls({ query: "assert", filters: { package: { op: "is", value: "browser" } } }));
     expect(groups).toEqual([]);
   });
 });

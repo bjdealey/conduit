@@ -22,19 +22,18 @@ import { PRIORITY_ACCENT } from "./Badges";
 import { num } from "../lib/format";
 import { SplitView, Pane, DetailPane, ContextPane, EmptyDetail, PANE_WIDTH } from "./layout/SplitView";
 import { SegmentedControl } from "./SegmentedControl";
-import { filterValue, isNarrowed, matchesQuery, passesFilter, type WorkspaceState } from "../lib/workspace";
+import { isNarrowed, matchesQuery, passesFilter, type WorkspaceState } from "../lib/workspace";
 
 /* ----------------------------------------------------------------- selection */
 
 /** End-users narrowed and ordered by the workspace header. Shared by the list
  *  pane and the grid, so both presentations show the same directory. */
 function visibleUsers(state: WorkspaceState): EndUser[] {
-  const problems = filterValue(state, "problems");
   const rows = endUsers.filter(
     (u) =>
       matchesQuery(state.query, [u.name, u.email, u.country, u.source]) &&
       passesFilter(state, "country", u.country) &&
-      (problems === null || (problems === "with") === u.activeProblemIds.length > 0),
+      passesFilter(state, "problems", u.activeProblemIds.length > 0 ? "with" : "without"),
   );
 
   const sorted = [...rows];

@@ -1,9 +1,8 @@
 import { useEffect } from "react";
-import { ArrowUpDown, Search, X } from "lucide-react";
+import { Search } from "lucide-react";
 import { useStore } from "../store";
 import { workspaceControls, type ActionDef } from "../data/workspaceControls";
-import { isNarrowed } from "../lib/workspace";
-import { Menu } from "./Menu";
+import { FilterBar } from "./FilterBar";
 
 /** The page's search field. Capped in width so the bar keeps room for the filters
  *  and stays legible on a wide workspace. */
@@ -66,6 +65,10 @@ function Action({ action, onSelect }: { action: ActionDef; onSelect: () => void 
  * store per page (so narrowing survives navigating away and back); what a filter
  * or sort *means* is applied by the page itself.
  *
+ * The search field stands on its own; filters and sort live behind one Filter
+ * button (<FilterBar>) that opens a searchable menu of everything the page can be
+ * narrowed or ordered by, and reads back as chips.
+ *
  * Pages that declare no controls (Settings) render no bar at all.
  */
 export function WorkspaceHeader() {
@@ -92,7 +95,7 @@ export function WorkspaceHeader() {
   useEffect(() => {
     for (const [id, value] of Object.entries(state.filters)) {
       const filter = filters.find((f) => f.id === id);
-      if (!filter || !filter.options.some((o) => o.id === value)) setControlsFilter(view, id, null);
+      if (!filter || !filter.options.some((o) => o.id === value.value)) setControlsFilter(view, id, null);
     }
   });
 
@@ -106,8 +109,6 @@ export function WorkspaceHeader() {
   };
 
   const allowed = actions.filter((a) => !a.roles || a.roles.includes(role));
-  const sort = state.sort || sorts[0]?.id || "";
-  const narrowed = isNarrowed(state);
 
   // A page with nothing to show in the bar shouldn't render an empty rule.
   if (!search && filters.length === 0 && sorts.length === 0 && allowed.length === 0) return null;
@@ -118,51 +119,15 @@ export function WorkspaceHeader() {
         <SearchField placeholder={search} value={state.query} onChange={(q) => setControlsQuery(view, q)} />
       )}
 
-      {filters.map((filter) => {
-        const value = state.filters[filter.id] ?? null;
-        return (
-          <Menu
-            key={filter.id}
-            label={value ? `${filter.label}:` : filter.label}
-            options={filter.options}
-            value={value}
-            onChange={(id) => setControlsFilter(view, filter.id, id)}
-            clearLabel={`All ${filter.label.toLowerCase()}`}
-            trailing={
-              value && (
-                <button
-                  type="button"
-                  onClick={() => setControlsFilter(view, filter.id, null)}
-                  aria-label={`Clear ${filter.label} filter`}
-                  className="focusable mr-1 flex size-4 items-center justify-center rounded text-tertiary-foreground transition-colors hover:bg-transparent-hover hover:text-primary-foreground"
-                >
-                  <X size={12} strokeWidth={2} />
-                </button>
-              )
-            }
-          />
-        );
-      })}
-
-      {sorts.length > 0 && (
-        <Menu
-          label="Sort:"
-          icon={<ArrowUpDown size={14} strokeWidth={1.8} className="shrink-0 text-tertiary-foreground" />}
-          options={sorts}
-          value={sort}
-          onChange={(id) => setControlsSort(view, id ?? sorts[0].id)}
-        />
-      )}
-
-      {narrowed && (
-        <button
-          type="button"
-          onClick={() => clearControls(view)}
-          className="focusable shrink-0 rounded-md px-2 py-1 text-body-sm text-tertiary-foreground transition-colors hover:text-primary-foreground"
-        >
-          Clear
-        </button>
-      )}
+      <FilterBar
+        controls={definition}
+        state={state}
+        onApply={(fieldId, value) => setControlsFilter(view, fieldId, value)}
+        onOp={(fieldId, op) => setControlsFilter(view, fieldId, state.filters[fieldId]?.value ?? "", op)}
+        onRemove={(fieldId) => setControlsFilter(view, fieldId, null)}
+        onSort={(sortId) => setControlsSort(view, sortId)}
+        onClear={() => clearControls(view)}
+      />
 
       {allowed.length > 0 && (
         <div className="ml-auto flex items-center gap-2">
