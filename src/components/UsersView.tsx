@@ -407,7 +407,7 @@ function Sessions({ user }: { user: EndUser }) {
           </div>
         </div>
       ) : (
-        <div className="scrollbar-none flex-1 overflow-y-auto p-6">
+        <div className="scrollbar-none flex-1 overflow-y-auto px-6 py-6">
           <div className="mx-auto flex max-w-xl flex-col gap-3">
             {active.length === 0 ? (
               <p className="py-16 text-center text-body-sm text-tertiary-foreground">No active problems for this user.</p>
