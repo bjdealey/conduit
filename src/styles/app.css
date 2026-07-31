@@ -279,6 +279,36 @@ nav[data-expanded="false"] .rail-fade-collapsed {
   transition-duration: var(--tw-duration, 0.2s);
 }
 
+/* -----------------------------------------------------------------------------
+   Second batch of never-emitted utilities (found by `npm run check:classes`).
+   Same cause as the block above: the app references these, globals.css never
+   compiled them, so until now they were silent no-ops. Values are Tailwind's
+   standard ones.
+   ----------------------------------------------------------------------------- */
+
+/* State variants. Without these, disabled buttons never dimmed, the comment
+   composer never showed a focus border, and the link had no hover underline. */
+.disabled\:opacity-40:disabled { opacity: 0.4; }
+.disabled\:opacity-45:disabled { opacity: 0.45; }
+.focus-within\:border-border-strong:focus-within { border-color: var(--color-border-strong); }
+.hover\:underline:hover { text-decoration-line: underline; }
+
+/* The chevron nudge on the metadata pane's "N evidence" button. Paired with
+   `transition-transform`; the icon carries no other transform. */
+.group:hover .group-hover\:translate-x-0\.5 { transform: translateX(0.125rem); }
+
+/* Role and status chips render their label from the raw data ("admin"), and
+   relied on this to present it. */
+.capitalize { text-transform: capitalize; }
+
+/* Micro label inside the 18px initials squares (activity feed, user problems). */
+.text-\[0\.55rem\] { font-size: 0.55rem; }
+
+/* Spacing. */
+.my-3    { margin-top: 0.75rem; margin-bottom: 0.75rem; }
+.pl-1    { padding-left: 0.25rem; }
+.py-3\.5 { padding-top: 0.875rem; padding-bottom: 0.875rem; }
+
 /* =============================================================================
    Activity timeline bars
    -----------------------------------------------------------------------------
