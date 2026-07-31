@@ -102,6 +102,29 @@
 }
 
 /* =============================================================================
+   6b. SUCCESS  — completes the status triad from §5.
+   -----------------------------------------------------------------------------
+   §5 sets --color-warning-solid and --color-danger-solid, and globals.css
+   defines both for light AND dark. --color-success-solid was never defined in
+   either, so `var(--color-success-solid, #16a34a)` in SettingsPanel resolved to
+   its hardcoded fallback — a green that ignored both the palette switcher and
+   dark mode, and that matched nothing else on screen.
+
+   It points at grass, not green, because grass is what this app actually treats
+   as "healthy": it is the accent for Resolved issues, Completed runs, Active
+   automations, Active platform users, enabled schedules, healthy environments
+   and surfaces, and added lines in a diff. (§5's --color-positive-solid ->
+   green-a9 predates that convention and is referenced nowhere in src/.)
+
+   This lives outside the `:root:not(.dark)` block above because it defines a new
+   name rather than shadowing the dark palette, and because var(--grass-a9)
+   already resolves per-theme — one declaration covers light and dark.
+   ============================================================================= */
+:root {
+  --color-success-solid: var(--grass-a9);
+}
+
+/* =============================================================================
    7. ELEVATION  — shadows for floating surfaces.
    -----------------------------------------------------------------------------
    globals.css ships a scale (--s-border / --s-default / --s-large /

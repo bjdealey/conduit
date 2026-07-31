@@ -332,9 +332,9 @@ function ProfilePage() {
    --------------------------------------------------------------------------- */
 
 const BOT_STATE_ACCENT: Record<string, string> = {
-  Running: "var(--color-success-solid, #16a34a)",
+  Running: "var(--color-success-solid)",
   Idle: "var(--color-tertiary-foreground)",
-  Disabled: "var(--color-warning-solid, #d97706)",
+  Disabled: "var(--color-warning-solid)",
   Unknown: "var(--color-tertiary-foreground)",
 };
 
@@ -354,8 +354,8 @@ function IntegrationsPage() {
         <span
           className="shrink-0 rounded-full px-2.5 py-1 text-body-sm font-medium"
           style={{
-            background: live ? "color-mix(in srgb, var(--color-success-solid, #16a34a) 16%, transparent)" : "var(--color-component)",
-            color: live ? "var(--color-success-solid, #16a34a)" : "var(--color-tertiary-foreground)",
+            background: live ? "color-mix(in srgb, var(--color-success-solid) 16%, transparent)" : "var(--color-component)",
+            color: live ? "var(--color-success-solid)" : "var(--color-tertiary-foreground)",
           }}
         >
           {live ? "Live · Supabase" : "Seed data"}
@@ -366,7 +366,7 @@ function IntegrationsPage() {
         <div
           className="mb-4 rounded-lg px-3 py-2.5 text-body-sm"
           style={{
-            background: "color-mix(in srgb, var(--color-warning-solid, #d97706) 12%, transparent)",
+            background: "color-mix(in srgb, var(--color-warning-solid) 12%, transparent)",
             color: "var(--color-secondary-foreground)",
           }}
         >
