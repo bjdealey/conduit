@@ -9,6 +9,14 @@ on:
 permissions:
   contents: read
 
+# A branch that has an open PR matches both triggers above, which would run this
+# twice for one commit. `github.head_ref` (pull_request) and `github.ref_name`
+# (push) are both the branch name, so the two land in the same group and the
+# earlier run is cancelled. Branches without a PR still get CI from the push.
+concurrency:
+  group: ci-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
 jobs:
   check:
     runs-on: ubuntu-latest
