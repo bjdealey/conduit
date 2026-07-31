@@ -185,7 +185,7 @@ function EnvironmentGrid({ list, narrowed, onOpen }: { list: Environment[]; narr
             {narrowed ? "No environments match the current search or filters." : "No environments."}
           </p>
         ) : (
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
             {list.map((env) => (
               <EnvironmentCard key={env.id} env={env} onOpen={() => onOpen(env.id)} />
             ))}
