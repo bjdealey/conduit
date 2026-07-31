@@ -55,7 +55,7 @@ export function LoginScreen() {
     <div className="relative flex h-full w-full items-center justify-center p-6" style={{ zIndex: 1 }}>
       <div
         className="login-card flex w-full max-w-[400px] flex-col rounded-2xl border-border-default border-[0.5px] bg-page px-7 py-9 shadow-default"
-        style={{ boxShadow: "0 24px 70px -12px rgba(0,0,0,0.35), 0 0 0 0.5px rgba(0,0,0,0.04)" }}
+        style={{ boxShadow: "var(--s-modal)" }}
       >
         {/* Product mark */}
         <span

@@ -100,3 +100,56 @@
      template renders light-only; to theme dark mode, mirror your overrides in a
      `.dark { … }` block here. */
 }
+
+/* =============================================================================
+   6b. SUCCESS  — completes the status triad from §5.
+   -----------------------------------------------------------------------------
+   §5 sets --color-warning-solid and --color-danger-solid, and globals.css
+   defines both for light AND dark. --color-success-solid was never defined in
+   either, so `var(--color-success-solid, #16a34a)` in SettingsPanel resolved to
+   its hardcoded fallback — a green that ignored both the palette switcher and
+   dark mode, and that matched nothing else on screen.
+
+   It points at grass, not green, because grass is what this app actually treats
+   as "healthy": it is the accent for Resolved issues, Completed runs, Active
+   automations, Active platform users, enabled schedules, healthy environments
+   and surfaces, and added lines in a diff. (§5's --color-positive-solid ->
+   green-a9 predates that convention and is referenced nowhere in src/.)
+
+   This lives outside the `:root:not(.dark)` block above because it defines a new
+   name rather than shadowing the dark palette, and because var(--grass-a9)
+   already resolves per-theme — one declaration covers light and dark.
+   ============================================================================= */
+:root {
+  --color-success-solid: var(--grass-a9);
+}
+
+/* =============================================================================
+   7. ELEVATION  — shadows for floating surfaces.
+   -----------------------------------------------------------------------------
+   globals.css ships a scale (--s-border / --s-default / --s-large /
+   --s-extra-large), and --s-default is what a raised chip should use. But the
+   app's menus and modals were drawn heavier than --s-large: measured, the
+   popover recipe peaks at 32px blur / 18% alpha where --s-large peaks at 16px /
+   10%. Rather than quietly soften every menu, these two tokens carry the app's
+   existing light values unchanged and add the dark ones it never had.
+
+   These are NOT in a `:root:not(.dark)` block, because unlike the colour
+   overrides above they define new names rather than shadowing the dark palette;
+   the `.dark` block below then overrides them by source order.
+
+   Dark mode is not the light shadow on a darker page: a black shadow over a
+   near-black surface is invisible, so depth there comes from a light hairline
+   ring plus a deeper drop. Both use tokens that already flip with the theme.
+   ============================================================================= */
+:root {
+  /* Dropdowns, menus, filter panels, rail flyouts. */
+  --s-popover: 0 12px 32px -8px rgba(0, 0, 0, 0.18), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
+  /* Full-screen overlays: the command palette and the sign-in card. */
+  --s-modal: 0 24px 70px -12px rgba(0, 0, 0, 0.35), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
+}
+
+.dark {
+  --s-popover: 0 12px 32px -8px rgba(0, 0, 0, 0.6), 0 0 0 0.5px var(--gray-a7);
+  --s-modal: 0 24px 70px -12px rgba(0, 0, 0, 0.75), 0 0 0 0.5px var(--gray-a7);
+}

@@ -1,0 +1,40 @@
+name: CI
+
+# Push only. A `pull_request` trigger as well would match the same commit twice
+# on any branch with an open PR; deduping that with a concurrency group works,
+# but leaves a cancelled check run against the head commit, which is enough to
+# report the PR as unstable. Check runs attach to the commit SHA, so the
+# push-triggered run still shows up on the PR — one run per commit, no
+# cancellations. (main is excluded because deploy.yml covers it.)
+on:
+  push:
+    branches-ignore: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+
+      # `globals.css` is a pre-compiled Tailwind artifact, so a utility class the
+      # app uses but that file never emitted fails silently — it just renders as
+      # nothing. This catches that before it ships.
+      - name: Utility classes all resolve
+        run: npm run check:classes
+
+      - run: npm run typecheck:packages
+      - run: npm test
+      - run: npm run build

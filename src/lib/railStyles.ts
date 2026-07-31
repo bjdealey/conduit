@@ -4,5 +4,5 @@ import type { CSSProperties } from "react";
  *  hairline ring plus a soft shadow (shared by NavItem and OpenItem). */
 export const ACTIVE_ITEM_STYLE: CSSProperties = {
   background: "var(--color-page)",
-  boxShadow: "0 0 0 0.5px rgba(0,0,0,0.08), 0 1px 2px 0 rgba(0,0,0,0.06)",
+  boxShadow: "var(--s-default)",
 };

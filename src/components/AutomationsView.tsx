@@ -19,9 +19,9 @@ import { AUTOMATION_STATUS_ACCENT, AutomationStatusChip } from "./Badges";
 import { RunRow } from "./RunRow";
 import { minutesAgo, num } from "../lib/format";
 import { SplitView, Pane, DetailPane, ContextPane, EmptyDetail, PANE_WIDTH } from "./layout/SplitView";
-import { SegmentedControl } from "./SegmentedControl";
 import { isNarrowed, matchesQuery, ordered, passesFilter, resolveSort, type WorkspaceState } from "../lib/workspace";
 import { workspaceControls } from "../data/workspaceControls";
+import { TabStrip } from "./TabStrip";
 
 /* ------------------------------------------------------------------ shared bits */
 
@@ -325,15 +325,12 @@ function AutomationDetail({ automation, onSelectAutomation }: { automation: Auto
     <>
       {/* Tabbed pane — primary detail */}
       <DetailPane>
-        <div className="flex shrink-0 items-center gap-1 border-border-default border-b-[0.5px] px-3 py-2">
-          <SegmentedControl
-            variant="ghost"
-            ariaLabel="Automation detail"
-            segments={DETAIL_TABS.map((t) => ({ id: t, label: t, badge: t === "History" ? runs.length : undefined }))}
-            value={tab}
-            onChange={(id) => setTab(id as DetailTab)}
-          />
-        </div>
+        <TabStrip
+          ariaLabel="Automation detail"
+          segments={DETAIL_TABS.map((t) => ({ id: t, label: t, badge: t === "History" ? runs.length : undefined }))}
+          value={tab}
+          onChange={(id) => setTab(id as DetailTab)}
+        />
 
         {tab === "History" ? (
           <div key="history" className="animate-in fade-in-0 duration-200 ease-out scrollbar-none flex-1 overflow-y-auto px-4 py-3">

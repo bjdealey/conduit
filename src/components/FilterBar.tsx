@@ -56,7 +56,7 @@ function Popover({ onDismiss, align = "left", children }: { onDismiss: () => voi
           [align]: 0,
           width: 232,
           transformOrigin: `top ${align}`,
-          boxShadow: "0 12px 32px -8px rgba(0,0,0,0.18), 0 0 0 0.5px rgba(0,0,0,0.04)",
+          boxShadow: "var(--s-popover)",
         }}
       >
         {children}
@@ -447,7 +447,7 @@ export function SearchFilterField({
             left: 0,
             width: 264,
             transformOrigin: "top left",
-            boxShadow: "0 12px 32px -8px rgba(0,0,0,0.18), 0 0 0 0.5px rgba(0,0,0,0.04)",
+            boxShadow: "var(--s-popover)",
           }}
         >
           {step.kind !== "fields" && (

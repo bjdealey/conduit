@@ -7,7 +7,7 @@ import { MetadataPanel } from "./MetadataPanel";
 import { ActivityFeed } from "./ActivityFeed";
 import { ImpactChart } from "./ImpactChart";
 import { DetailPane, ContextPane } from "./layout/SplitView";
-import { SegmentedControl } from "./SegmentedControl";
+import { TabStrip } from "./TabStrip";
 
 const TABS = ["Activity", "Sessions", "Evidence"] as const;
 type Tab = (typeof TABS)[number];
@@ -86,15 +86,12 @@ export function IssueDetail({ issue }: { issue: Issue }) {
     <>
       {/* Activity — the primary detail pane */}
       <DetailPane>
-        <div className="flex shrink-0 items-center gap-1 border-border-default border-b-[0.5px] px-3 py-2">
-          <SegmentedControl
-            variant="ghost"
-            ariaLabel="Issue detail"
-            segments={TABS.map((t) => ({ id: t, label: t, badge: t === "Evidence" ? issue.findingsCount : undefined }))}
-            value={tab}
-            onChange={(id) => setTab(id as Tab)}
-          />
-        </div>
+        <TabStrip
+          ariaLabel="Issue detail"
+          segments={TABS.map((t) => ({ id: t, label: t, badge: t === "Evidence" ? issue.findingsCount : undefined }))}
+          value={tab}
+          onChange={(id) => setTab(id as Tab)}
+        />
 
         {tab === "Activity" ? (
           <>

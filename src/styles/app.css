@@ -117,7 +117,7 @@ nav[data-expanded="false"] .rail-hl {
 }
 .rail-hl[data-active="true"] {
   background-color: var(--color-page);
-  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.08), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+  box-shadow: var(--s-default);
 }
 
 /* Tactile press feedback: a subtle scale-down while a button is held. Applied to
@@ -278,6 +278,51 @@ nav[data-expanded="false"] .rail-fade-collapsed {
   transition-timing-function: var(--tw-ease, var(--ease-out, cubic-bezier(0, 0, 0.2, 1)));
   transition-duration: var(--tw-duration, 0.2s);
 }
+
+/* -----------------------------------------------------------------------------
+   Second batch of never-emitted utilities (found by `npm run check:classes`).
+   Same cause as the block above: the app references these, globals.css never
+   compiled them, so until now they were silent no-ops. Values are Tailwind's
+   standard ones.
+   ----------------------------------------------------------------------------- */
+
+/* State variants. Without these, disabled buttons never dimmed, the comment
+   composer never showed a focus border, and the link had no hover underline. */
+.disabled\:opacity-40:disabled { opacity: 0.4; }
+.disabled\:opacity-45:disabled { opacity: 0.45; }
+.focus-within\:border-border-strong:focus-within { border-color: var(--color-border-strong); }
+.hover\:underline:hover { text-decoration-line: underline; }
+
+/* The chevron nudge on the metadata pane's "N evidence" button. Paired with
+   `transition-transform`; the icon carries no other transform. */
+.group:hover .group-hover\:translate-x-0\.5 { transform: translateX(0.125rem); }
+
+/* Role and status chips render their label from the raw data ("admin"), and
+   relied on this to present it. */
+.capitalize { text-transform: capitalize; }
+
+/* Micro label inside the 18px initials squares (activity feed, user problems). */
+.text-\[0\.55rem\] { font-size: 0.55rem; }
+
+/* Spacing. */
+.my-3    { margin-top: 0.75rem; margin-bottom: 0.75rem; }
+.pl-1    { padding-left: 0.25rem; }
+.py-3\.5 { padding-top: 0.875rem; padding-bottom: 0.875rem; }
+
+/* Structural — these four were changing what the page actually looked like.
+
+   `grid-cols-3` is the one that showed: the Environments detail put three
+   StatTiles in a row that computed to a single 600px column, so they stacked
+   full-width. (Its sibling in ActivityView uses grid-cols-2/sm:grid-cols-4,
+   both of which globals.css did emit, and has always rendered correctly.)
+
+   `min-w-[720px]` wraps the Manage and Administration tables inside an
+   `overflow-auto` scroller. With min-width resolving to 0 the scroller never
+   had anything to scroll, so below ~720px the six columns crushed instead. */
+.grid-cols-3     { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.min-w-\[720px\] { min-width: 720px; }
+.w-20            { width: 5rem; }
+.w-24            { width: 6rem; }
 
 /* =============================================================================
    Activity timeline bars

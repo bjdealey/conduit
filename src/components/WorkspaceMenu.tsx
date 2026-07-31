@@ -69,7 +69,7 @@ export function WorkspaceMenu({ expanded }: { expanded: boolean }) {
               left: 0,
               width: 240,
               transformOrigin: "top left",
-              boxShadow: "0 12px 32px -8px rgba(0,0,0,0.18), 0 0 0 0.5px rgba(0,0,0,0.04)",
+              boxShadow: "var(--s-popover)",
             }}
           >
             <div className="px-2 pt-1 pb-1.5 font-medium uppercase tracking-wide text-tertiary-foreground" style={{ fontSize: "0.65rem" }}>

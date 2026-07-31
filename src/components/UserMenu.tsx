@@ -117,7 +117,7 @@ export function UserMenu({ expanded }: { expanded: boolean }) {
               left: 0,
               width: 264,
               transformOrigin: "bottom left",
-              boxShadow: "0 12px 32px -8px rgba(0,0,0,0.18), 0 0 0 0.5px rgba(0,0,0,0.04)",
+              boxShadow: "var(--s-popover)",
             }}
           >
             {/* Header */}
