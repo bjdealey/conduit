@@ -470,7 +470,7 @@ export function AutomationBuilder() {
         </DetailPane>
 
         <ContextPane>
-          <div className="scrollbar-none flex-1 overflow-y-auto px-5 py-5">
+          <div className="scrollbar-none flex-1 overflow-y-auto px-6 py-6">
             {selectedStep ? (
               <StepConfig
                 key={selectedStep.id}

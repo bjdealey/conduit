@@ -372,7 +372,7 @@ function RunTimeline({ groups, onOpen }: { groups: RunGroup[]; onOpen: (id: stri
   if (groups.length === 0) return null;
 
   return (
-    <div className="scrollbar-none flex-1 overflow-y-auto px-5 py-4">
+    <div className="scrollbar-none flex-1 overflow-y-auto px-4 py-3">
       {/* Window + legend. Run states use the reserved status palette, always
           label-carried, so the bars never rely on colour alone. */}
       <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2">
