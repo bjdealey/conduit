@@ -4,10 +4,10 @@ import { useStore } from "../store";
 import { schedules, eventTriggers, credentials, packages, globalValues } from "../data/manage";
 import type { Credential, EventTrigger, GlobalValue, Package, Schedule } from "../data/manage";
 import { DataTable, type Column } from "./DataTable";
-import { SegmentedControl } from "./SegmentedControl";
 import { Avatar } from "./Avatar";
 import { num } from "../lib/format";
 import { isNarrowed, matchesQuery, passesFilter } from "../lib/workspace";
+import { TabStrip } from "./TabStrip";
 
 const TABS = ["Scheduled", "Event triggers", "Credentials", "Packages", "Global values"] as const;
 type Tab = (typeof TABS)[number];
@@ -158,15 +158,12 @@ export function ManageView() {
   return (
     <div className="flex min-w-0 flex-1 flex-col">
       {/* Tabs (the page's search, filters, and New action live in the workspace header) */}
-      <div className="flex shrink-0 items-center gap-1 border-border-default border-b-[0.5px] px-3 py-2">
-        <SegmentedControl
-          variant="ghost"
-          ariaLabel="Manage"
-          segments={TABS.map((t) => ({ id: t, label: t, badge: counts[t] }))}
-          value={tab}
-          onChange={(id) => setTab(id as Tab)}
-        />
-      </div>
+      <TabStrip
+        ariaLabel="Manage"
+        segments={TABS.map((t) => ({ id: t, label: t, badge: counts[t] }))}
+        value={tab}
+        onChange={(id) => setTab(id as Tab)}
+      />
 
       {/* Table */}
       <div key={tab} className="animate-in fade-in-0 duration-200 ease-out scrollbar-none flex-1 overflow-auto">

@@ -21,9 +21,9 @@ import type { Issue, Priority } from "../data/types";
 import { PRIORITY_ACCENT } from "./Badges";
 import { num } from "../lib/format";
 import { SplitView, Pane, DetailPane, ContextPane, EmptyDetail, PANE_WIDTH } from "./layout/SplitView";
-import { SegmentedControl } from "./SegmentedControl";
 import { isNarrowed, matchesQuery, ordered, passesFilter, resolveSort, type WorkspaceState } from "../lib/workspace";
 import { workspaceControls } from "../data/workspaceControls";
+import { TabStrip } from "./TabStrip";
 
 /* ----------------------------------------------------------------- selection */
 
@@ -380,15 +380,12 @@ function Sessions({ user }: { user: EndUser }) {
   return (
     <DetailPane>
       {/* Tabs + tools */}
-      <div className="flex shrink-0 items-center gap-1 border-border-default border-b-[0.5px] px-3 py-2">
-        <SegmentedControl
-          variant="ghost"
-          ariaLabel="User detail"
-          segments={SESSION_TABS.map((t) => ({ id: t, label: t }))}
-          value={tab}
-          onChange={(id) => setTab(id as SessionTab)}
-        />
-      </div>
+      <TabStrip
+        ariaLabel="User detail"
+        segments={SESSION_TABS.map((t) => ({ id: t, label: t }))}
+        value={tab}
+        onChange={(id) => setTab(id as SessionTab)}
+      />
 
       {tab === "Sessions" ? (
         <div className="scrollbar-none flex min-h-0 flex-1 flex-col overflow-y-auto">

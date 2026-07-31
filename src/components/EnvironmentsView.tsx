@@ -5,9 +5,9 @@ import { environments, type Environment } from "../data/environments";
 import { SurfaceChart } from "./SurfaceChart";
 import { num } from "../lib/format";
 import { SplitView, Pane, DetailPane, ContextPane, EmptyDetail, PANE_WIDTH } from "./layout/SplitView";
-import { SegmentedControl } from "./SegmentedControl";
 import { isNarrowed, matchesQuery, ordered, passesFilter, resolveSort, type WorkspaceState } from "../lib/workspace";
 import { workspaceControls } from "../data/workspaceControls";
+import { TabStrip } from "./TabStrip";
 
 const TONE_SOLID: Record<Environment["statusTone"], string> = {
   ok: "var(--grass-9)",
@@ -300,15 +300,12 @@ function EnvironmentMain({ env }: { env: Environment }) {
 
   return (
     <DetailPane>
-      <div className="flex shrink-0 items-center gap-1 border-border-default border-b-[0.5px] px-3 py-2">
-        <SegmentedControl
-          variant="ghost"
-          ariaLabel="Environment detail"
-          segments={DETAIL_TABS.map((t) => ({ id: t, label: t, badge: t === "Deployments" ? deploys.length : undefined }))}
-          value={tab}
-          onChange={(id) => setTab(id as DetailTab)}
-        />
-      </div>
+      <TabStrip
+        ariaLabel="Environment detail"
+        segments={DETAIL_TABS.map((t) => ({ id: t, label: t, badge: t === "Deployments" ? deploys.length : undefined }))}
+        value={tab}
+        onChange={(id) => setTab(id as DetailTab)}
+      />
 
       {tab === "Overview" ? (
         <div key="overview" className="animate-in fade-in-0 duration-200 ease-out scrollbar-none flex-1 overflow-y-auto px-6 py-6">

@@ -8,9 +8,9 @@ import { ActivityFeed } from "./ActivityFeed";
 import { SurfaceChart } from "./SurfaceChart";
 import { agoLabel, durationSeconds, minutesAgo, num } from "../lib/format";
 import { SplitView, Pane, DetailPane, ContextPane, PANE_WIDTH } from "./layout/SplitView";
-import { SegmentedControl } from "./SegmentedControl";
 import { isNarrowed, matchesQuery, ordered, passesFilter, resolveSort, type WorkspaceState } from "../lib/workspace";
 import { workspaceControls } from "../data/workspaceControls";
+import { TabStrip } from "./TabStrip";
 
 const TABS = ["In progress", "Historical", "Insights"] as const;
 type Tab = (typeof TABS)[number];
@@ -750,15 +750,12 @@ export function ActivityView() {
       )}
 
       <DetailPane>
-        <div className="flex shrink-0 items-center gap-1 border-border-default border-b-[0.5px] px-3 py-2">
-          <SegmentedControl
-            variant="ghost"
-            ariaLabel="Activity"
-            segments={TABS.map((t) => ({ id: t, label: t, badge: tabCount[t] ?? undefined }))}
-            value={tab}
-            onChange={(id) => setTab(id as Tab)}
-          />
-        </div>
+        <TabStrip
+          ariaLabel="Activity"
+          segments={TABS.map((t) => ({ id: t, label: t, badge: tabCount[t] ?? undefined }))}
+          value={tab}
+          onChange={(id) => setTab(id as Tab)}
+        />
 
         <div key={tab} className="animate-in fade-in-0 duration-200 ease-out flex min-h-0 flex-1 flex-col">
           {tab === "Insights" ? (

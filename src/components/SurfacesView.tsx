@@ -4,8 +4,8 @@ import { useStore } from "../store";
 import { surfaces, type Integration, type Surface } from "../data/surfaces";
 import { SurfaceChart } from "./SurfaceChart";
 import { SplitView, DetailPane, ContextPane } from "./layout/SplitView";
-import { SegmentedControl } from "./SegmentedControl";
 import { isNarrowed, matchesQuery } from "../lib/workspace";
+import { TabStrip } from "./TabStrip";
 
 const GithubMark = (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
@@ -162,14 +162,12 @@ function Detail({ surface }: { surface: Surface }) {
   const log = surface.log.filter((row) => matchesQuery(state.query, [row.time, row.count]));
   return (
     <DetailPane>
-      <div className="flex shrink-0 items-center gap-1 border-border-default border-b-[0.5px] px-3 py-2">
-        <SegmentedControl
-          variant="ghost"
-          ariaLabel="Surface detail"
-          segments={SURFACE_TABS.map((t) => ({ id: t, label: t }))}
-          value={tab}
-          onChange={(id) => setTab(id as SurfaceTab)}
-        />
+      <TabStrip
+        ariaLabel="Surface detail"
+        segments={SURFACE_TABS.map((t) => ({ id: t, label: t }))}
+        value={tab}
+        onChange={(id) => setTab(id as SurfaceTab)}
+      >
         <button
           type="button"
           className="pressable focusable ml-auto inline-flex items-center gap-1.5 rounded-lg border-border-default border-[0.5px] px-2.5 py-1 text-body-sm text-secondary-foreground transition-colors hover:bg-transparent-hover"
@@ -177,8 +175,7 @@ function Detail({ surface }: { surface: Surface }) {
           All environments
           <ChevronDown size={14} strokeWidth={1.8} className="text-tertiary-foreground" />
         </button>
-      </div>
-
+      </TabStrip>
       {tab === "Events" ? (
         <div className="scrollbar-none flex min-h-0 flex-1 flex-col overflow-y-auto px-6 py-6">
           <SurfaceChart seed={surface.id.length + surface.log.length} />

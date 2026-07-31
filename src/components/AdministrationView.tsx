@@ -14,11 +14,11 @@ import {
   type RoleDef,
 } from "../data/admin";
 import { DataTable, type Column } from "./DataTable";
-import { SegmentedControl } from "./SegmentedControl";
 import { Avatar } from "./Avatar";
 import { Switch } from "./Switch";
 import { num } from "../lib/format";
 import { isNarrowed, matchesQuery, passesFilter } from "../lib/workspace";
+import { TabStrip } from "./TabStrip";
 
 const TABS = ["Users", "Roles", "Licenses", "Policies"] as const;
 type Tab = (typeof TABS)[number];
@@ -217,21 +217,19 @@ export function AdministrationView() {
   return (
     <div className="flex min-w-0 flex-1 flex-col">
       {/* Tabs (search, filters, and the Invite action live in the workspace header) */}
-      <div className="flex shrink-0 items-center gap-1 border-border-default border-b-[0.5px] px-3 py-2">
-        <SegmentedControl
-          variant="ghost"
-          ariaLabel="Administration"
-          segments={TABS.map((t) => ({ id: t, label: t }))}
-          value={tab}
-          onChange={(id) => setTab(id as Tab)}
-        />
+      <TabStrip
+        ariaLabel="Administration"
+        segments={TABS.map((t) => ({ id: t, label: t }))}
+        value={tab}
+        onChange={(id) => setTab(id as Tab)}
+      >
         {!canEdit && (
           <span className="ml-auto inline-flex items-center gap-1.5 rounded-md bg-component px-2 py-1 text-[0.72rem] text-tertiary-foreground">
             <ShieldCheck size={13} strokeWidth={1.8} />
             Read-only
           </span>
         )}
-      </div>
+      </TabStrip>
 
       {/* Table */}
       <div key={tab} className="animate-in fade-in-0 duration-200 ease-out scrollbar-none flex-1 overflow-auto">
