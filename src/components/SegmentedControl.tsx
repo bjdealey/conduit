@@ -137,7 +137,7 @@ export function SegmentedControl({
             height: thumb.height,
             transition,
             background: solid ? "var(--color-page)" : "var(--color-transparent-hover)",
-            boxShadow: solid ? "0 0 0 0.5px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.06)" : "none",
+            boxShadow: solid ? "var(--s-default)" : "none",
           }}
         />
       )}

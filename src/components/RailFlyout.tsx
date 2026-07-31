@@ -21,7 +21,7 @@ export function RailFlyout({
       <div
         role="menu"
         className="rounded-xl border-border-default border-[0.5px] bg-page p-1.5"
-        style={{ width: 200, boxShadow: "0 12px 32px -8px rgba(0,0,0,0.18), 0 0 0 0.5px rgba(0,0,0,0.04)" }}
+        style={{ width: 200, boxShadow: "var(--s-popover)" }}
       >
         <button
           type="button"

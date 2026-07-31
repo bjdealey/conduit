@@ -117,7 +117,7 @@ nav[data-expanded="false"] .rail-hl {
 }
 .rail-hl[data-active="true"] {
   background-color: var(--color-page);
-  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.08), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+  box-shadow: var(--s-default);
 }
 
 /* Tactile press feedback: a subtle scale-down while a button is held. Applied to

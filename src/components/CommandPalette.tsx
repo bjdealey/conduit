@@ -138,7 +138,7 @@ export function CommandPalette() {
           transform: `translateX(-50%) ${visible ? "translateY(0) scale(1)" : "translateY(-8px) scale(0.98)"}`,
           opacity: visible ? 1 : 0,
           transition: "opacity 0.18s ease, transform 0.18s cubic-bezier(0.4, 0, 0.2, 1)",
-          boxShadow: "0 24px 70px -12px rgba(0,0,0,0.4)",
+          boxShadow: "var(--s-modal)",
         }}
       >
         {/* Search input */}

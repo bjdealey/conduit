@@ -255,7 +255,7 @@ function ProfilePage() {
                   style={{
                     background: active ? "var(--color-page)" : "transparent",
                     color: active ? "var(--color-primary-foreground)" : "var(--color-tertiary-foreground)",
-                    boxShadow: active ? "0 0 0 0.5px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.06)" : "none",
+                    boxShadow: active ? "var(--s-default)" : "none",
                   }}
                 >
                   {o.label}

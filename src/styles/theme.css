@@ -100,3 +100,33 @@
      template renders light-only; to theme dark mode, mirror your overrides in a
      `.dark { … }` block here. */
 }
+
+/* =============================================================================
+   7. ELEVATION  — shadows for floating surfaces.
+   -----------------------------------------------------------------------------
+   globals.css ships a scale (--s-border / --s-default / --s-large /
+   --s-extra-large), and --s-default is what a raised chip should use. But the
+   app's menus and modals were drawn heavier than --s-large: measured, the
+   popover recipe peaks at 32px blur / 18% alpha where --s-large peaks at 16px /
+   10%. Rather than quietly soften every menu, these two tokens carry the app's
+   existing light values unchanged and add the dark ones it never had.
+
+   These are NOT in a `:root:not(.dark)` block, because unlike the colour
+   overrides above they define new names rather than shadowing the dark palette;
+   the `.dark` block below then overrides them by source order.
+
+   Dark mode is not the light shadow on a darker page: a black shadow over a
+   near-black surface is invisible, so depth there comes from a light hairline
+   ring plus a deeper drop. Both use tokens that already flip with the theme.
+   ============================================================================= */
+:root {
+  /* Dropdowns, menus, filter panels, rail flyouts. */
+  --s-popover: 0 12px 32px -8px rgba(0, 0, 0, 0.18), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
+  /* Full-screen overlays: the command palette and the sign-in card. */
+  --s-modal: 0 24px 70px -12px rgba(0, 0, 0, 0.35), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
+}
+
+.dark {
+  --s-popover: 0 12px 32px -8px rgba(0, 0, 0, 0.6), 0 0 0 0.5px var(--gray-a7);
+  --s-modal: 0 24px 70px -12px rgba(0, 0, 0, 0.75), 0 0 0 0.5px var(--gray-a7);
+}

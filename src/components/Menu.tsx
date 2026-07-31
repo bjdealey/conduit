@@ -55,7 +55,7 @@ export function Menu({
               left: 0,
               minWidth: 120,
               transformOrigin: "top left",
-              boxShadow: "0 12px 32px -8px rgba(0,0,0,0.18), 0 0 0 0.5px rgba(0,0,0,0.04)",
+              boxShadow: "var(--s-popover)",
             }}
           >
             {options.map((o) => (
