@@ -309,6 +309,21 @@ nav[data-expanded="false"] .rail-fade-collapsed {
 .pl-1    { padding-left: 0.25rem; }
 .py-3\.5 { padding-top: 0.875rem; padding-bottom: 0.875rem; }
 
+/* Structural — these four were changing what the page actually looked like.
+
+   `grid-cols-3` is the one that showed: the Environments detail put three
+   StatTiles in a row that computed to a single 600px column, so they stacked
+   full-width. (Its sibling in ActivityView uses grid-cols-2/sm:grid-cols-4,
+   both of which globals.css did emit, and has always rendered correctly.)
+
+   `min-w-[720px]` wraps the Manage and Administration tables inside an
+   `overflow-auto` scroller. With min-width resolving to 0 the scroller never
+   had anything to scroll, so below ~720px the six columns crushed instead. */
+.grid-cols-3     { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.min-w-\[720px\] { min-width: 720px; }
+.w-20            { width: 5rem; }
+.w-24            { width: 6rem; }
+
 /* =============================================================================
    Activity timeline bars
    -----------------------------------------------------------------------------
