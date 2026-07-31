@@ -1,125 +1,132 @@
-# Vision alignment — assessment and recommended changes
+# Vision alignment — Conduit as the Control Room replacement
 
 An assessment of the Conduit application against the **Automation Platform — Vision** document
-(IT Director / CIO audience). Every claim about the current app cites a file and line. Nothing in
-this document has been implemented; it is a proposal for review.
+(IT Director / CIO audience), with the product framing settled: **Conduit is the replacement for
+the Automation Anywhere Control Room.** Every claim about the current app cites a file and line.
+Nothing here is implemented; it is a proposal for review.
 
 ---
 
-## 0. The headline
+## 1. The settled framing
 
-The vision and the application are **aimed at two different products that happen to share a name**,
-and the repo currently commits to the smaller of the two.
+Conduit is the **control plane** of the new platform — the screen the automation team lives in,
+replacing AA's Control Room. It is not the runtime. That splits the vision's architecture into
+three artefacts with clean boundaries:
 
-| | Vision document | Conduit today (`CLAUDE.md`, the code) |
+| Plane | What it owns | Where it lives |
 |---|---|---|
-| What is being built | A **replacement automation platform** — builder, runtime, runner pool, distributor, tiered access | A **pluggable integration layer** over vendor platforms — connectors, capabilities, normalised domain models |
-| Central object | A **workflow** made of **nodes**, executed on a **runner** chosen by a **distributor** | A **`Bot`** normalised out of a vendor API (`packages/domain/src/models.ts:31`) |
-| Central proof | "A stateless runtime can execute that workflow end-to-end… nodes lighting up, logs streaming" (§7) | A control-plane UI over seed data; runs are fabricated (`src/lib/builder.ts:147`) |
-| First-class vendor | AA is the thing being **replaced** | AA is the first thing being **connected to** (`connectors/automation-anywhere`) |
+| **Control plane — Conduit** | Authoring, the library, versions and review, scheduling, **distribution**, the runner pool, credentials, node types, activity, audit, tiers and governance | This repo |
+| **Execution plane — runners** | Executing a workflow and reporting events. Stateless, ephemeral, cross-platform | Separate artefact; the vision's Phase 0 runtime is runner #1 |
+| **Migration bridge — connectors** | Normalising other platforms (AA first) into Conduit's domain so both estates render through one UI | `packages/connector-sdk`, `connectors/*` |
 
-Both framings are coherent, and they are **complementary rather than contradictory** — the
-integration layer is exactly the control plane a strangler migration needs (vision Phase 6). But
-right now nothing in the repo states which is primary, so the two drift apart with every change.
-Resolving that is recommendation #0 and it gates everything else.
+This framing was already in the repo, unstated: `docs/structure-map.md` maps the Control Room's
+five sections onto Conduit's views, and the app's whole shape — `Automation → Run → Issue`,
+Activity's *In progress / Historical / Insights*, Manage's tabs, Administration — comes from that
+map. **The AA-shaped structure is deliberate parity work, not drift.** (My first pass read it as
+drift; that was wrong, and it changes the ranking below.)
 
-**The sharpest single finding:** the vision's Phase 0 is described as "done, or nearly — cross-platform
-runtime executing six node types end-to-end, run viewer showing live execution, runs on a laptop"
-(§8). **This repo contains no execution runtime.** `testRun()` fabricates a `Run` object with a canned
-log (`src/lib/builder.ts:147-168`); `Run.target` is a free-text string (`src/data/types.ts:113`).
-If Conduit is the prototype the CIO will be shown, that claim is not yet supported. See §3, Gap 6.
+### The strategic consequence worth putting in the pitch
 
----
+**Conduit replaces the Control Room by first wrapping it.** Day 1, the A360 connector makes Conduit
+a read-only mirror of the AA estate. As native workloads appear, they land in the same library, the
+same Activity stream, the same audit log — distinguished only by a `platform` field. Migrating a
+workload is a change of one attribute on one row, and it is reversible.
 
-## 1. What the app is today
-
-A React/Vite/TS prototype on GitHub Pages, built on an issue-tracker chassis, plus a four-stage
-integration layer (connector SDK → A360 connector → Supabase → frontend seam).
-
-- **Builder** (`src/components/AutomationBuilder.tsx`) — palette → **linear ordered step list** → per-step
-  config, with Steps and Diagram modes (`src/data/viewLayout.tsx:21`).
-- **Node palette** — 15 actions across 10 packages, hardcoded in the frontend bundle
-  (`src/data/actions.ts:41`).
-- **Execution** — none. Runs are seed data or fabricated.
-- **Ops surfaces** — Activity (runs), Inbox (incidents), Manage (schedules / event triggers /
-  credentials / packages / globals), Users, Administration (platform users, roles, licences,
-  policies), Surfaces, Environments, Settings → Integrations.
-- **Integration layer** — `Capability` enum with 8 ids (`packages/domain/src/capability.ts:6`),
-  registry + `BotService` + `SecretStore`, the A360 connector, Supabase schema/functions, and a
-  capability-gated nav (`src/data/nav.ts:21`).
+There is never a cutover, never a second tool to learn, and the vision's Phase 6 strangler stops
+being a promise and becomes a filter on a list. That answers §9's *"not a full replacement for AA on
+day one"* with an architecture instead of a caveat — and it makes the connector layer you have
+already built strategically central rather than a side quest.
 
 ---
 
-## 2. Alignment scorecard
+## 2. Control Room parity map
 
-| Vision claim | Where it should live | Status |
-|---|---|---|
-| API-first execution as the default runtime (§3) | `packages/runtime` | ❌ **Absent** — no executor exists |
-| Stateless, ephemeral runners (§3) | Domain model + a pool view | ❌ **Absent** — a runner is a string, `src/data/manage.ts:20` |
-| Smart distribution (§3, §6) | Distributor + routing rationale on a run | ❌ **Absent** — no requirements, no pool, no routing |
-| Hybrid runner pool, three types (§6) | Runner domain model | ❌ **Absent** |
-| Workflow declares its requirements (§6) | `Automation` type | ❌ **Absent** — `src/data/types.ts:141` has no requirements field |
-| Extensible node types behind one interface (§6) | Node-type registry | 🟡 **Partial** — `StepAction` is a decent interface (`src/data/actions.ts:26`), but there is no execution side to it |
-| Data-driven builder — new node = metadata (§6) | Node-type catalogue served from the backend | ❌ **Contradicted** — a new node means editing `src/data/actions.ts` and redeploying the SPA |
-| Versioned, extensible workflow schema (§6) | `Automation.schemaVersion` | ❌ **Absent** |
-| Distribution as a first-class capability (§6) | `Capability` enum | ❌ **Absent** — the 8 capabilities are all AA-shaped |
-| Tiered access: consumer / citizen / professional (§3, §6) | `Role` | ❌ **Mismatched** — roles are `admin \| developer \| user` (`src/data/types.ts:80`) |
-| Review lifecycle promoting citizen work (§3, §6) | `AutomationStatus` | ❌ **Absent** — `Active \| Paused \| Draft` (`src/data/types.ts:122`) |
-| AI as a first-class extension point (§3, §6) | Node palette | ❌ **Absent** — no AI package or node |
-| Cross-platform runtime (§5, §6) | `packages/runtime` | ❌ **Unprovable** — nothing to run |
-| Observable execution, live (§7) | Activity view | 🟡 **Partial** — the run-viewer UI exists and is good; the events behind it are seed data |
-| Per-workflow AA-or-new routing, reversible (§8 Phase 6) | Connector layer | 🟢 **Strong foundation** — the connector/capability layer is the right machinery, but the app never shows the two estates side by side |
-| Workload mix: 30 % API / 20 % Windows-auth / 50 % headed (§2) | An estate/readiness view | ❌ **Absent** — the whole business case has nowhere to live in the UI |
+Every Control Room surface (`docs/structure-map.md` §B), scored three ways: **Parity** (AA is right,
+match it), **Invert** (the vision says AA is *wrong* here — do the opposite deliberately), **Add**
+(Conduit-native, no AA equivalent).
 
-Two green-ish rows and one strong foundation. The connector layer is genuinely well built and
-**under-used by the vision**; almost everything else the vision leads with is missing from the model.
+| Control Room surface | Stance | Conduit today | Verdict |
+|---|---|---|---|
+| Home → Overview / Automations / Devices / Licenses | Parity, re-cut | Absent — app opens on the incident Inbox (`src/store.tsx:201`) | ❌ **Missing** |
+| Automation → Public / Private folder tree | Parity | Built (`folders`, `visibility`, `src/data/automations.ts:12`) | ✅ |
+| Automation → View history (versions) | Parity + review lifecycle | Absent — no version concept | ❌ **Missing** |
+| Automation → dependencies / references | Parity | Built, and *derived* (`packagesForSteps`, `src/data/actions.ts:200`) | ✅ Better than AA |
+| Bot editor | Parity | Built (`src/components/AutomationBuilder.tsx`) | 🟡 Linear only — no conditionals |
+| Activity → In progress / Historical / Insights | Parity | Built, incl. live-run detection (`ActivityView.tsx:51`) | 🟡 Real viewer, seed events |
+| Manage → Scheduled | **Invert** — schedules request work; the distributor places it | Table with a free-text `target` (`src/data/manage.ts:20`) | ❌ **Not inverted** |
+| Manage → Event triggers | Parity | Built (`src/data/manage.ts:44`) | ✅ |
+| Manage → **Devices** | **Invert** — stateful assigned desktops → an ephemeral pool | No runner entity at all | ❌ **Biggest gap** |
+| Manage → Device pools *(unused in AA)* | **Invert & elevate** — the pool is the whole point | Absent | ❌ **Missing** |
+| Manage → Queues *(unused in AA)* | Defer | Capability id reserved, no UI | ✅ Correctly deferred |
+| Manage → Credentials / OAuth | Parity, Vault-backed | Metadata-only model + Supabase Vault server-side | ✅ Strong |
+| Manage → Packages | Parity → becomes **node types** | Table + palette, but compiled in (`src/data/actions.ts:41`) | 🟡 Not data-driven |
+| Manage → Global values | Parity | Built (`src/data/manage.ts:103`) | ✅ |
+| Administration → Users / Roles | **Invert** — one professional tier → three tiers | `admin \| developer \| user` (`src/data/types.ts:80`) | ❌ **Not inverted** |
+| Administration → Licenses | Parity | Built — already carries an "Automation runners" seat count (`src/data/admin.ts:41`) | ✅ |
+| Administration → Policies | Parity | Built — already carries "Production run approval" (`src/data/admin.ts:51`) | ✅ Hook for review |
+| Administration → Settings | Parity | Built | ✅ |
+| Administration → Bot update (agent versions) | **Invert** — ephemeral runners don't drift; only images version | Absent | 🟡 Becomes "Runner images" |
+| Audit log | Parity | Capability id reserved, no surface | ❌ **Missing** |
+| Migration tool | **Invert** — per-workflow, reversible, always-on | Absent | ❌ **Missing** |
+| Incident inbox | **Add** — AA has no equivalent | Built, with `Issue.sourceRunId` back-links (`src/data/types.ts:73`) | ✅ Differentiator |
+
+**Score: parity is in good shape; the inversions are almost entirely unbuilt.** That is the finding.
+Conduit today is a competent Control Room. It is not yet a *better* one, because every place the
+vision says AA is wrong is a place Conduit currently copies AA or has nothing.
 
 ---
 
-## 3. The gaps, ranked
+## 3. The three inversions and one addition
 
-### Gap 0 — Decide what Conduit is, and write it down
+This is the whole pitch, and it is what the demo has to make unmissable. Everything at parity is
+table stakes — a CIO will not fund parity.
 
-Update `CLAUDE.md` with a short *Product framing* section:
+**Inversion 1 — Devices you assign → a pool you never assign to.**
+AA: 16 named VMs, a human decides which bot goes where. Conduit: workflows declare requirements,
+the distributor places them, nobody names a machine. *Demo moment:* a run row reading
+*"lightweight-3 — API-only, OAuth client credentials"* where AA shows a hand-picked VM.
 
-> Conduit is two things behind one UI. (1) **The control plane** for the automation estate —
-> pluggable connectors normalise every platform, including Automation Anywhere, into one domain
-> model. (2) **The native execution platform** — a builder, an API-first runtime, and a runner
-> pool. The native platform is exposed to the control plane as **just another connector** (type
-> `conduit`), so migrating a workload from AA to Conduit is a change of `platform` on one row, and
-> both estates render through the same screens.
+**Inversion 2 — Stateful agents that drift → ephemeral runners that can't.**
+AA needs a Bot-update surface because agents accumulate state. Conduit has no such surface, by
+construction. *Demo moment:* a pool view where runners appear, run, and vanish — and the honest
+line that there is no drift to manage because there is nothing to drift.
 
-That sentence makes the vision's strangler (Phase 6) an architectural fact rather than a promise,
-and it stops future sessions building the two halves in different directions. The seed adapter
-already stamps `platform: "conduit-native"` (`src/data/toDomain.ts:22`) — the idea is half-present
-and unstated.
+**Inversion 3 — One professional tier → three tiers with a review lifecycle.**
+AA: everything flows through the automation team. Conduit: consumers trigger, citizens build and
+submit, professionals review and promote. *Demo moment:* a submission moving Draft → In review →
+Published with an audit trail.
 
-### Gap 1 — A runner is a string. Make it a first-class model. *(highest value for the pitch)*
+**Addition — the incident inbox.** AA tells you a bot failed. Conduit tells you why, links the run
+that caused it, and tracks it to resolution. This already works and has no Control Room equivalent —
+worth showing, and worth keeping out of the "parity" bucket where it gets undersold.
 
-The entire business case — cost, reliability, distribution — rests on the runner pool, and the app
-has no runner entity. Today a runner appears only as free text: `target: "prod-runner-1"`
-(`src/data/manage.ts:24-27`, `src/data/types.ts:113`).
+---
+
+## 4. Gaps, re-ranked for the Control Room framing
+
+### Gap 1 — The runner pool does not exist *(blocks two of the three inversions)*
+
+A runner is free text today: `target: "prod-runner-1"` (`src/data/manage.ts:24`,
+`src/data/types.ts:113`). AA's Devices surface has no Conduit counterpart, and AA's *Device pools* —
+marked unused in the reference material — is precisely the concept the vision elevates to central.
 
 **Change**
-- Add `Runner` to `packages/domain` with the vision's three classes verbatim (§6):
-  `lightweight` | `windows-service-account` | `windows-interactive`, plus `state`
+- `Runner` in `packages/domain`, with the vision's three classes verbatim (§6):
+  `lightweight | windows-service-account | windows-interactive`; plus `state`
   (`Idle | Busy | Starting | Draining | Offline`), `platform` (`linux | windows | macos`),
   `authModels: AuthModel[]`, `ephemeral: boolean`, `startedAt`, `currentRunId?`.
-- Add a `runners` capability (or re-point the existing `devices` capability at it — `devices` is
-  the AA word for the same thing, and re-using it keeps the capability set stable).
-- **Repurpose the Environments view into Runners.** `Environment` (`src/data/environments.ts:4`)
-  is leftover deployment-platform DNA — branch, release, URL, region, `eventsPerMin` — from the
-  marketing template. It occupies exactly the nav slot the runner pool should own
-  (`src/data/nav.ts:21`), and it already has the list/grid shell and status cards the pool needs.
+- A `runners` capability — or re-point the existing `devices` capability at it, since *devices* is
+  simply AA's word for the same slot. One capability, two labels.
+- **Repurpose the Environments view into the pool.** `Environment` (`src/data/environments.ts:4`)
+  is deployment-platform DNA — branch, release, URL, `eventsPerMin` — from the marketing template,
+  and `structure-map.md` §D.5 already nominated that card grid as the host for execution targets. It
+  occupies the nav slot the pool should own (`src/data/nav.ts:21`).
 
-**Why first:** it converts two of the three bets (stateless runners, smart distribution) from prose
-into a screen, and it costs a model plus a view re-skin.
-
-### Gap 2 — Workflows don't declare requirements, so distribution can't be demonstrated
+### Gap 2 — Workflows declare no requirements, so distribution cannot exist
 
 Vision §6: *"A workflow declares its requirements (auth model, UI dependency, target platform), and
-the distributor routes it to a runner that fits."* `Automation` (`src/data/types.ts:141`) has no
-such field, so there is nothing for a distributor to route on.
+the distributor routes it to a runner that fits."* `Automation` (`src/data/types.ts:141`) has no such
+field. Without it, Inversion 1 is undemonstrable and the Manage → Scheduled surface stays AA-shaped.
 
 **Change**
 - Add to `Automation`:
@@ -133,253 +140,216 @@ such field, so there is nothing for a distributor to route on.
     platform: "any" | "windows";
   };
   ```
-- Add matching `requires` metadata to each node type in the palette (`StepAction`,
-  `src/data/actions.ts:26`) and **derive** the workflow's requirements from its steps — exactly the
-  pattern `packagesForSteps()` already uses for dependencies (`src/data/actions.ts:200`). That
-  precedent is the strongest existing hook in the codebase; extending it is cheap and idiomatic.
-- Add a pure `pickRunner(requirements, pool): { runner, rationale }` in `packages/domain` or a new
-  `packages/distributor`. No infrastructure needed — it is a testable function.
-- Show `runnerId` + `runnerClass` + a one-line rationale on every run row
-  (`src/components/RunRow.tsx`, `ActivityView`): *"lightweight-3 — API-only, OAuth client
-  credentials."*
+- Add matching `requires` metadata to each node type (`StepAction`, `src/data/actions.ts:26`) and
+  **derive** the workflow's requirements from its steps — the exact pattern `packagesForSteps()`
+  already uses for dependencies (`src/data/actions.ts:200`). That precedent is the best hook in the
+  codebase and extending it is idiomatic and cheap.
+- `pickRunner(requirements, pool): { runner, rationale }` as a **pure function** in
+  `packages/domain` (or a `packages/distributor`). No infrastructure — a testable function, and
+  Phase 2 later swaps the implementation, not the contract.
+- Surface `runnerId`, `runnerClass`, and the one-line rationale on every run row
+  (`src/components/RunRow.tsx`, `ActivityView`). That line **is** Inversion 1, and it ships long
+  before a real distributor.
 
-That one line on a run row **is** the demo of smart distribution, and it can ship long before a real
-distributor exists.
+### Gap 3 — Tiers and the review lifecycle *(Inversion 3, and the largest feature with the smallest UI cost)*
 
-### Gap 3 — The node catalogue is compiled in, contradicting "data-driven builder"
+Roles are `admin | developer | user` (`src/data/types.ts:80`) with descriptions written for an IT
+tool (`src/data/admin.ts:31`). `AutomationStatus` is `Active | Paused | Draft`
+(`src/data/types.ts:122`) — no review states.
+
+**Change**
+- Roles → the vision's tiers: `consumer`, `builder` (citizen), `professional`, `admin`.
+  `user → consumer` and `developer → professional` are near-drop-in renames; `builder` is new.
+- Lifecycle: `Draft → In review → Changes requested → Approved → Published → Paused`, with
+  `submittedBy` / `reviewedBy` / `reviewedAt`.
+- **Build the review queue on the Inbox chassis.** An inbox of submissions grouped by state is
+  structurally what the incident inbox already is (`src/components/Inbox.tsx`, board/list modes,
+  `src/data/viewLayout.tsx:30`) — the same reuse `structure-map.md` §D.1 made for run states.
+- The `pol_approval` policy row already exists (`src/data/admin.ts:51`); wire it to the lifecycle
+  instead of leaving it decorative.
+
+### Gap 4 — No Home. The CIO's first screen is an incident inbox
+
+The Control Room opens on a Home dashboard (Overview / Automations / Devices / Licenses); Conduit
+opens on `inbox` (`src/store.tsx:201`). For a Control Room replacement this is a parity gap; for a
+CIO demo it is a positioning failure — the first screen should answer *what is this and why is it
+better* in five seconds.
+
+**Change — a Home view carrying the vision's argument:**
+- **Runner pool** — live count by class, idle vs busy, runners started and reclaimed today
+  (Inversions 1 + 2).
+- **Estate split** — *"142 workflows: 118 AA · 24 Conduit · 6 won't move"* (Phase 6, and it makes
+  §10's *"some workloads never move"* an honest number rather than a footnote).
+- **Readiness mix** — the §2 arithmetic: API-eligible now / Windows-auth, Entra-pending /
+  headed-bound, classified automatically from `requirements` once Gap 2 lands. This is the single
+  most CIO-legible thing you can build, and it makes the *"Entra pace is not ours to set"* risk
+  something you track on a chart instead of apologise for in a meeting.
+- **In-flight runs** — reusing the existing Activity primitives and `ImpactChart`/`SurfaceChart`.
+
+### Gap 5 — The runner protocol, not a runtime *(correcting my first pass)*
+
+My first draft recommended building `packages/runtime` inside Conduit. With the framing settled,
+that is wrong: execution is not the control plane's job. What Conduit owes the runner is a
+**contract**, and that contract is entirely missing.
+
+**Change — the control-plane half of execution:**
+- **Runner registration + heartbeat** — a runner announces `{ class, platform, authModels, version }`
+  and heartbeats; the pool view (Gap 1) renders from it. This is also what makes Inversion 2 visible:
+  runners appearing and vanishing on their own.
+- **Work dispatch** — the distributor (Gap 2) assigns a run to a runner; a claim endpoint prevents
+  double-execution.
+- **Run-event ingestion** — a `run_events` table plus an ingest endpoint. The existing
+  `ActivityEvent` shape (`src/data/types.ts:37`) is already the run-log format, so the viewer needs
+  a live source, not a rewrite.
+- **Live streaming** — Supabase Realtime on `run_events`, so nodes light up in the Activity view.
+  Vision §7's *"nodes lighting up, logs streaming"* is then Conduit's half plus any runner that
+  speaks the protocol.
+
+Define the protocol as versioned TypeScript in `packages/domain` so the runtime team codes against
+it. Until a real runner exists, `testRun()` (`src/lib/builder.ts:147`) can post through the same
+ingest path — a fake runner rather than a fake screen, which means the UI is never rewritten.
+
+### Gap 6 — The node catalogue is compiled in
 
 Vision §6: *"New node types appear in the builder by adding metadata, not by rewriting the canvas."*
-Today `ACTIONS` is a hardcoded array in the frontend bundle (`src/data/actions.ts:41`) — a new node
-type is a frontend edit plus a Pages redeploy.
+`ACTIONS` is a hardcoded array in the frontend bundle (`src/data/actions.ts:41`), so a new node type
+is a frontend edit and a Pages redeploy. This is also a Control Room parity gap: AA's Packages are
+installed into the Control Room at runtime, not compiled into its UI.
 
-The irony is that the **connector** layer already does this correctly: instances live in
-`connector_instances` and types self-register via `defineConnector`. The builder is the one place
-that still hardcodes its extension point.
+**Change:** serve the catalogue from the backend (a `node_types` table + a `node-types` Edge
+Function, mirroring `capabilities`), keeping `ACTIONS` as the seed fallback exactly as `seedBots()`
+backs `bots` today (`src/store.tsx:213`, `src/data/toDomain.ts`). One code path, backend or not.
+Carry `requires` (Gap 2) on each node type, so adding a node type also teaches the distributor how
+to route workflows that use it.
 
-**Change**
-- Serve the node-type catalogue from the backend: a `node_types` table plus a `node-types` Edge
-  Function, mirroring the existing `capabilities` function.
-- Keep `ACTIONS` as the **seed fallback**, exactly as `seedBots()` backs `bots` today
-  (`src/store.tsx:213`, `src/data/toDomain.ts`). One code path, backend or not — the pattern is
-  already established and tested.
-- Carry `requires` (Gap 2) and `execution` metadata on each node type, so adding a node type also
-  teaches the distributor how to route workflows that use it.
+### Gap 7 — No versions, no version history, and an unversioned schema
 
-### Gap 4 — The workflow schema is not versioned
+Two related holes. **Workflow versions:** the Control Room's *View history* has no Conduit
+counterpart, and the review lifecycle (Gap 3) is meaningless without one — promotion promotes a
+version. **Schema version:** `Automation` has no `schemaVersion` and `steps` is a bare array
+(`src/data/types.ts:154`), against vision §6's *"workflow schema is versioned and extensible."*
 
-Vision §6 names this explicitly: *"Workflow schema is versioned and extensible. Growth in workflow
-capability doesn't require breaking older workflows."* `Automation` has no `schemaVersion` and
-`steps` is a bare array (`src/data/types.ts:132,154`).
+**Change:** `version: number` + an immutable version history per workflow; `schemaVersion: number` +
+`migrateWorkflow(raw)` with a test per version, written on save (`commitDraft`, `src/lib/builder.ts:114`).
 
-**Change:** add `schemaVersion: number` to `Automation`, a `migrateWorkflow(raw): Automation`
-function with a test per version, and make the builder write the current version on save
-(`commitDraft`, `src/lib/builder.ts:114`). Trivial now; expensive after the first real workflows exist.
+**More urgent than it looks:** the flow model is a **linear array**. Vision §3 promises conditionals.
+A linear array cannot express one, so the first genuinely useful API workflow breaks the schema.
+Version it *before* you branch it.
 
-**Related and more urgent than it looks:** the flow model is a **linear array of steps**. The vision's
-API-first workloads are "HTTP calls, data transformations, **conditionals**, orchestration between
-systems" (§3). A linear array cannot express a conditional, so the first genuinely useful workflow
-will break the schema. Adding versioning *before* adding branching is the cheap ordering.
+### Gap 8 — Audit log
 
-### Gap 5 — Tiers and the review lifecycle are absent
+`Capability.Audit` is reserved (`packages/domain/src/capability.ts:12`) with no surface. A Control
+Room replacement needs one for parity, and the tiered model needs it for governance — who submitted,
+who approved, who promoted, who ran. The `ActivityEvent` timeline is the right primitive again.
 
-The vision's supporting bet is a three-tier model with a promotion workflow (§3, §6, Phase 3). The
-app has `admin | developer | user` (`src/data/types.ts:80`) with descriptions written for an IT tool,
-not for the vision's tiers (`src/data/admin.ts:31-35`), and a status enum with no review states.
+### Gap 9 — Migration is invisible
 
-**Change**
-- Map roles to the vision's vocabulary: `consumer` (trigger + view outputs), `builder` (citizen —
-  author and submit), `professional` (author, review, own production), `admin`. `user → consumer`
-  and `developer → professional` are near-drop-in renames; `builder` is the new tier.
-- Extend `AutomationStatus` into a lifecycle: `Draft → In review → Changes requested → Approved →
-  Published → Paused`, with `submittedBy` / `reviewedBy` / `reviewedAt`.
-- Build the review queue **on the existing Inbox chassis**. An inbox of submissions grouped by
-  workflow state is structurally what the incident inbox already is (`src/components/Inbox.tsx`,
-  board/list modes, `src/data/viewLayout.tsx:30`). This is the largest vision feature with the
-  smallest UI cost, because the chassis exists.
+Add `migration: "Not started" | "Piloting" | "Migrated" | "Won't move"` per workflow, and surface
+`platform` as a column, filter, and chip on the library and Activity stream — the filter/chip
+machinery already exists (`src/data/workspaceControls.tsx`, `src/lib/filterMenu.ts`). This is the
+Control Room's Migration tool, inverted: per-workflow, reversible, always-on.
 
-### Gap 6 — No execution runtime, and the vision's Phase 0 depends on one
+### Gap 10 — Vocabulary: pick one word
 
-Vision §7 claims the prototype proves *"a stateless runtime can execute that workflow end-to-end"*
-and *"the execution is observable in real time — nodes lighting up, logs streaming."* The app
-fabricates runs (`src/lib/builder.ts:147`). The run-viewer UI itself is genuinely good — the
-Activity view has in-progress grouping, live-run detection (`isLive`, `ActivityView.tsx:51`), a
-timeline mode, and a per-run log feed. It is a real viewer pointed at fake events.
-
-**Change — the minimum that makes the claim true:**
-- `packages/runtime` — a dependency-free executor over the node-type interface, with an injected
-  `EventSink` and `HttpTransport`, matching the seam pattern the A360 connector already uses
-  (injected `HttpTransport` + `now()` clock). No Supabase import, so it runs **in an Edge Function
-  and as a local CLI process** — which is what makes the cross-platform claim (§5, §6)
-  demonstrable: same runtime, laptop and server.
-- Six node types end-to-end, matching the vision's own count: `http.request`, `assert.equals`,
-  `templates.render`, `records.query`, `metrics.record`, and **one conditional** (see Gap 4).
-- A `run_events` table plus Supabase **Realtime**, so the Activity view subscribes and nodes light
-  up live. The existing `ActivityEvent` shape (`src/data/types.ts:37`) is already the run-log
-  format — the viewer needs a live source, not a rewrite.
-- Be explicit in the runbook that Edge Functions are ~150 s and stateless. That is fine for the
-  demo and is precisely why the vision's runner pool exists; say so rather than letting a reviewer
-  find it.
-
-**If a separate prototype repo already holds this runtime**, then Gap 6 is not a gap — but Conduit
-must then be positioned as the control plane, not "the prototype", and §7 of the vision should name
-both artefacts. See §6, Decision 1.
-
-### Gap 7 — The AA-coexistence story is the app's strongest asset and is invisible
-
-Phase 6 — *"workloads migrate off AA one at a time, reversibly; each workflow's routing decision is
-per-workflow"* — is exactly what the connector layer was built for, and the UI never shows it. The
-Automations library does not display `platform`; the Activity stream does not distinguish estates.
-
-**Change**
-- Surface `platform` as a column, filter, and chip on the Automations library and Activity stream
-  (the filter/chip machinery already exists — `src/data/workspaceControls.tsx`, `src/lib/filterMenu.ts`).
-- Add a per-workflow `migration: "Not started" | "Piloting" | "Migrated" | "Won't move"`.
-- A rollup on Settings → Integrations or the estate view: *"142 workflows — 118 AA, 24 Conduit,
-  6 won't move."*
-
-This turns the vision's abstract strangler into a screen, and it makes the honest risk *"some
-workloads never move"* (§10) a **visible count** rather than a caveat. That is the kind of thing a
-CIO trusts.
-
-### Gap 8 — The business case (§2) has nowhere to live in the UI
-
-The vision's argument is arithmetic: ~30 % API-eligible now, ~20 % blocked by Windows-integrated
-auth and shrinking as Entra rolls out, ~50 % genuinely headed. No screen shows this, so the demo
-cannot back the pitch.
-
-**Change:** an **Estate / Readiness** view — or a tab on Activity, where an `Insights` tab already
-exists (`src/components/ActivityView.tsx:15`) — classifying every workflow by
-`requirements.auth` + `requirements.ui` (free once Gap 2 lands) into: *API-eligible now* /
-*Windows-auth, Entra-pending* / *headed-bound*, with a runner-class cost rollup.
-
-Once `requirements` exists this is nearly free, and it is plausibly **the single most CIO-legible
-screen in the product**. It also makes the *"Entra migration pace is not ours to set"* risk (§10)
-something you track on a chart instead of something you apologise for in a meeting.
-
-### Gap 9 — Vocabulary drift across three registers
-
-UI says "Automation", the domain says `Bot`, the vision says "workflow". `CLAUDE.md` decision 4
-settled UI = Automation / domain = `Bot`, which was right **for an integration layer** — `bot` is
+Three registers today: the UI says **Automation**, the domain says **`Bot`**
+(`packages/domain/src/models.ts:31`), the vision says **workflow** throughout. `CLAUDE.md`
+decision 4 settled UI=Automation / domain=`Bot`, which was right for an integration layer — `bot` is
 A360's word for A360's object.
 
-Under this vision they are genuinely two different objects with different lifecycles: a `Bot` is
-*their* estate normalised for us to observe; a `Workflow` is *ours*, authored in our builder, with
-requirements, a schema version, and a review state. Conflating them is what makes the naming hurt.
+It is wrong for a Control Room *replacement*. Conduit's library shows AA bots and native workflows in
+one list, so they must be one type — and that type should not be named after the thing being
+replaced.
 
-**Change:** keep `Bot` as the **connector-facing** capability type. Introduce `Workflow` in
-`packages/domain` as the **native** type. Consider moving the UI label from "Automation" to
-"Workflow" — the vision document, which is the pitch artefact, says workflow throughout.
+**Recommendation:** one word everywhere, and make it the vision's: `Workflow` in the domain,
+`workflows` capability, "Workflows" in the UI. AA bots normalise into `Workflow` with
+`platform: "automation-anywhere"`. Cost is ~10 files, all stage 1–4 code (`Bot`, `BotService`,
+`BotProvider`, the `bots` table/function, `getBots`, `coerceBot`, `seedBots`, the nav gate) — a
+mechanical rename, cheap now and steadily more expensive as capabilities land.
+*Counter-argument worth weighing:* "Automation" is the more familiar business word and matches AA's
+own section name. Either choice is defensible; **using two is not.**
 
-### Gap 10 — The prototype over-promises against the vision's own honesty
+### Gap 11 — The prototype over-promises
 
-Vision §7 lists what the prototype deliberately does *not* prove: *"Scheduling, credentials,
-notifications, multi-user auth (all roadmap)."* The app renders complete-looking surfaces for every
-one of them — Manage → Scheduled (`src/data/manage.ts:23`), Credentials (`:63`), Administration →
-licences and policies (`src/data/admin.ts:39,47`). A CIO clicking through will assume they work.
+Vision §7 lists what the prototype deliberately does not prove — *"scheduling, credentials,
+notifications, multi-user auth (all roadmap)"* — while the app renders complete-looking surfaces for
+every one (`src/data/manage.ts:23,63`, `src/data/admin.ts:39,47`). A CIO clicking through assumes
+they work.
 
-**Change:** a per-surface readiness affordance — `"live" | "prototype" | "roadmap"` — reusing the
-`dataSource` seam that already distinguishes live from seed (`src/store.tsx:215`). A small badge in
-the workspace header.
+**Change:** a per-surface `readiness: "live" | "prototype" | "roadmap"` badge, reusing the
+`dataSource` seam that already distinguishes live from seed (`src/store.tsx:215`). Cheap, and it
+makes the app embody the same discipline §7 and §9 preach rather than undercut it.
 
-This is cheap, and it converts a credibility risk into a **demonstration of the same discipline the
-vision preaches** in §7 and §9. Being explicit about limits is described in the vision as "a feature
-of the pitch, not a weakness" — the app should embody that, not undercut it.
+### Gap 12 — Two smaller alignments
 
-### Gap 11 — The capability set is entirely AA-shaped
-
-`bots · schedules · devices · credentials · activity · audit · packages · queues`
-(`packages/domain/src/capability.ts:6`). Capabilities gate the UI (`src/data/nav.ts:24`), so **no
-vision feature can be capability-gated today** — there is no id to gate on.
-
-**Change:** add `workflows`, `runners` (or re-point `devices`), `node-types`, `distribution`,
-`review`. Let the `conduit` connector declare them, and let A360 continue declaring only `bots`. The
-nav then lights up the native platform's features by exactly the mechanism the architecture already
-mandates.
-
-### Gap 12 — No AI extension point
-
-Vision §6: *"AI capabilities plug in through the same node interface as everything else — not bolted
-on, not a separate product."* There is no AI node and no seam, so the claim is untested.
-
-**Change:** an `ai` package with two or three node types (extract from document, classify,
-summarise) declared through the ordinary node-type interface and badged `roadmap` (Gap 10). The
-point is to prove the interface holds, not to build the feature — the vision is explicit that AI
-"should not lead the roadmap" (Phase 5). Keep it to three nodes.
-
-### Gap 13 — Residual issue-tracker DNA
-
-Some of the inherited chassis maps well and should stay: a failed run spawning an incident is real
-observability, and `Issue.sourceRunId` already models it (`src/data/types.ts:73`). Some does not:
-`Surfaces`, `impactedUsers`, `regression`, and code-diff findings are APM concepts with no vision
-counterpart.
-
-**Change:** keep Issues as run-failure incidents. Re-purpose **Surfaces → Systems** (the target
-applications workflows touch, each with its auth model). That directly feeds the Entra-readiness
-story — *"which target systems are still Windows-integrated"* — and reuses a built view instead of
-deleting one.
+- **AI extension point** (§6: *"AI plugs in through the same node interface"*). Three node stubs —
+  extract from document, classify, summarise — declared through the ordinary node-type interface and
+  badged `roadmap`. The point is proving the interface holds, not building the feature; §8 is
+  explicit that AI lands last.
+- **Surfaces → Systems.** `Surfaces` is APM DNA with no Control Room or vision counterpart.
+  Re-purposed as the *target systems* workflows touch, each with its auth model, it directly feeds
+  the Entra-readiness story — *which systems are still Windows-integrated* — and reuses a built view
+  instead of deleting one.
 
 ---
 
-## 4. Staged plan
-
-Ordered so each stage is independently demonstrable, mirroring the vision's own "each phase delivers
-standalone value" principle.
+## 5. Staged plan
 
 **Stage A — model and vocabulary** *(low risk, no UI churn, unblocks everything)*
-1. `CLAUDE.md` product framing (Gap 0).
-2. `Runner` + runner classes + `runners` capability (Gap 1, Gap 11).
-3. `WorkflowRequirements` on `Automation`, `requires` on node types, derivation from steps (Gap 2).
-4. `schemaVersion` + `migrateWorkflow` (Gap 4).
-5. Tier roles + review lifecycle states (Gap 5, model only).
+1. `CLAUDE.md` product framing: control plane / execution plane / migration bridge (§1).
+2. `Runner` + classes + `runners` capability (Gap 1).
+3. `WorkflowRequirements` + node `requires` + derivation from steps (Gap 2).
+4. Tier roles + review lifecycle states (Gap 3, model only).
+5. `version` + `schemaVersion` + `migrateWorkflow` (Gap 7).
+6. Naming decision, applied in one pass (Gap 10).
 
-**Stage B — the screens that sell the bet** *(highest pitch value per hour)*
-6. Environments → **Runners** pool view (Gap 1).
-7. `pickRunner()` + routing rationale on every run row (Gap 2).
-8. **Estate / Readiness** view — the §2 arithmetic (Gap 8).
-9. `platform` column, filter, and migration state on the library (Gap 7).
-10. Readiness badges on roadmap surfaces (Gap 10).
+**Stage B — the screens that sell the inversions** *(highest pitch value per hour; no infrastructure)*
+7. **Home** — pool, estate split, readiness mix, in-flight runs (Gap 4).
+8. Environments → **Runners** pool view (Gap 1).
+9. `pickRunner()` + routing rationale on every run row (Gap 2).
+10. `platform` column/filter + migration state (Gap 9).
+11. Readiness badges (Gap 11).
 
-**Stage C — the proof**
-11. `packages/runtime` — six node types, injected `EventSink`, runs locally and in an Edge Function (Gap 6).
-12. `run_events` + Realtime → nodes light up live in the Activity view (Gap 6).
-13. Node catalogue served from the backend, `ACTIONS` as seed fallback (Gap 3).
-14. Review queue on the Inbox chassis + promote flow (Gap 5, UI).
-15. Three AI node stubs behind the same interface (Gap 12).
+**Stage C — the control plane earns its name**
+12. Runner protocol: register, heartbeat, dispatch, claim (Gap 5).
+13. `run_events` + ingest + Realtime → nodes light up live (Gap 5).
+14. Review queue on the Inbox chassis + promote flow (Gap 3, UI).
+15. Version history + audit log (Gaps 7, 8).
+16. Node catalogue served from the backend (Gap 6).
+17. Three AI node stubs (Gap 12).
 
-If only one stage gets built, build **Stage B**: it needs no infrastructure, and it is what turns the
-vision's three bets into three screens.
-
----
-
-## 5. What not to build
-
-Drawn from the vision's own §9 boundaries — worth stating so the app doesn't drift into them:
-
-- **No integration marketplace.** Connectors are an internal extension point, not a catalogue with
-  a browse-and-install UI.
-- **No DAG/ETL semantics.** Fan-out, backfill, and data-lineage UI would make this read as Airflow.
-  Business-process shape: a flow, conditionals, retries.
-- **No general app builder.** The builder authors workflows; it must not grow forms, pages, or layout.
-- **No cutover language anywhere in the UI.** AA coexists for the whole roadmap; every migration
-  affordance should be reversible and per-workflow.
-- **Do not let AI lead.** Three node stubs behind the standard interface. No AI-first surface, no
-  assistant in the shell — the vision is explicit that this lands last and lands well only on a solid
-  platform.
+If only one stage gets built before the pitch, build **Stage B**: it needs no backend work, and it
+is what turns the three inversions into three screens.
 
 ---
 
-## 6. Decisions needed
+## 6. What not to build
+
+From the vision's own §9 boundaries, plus the framing:
+
+- **No integration marketplace.** Connectors are an internal extension point, not a browsable catalogue.
+- **No DAG/ETL semantics.** Fan-out, backfill, and lineage UI would make this read as Airflow.
+- **No general app builder.** The builder authors workflows — not forms, pages, or layouts.
+- **No execution engine in this repo.** Conduit dispatches and observes; runners execute (Gap 5).
+- **No cutover language anywhere in the UI.** Every migration affordance is per-workflow and reversible.
+- **Do not let AI lead.** Three stubs behind the standard interface. No assistant in the shell.
+- **Do not copy AA where the vision says it is wrong.** A device-assignment UI, a bot-update surface,
+  or per-machine scheduling would each quietly re-import the problem the platform exists to remove.
+
+---
+
+## 7. Decisions remaining
 
 | # | Decision | Recommendation |
 |---|---|---|
-| 1 | **Is Conduit the prototype the vision's §7/Phase 0 describes, or the control plane alongside a separate runtime prototype?** | Everything else follows from this. If Conduit is the prototype, Stage C is mandatory before the CIO demo, because §7's central claim is currently unsupported. If the runtime lives elsewhere, position Conduit as the control plane in `CLAUDE.md` and have the vision name both artefacts. |
-| 2 | `Bot` vs `Workflow` in the domain | Keep both — `Bot` connector-facing, `Workflow` native (Gap 9). They are different objects. |
-| 3 | UI label: "Automation" or "Workflow" | Move to **Workflow** if the vision doc is the pitch artefact; the two should not use different words for the same thing in front of a CIO. |
-| 4 | `devices` capability vs a new `runners` capability | Re-point `devices` at runners and alias the label. A360 calls them devices; the vision calls them runners; one capability, two labels. |
-| 5 | Environments view: repurpose or keep | **Repurpose to Runners.** Deployment environments are marketing-template DNA with no place in the vision. |
-| 6 | Where the distributor lives | Start as a pure function in `packages/domain` (or `packages/distributor`). It is testable with no infrastructure, and it makes Phase 2 a swap of implementation, not of contract. |
+| 1 | ~~Is Conduit the prototype or the control plane?~~ | **Settled: the control plane — the Control Room replacement.** |
+| 2 | One word for the central object (Gap 10) | `Workflow` everywhere — UI, domain, API. Drop `Bot`; AA bots normalise in. Either word works; two do not. |
+| 3 | `devices` capability vs a new `runners` capability | Re-point `devices` and relabel. AA says devices, the vision says runners; one capability, two labels. |
+| 4 | Environments view: repurpose or keep | **Repurpose to Runners** — `structure-map.md` §D.5 already nominated it. |
+| 5 | Where the distributor lives | A pure function in `packages/domain` now; a service in Phase 2. Contract stays, implementation swaps. |
+| 6 | Does the runner protocol ship before a real runner exists? | **Yes** — define it in `packages/domain` and have `testRun()` post through the ingest path as a fake runner, so the UI is written once. |
+| 7 | Does the incident inbox stay in scope? | **Yes** — it is the one genuine addition over the Control Room, and it already works. |
 
 ---
 
 *Companion documents: `docs/integration-layer-plan.md` (the integration layer as built),
-`docs/structure-map.md` (the A360 ⇄ Conduit entity mapping).*
+`docs/structure-map.md` (the Control Room ⇄ Conduit surface mapping that shaped the app).*
