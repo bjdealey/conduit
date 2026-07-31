@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches-ignore: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+
+      # `globals.css` is a pre-compiled Tailwind artifact, so a utility class the
+      # app uses but that file never emitted fails silently — it just renders as
+      # nothing. This catches that before it ships.
+      - name: Utility classes all resolve
+        run: npm run check:classes
+
+      - run: npm run typecheck:packages
+      - run: npm test
+      - run: npm run build
