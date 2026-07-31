@@ -1,20 +1,21 @@
 name: CI
 
+# Push only. A `pull_request` trigger as well would match the same commit twice
+# on any branch with an open PR; deduping that with a concurrency group works,
+# but leaves a cancelled check run against the head commit, which is enough to
+# report the PR as unstable. Check runs attach to the commit SHA, so the
+# push-triggered run still shows up on the PR — one run per commit, no
+# cancellations. (main is excluded because deploy.yml covers it.)
 on:
   push:
     branches-ignore: [main]
-  pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
 
-# A branch that has an open PR matches both triggers above, which would run this
-# twice for one commit. `github.head_ref` (pull_request) and `github.ref_name`
-# (push) are both the branch name, so the two land in the same group and the
-# earlier run is cancelled. Branches without a PR still get CI from the push.
 concurrency:
-  group: ci-${{ github.head_ref || github.ref_name }}
+  group: ci-${{ github.ref_name }}
   cancel-in-progress: true
 
 jobs:
