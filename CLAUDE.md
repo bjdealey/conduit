@@ -27,7 +27,8 @@ carry the product, and none of them may be quietly un-done:
 2. **No drift.** Runners are ephemeral and carry only an `image`. There is no agent-version or
    patch surface to build, by construction.
 3. **Three tiers, not one.** Consumers trigger, citizen builders submit, professionals review and
-   promote. (Model work not yet started — see `docs/vision-alignment.md` Gap 3.)
+   promote. `packages/domain/src/review.ts` holds the permission table and the transition rules;
+   gates read `allowed(permission)`, never `role === "…"`.
 
 ## What this repo is today
 
@@ -337,3 +338,42 @@ errors, Home/Runners/Activity/Automations all render, 104 tests pass.
 **Not yet built after stage 5** (do not assume these exist): the runner protocol (register /
 heartbeat / dispatch / claim / ingest), `run_events` + Realtime streaming, tiers and the review
 lifecycle, workflow versions, the audit surface, the backend-served node catalogue, and AI nodes.
+
+## Implemented so far — stage 6: one word, tiers, and honest surfaces
+
+The third inversion, the naming decision, and the readiness markers. Verified in a real browser
+(Chromium): the review queue works end to end, tier gating hides what it should, and 120 tests pass.
+
+**One word: workflow**
+- `Bot` and `Automation` are gone. The domain type, the capability id, `WorkflowProvider` /
+  `WorkflowService`, the A360 mapper, the Postgres cache table, its Edge Function, the API client,
+  the store, the library view and the UI label are all `workflow`. Ids moved `aut_` → `wf_`.
+- `bot` survives only inside the A360 adapter, describing *their* payloads — the one place it's
+  still accurate.
+- **Migrations are append-only.** `0005_rename_bots_to_workflows.sql` renames the table, its
+  indexes and its read policy, and unschedules the old cron job before scheduling the renamed one.
+  0002 and 0004 were left untouched because they may already have been applied.
+- The local `Workflow` (rich, authored) and the domain `Workflow` (flat, crosses the API) share a
+  name because they're the same entity at two fidelities. The store calls the API-side list
+  `connectedWorkflows`; they converge when the library reads from the API.
+
+**Tiers + the review lifecycle** (`packages/domain/src/review.ts`, 16 tests)
+- `Role` = `consumer · builder · professional · admin`, with a permission table
+  (`trigger · author · submit · review · publish · administer`) and `can(role, permission)`.
+- `WorkflowStatus` = `Draft → In review → Changes requested → Approved → Published → Paused`.
+  Transitions are a table; `availableTransitions(role, status)` is what both the buttons and the
+  store's `reviewWorkflow` are built from, so the UI can't offer a move the rules refuse.
+- **No path skips approval, for any tier.** `Draft → Published` doesn't exist: a professional walks
+  their own work through in two clicks, but every published workflow carries an approval.
+- `src/components/ReviewView.tsx` — the queue, on the Inbox chassis (grouped list → detail → act).
+- Gates read `allowed(permission)`. There are no `role === "…"` comparisons left in the app.
+
+**Surface readiness** (`src/data/readiness.ts`)
+- Per-view `live | prototype | roadmap`, rendered as a Titlebar chip. `roadmap` marks exactly what
+  the vision's §7 says the prototype doesn't prove — Manage, Administration, Users, Surfaces.
+  `prototype` is unmarked, because that's the baseline; only the exceptions need saying.
+- Named `SurfaceReadiness` to avoid colliding with the workload `Readiness` bands in the domain.
+
+**Not yet built after stage 6** (do not assume these exist): the runner protocol (register /
+heartbeat / dispatch / claim / ingest), `run_events` + Realtime streaming, workflow versions, the
+audit surface, the backend-served node catalogue, and AI nodes.

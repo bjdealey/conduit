@@ -21,6 +21,7 @@ import { UsersView } from "./components/UsersView";
 import { SurfacesView } from "./components/SurfacesView";
 import { RunnersView } from "./components/RunnersView";
 import { HomeView } from "./components/HomeView";
+import { ReviewView } from "./components/ReviewView";
 
 function InboxView() {
   const { issues, selected, viewMode, controls } = useStore();
@@ -56,6 +57,7 @@ function Body() {
       {view === "activity" && <ActivityView />}
       {view === "inbox" && <InboxView />}
       {view === "workflows" && <WorkflowsView />}
+      {view === "review" && <ReviewView />}
       {view === "manage" && <ManageView />}
       {view === "administration" && <AdministrationView />}
       {view === "users" && <UsersView />}

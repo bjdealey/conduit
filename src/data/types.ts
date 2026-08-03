@@ -1,6 +1,8 @@
 /** Domain model for the Conduit platform prototype. */
 
-import type { WorkflowRequirements } from "@conduit/domain";
+import type { Role, WorkflowRequirements, WorkflowStatus } from "@conduit/domain";
+
+export type { Role, WorkflowStatus };
 
 /** Priorities, in the order they rank (highest first). */
 export const PRIORITIES = ["High", "Medium", "Low"] as const;
@@ -77,9 +79,9 @@ export type Issue = {
 
 /* -------------------------------------------------------------------- workflow */
 
-/** Fixed platform roles. Gates the UI (admin edits permissions; developer and
- *  user get progressively scoped views). */
-export type Role = "admin" | "developer" | "user";
+/* Roles and the workflow lifecycle live in `packages/domain/src/review.ts`, with the
+   permission table and the transition rules they gate. Keeping the vocabulary next to
+   the rules is what stops the UI offering a button the rules would refuse. */
 
 /** Whether an workflow / folder is shared (Public) or owner-scoped (Private). */
 export type Visibility = "public" | "private";
@@ -121,8 +123,7 @@ export type Run = {
   issueId?: number;
 };
 
-/** The workflow lifecycle, distinct from an incident's workflow status. */
-export type WorkflowStatus = "Active" | "Paused" | "Draft";
+
 
 /** The platform that executes an workflow today. `conduit` is native — authored
  *  here, run on our runners. Anything else is a connected platform mirrored into the
@@ -177,6 +178,14 @@ export type Workflow = {
    *  Declared here and raised on save to at least what its steps require, so a flow
    *  can't quietly need more than it admits to. */
   requirements: WorkflowRequirements;
+  /** Who submitted it for review, and when. Absent until it is first submitted. */
+  submittedBy?: string;
+  submittedAt?: string;
+  /** Who last reviewed it, when, and what they said. A published workflow always
+   *  carries an approval — there is no transition that skips one. */
+  reviewedBy?: string;
+  reviewedAt?: string;
+  reviewNote?: string;
   /** What starts it. Edited in the builder; mirrored by the runs it produces. */
   trigger: WorkflowTrigger;
   /** The flow itself, in execution order. Authored in the builder; the

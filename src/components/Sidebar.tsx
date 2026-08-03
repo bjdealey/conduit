@@ -1,5 +1,5 @@
 import { type ReactNode } from "react";
-import { Bell, Box, Cpu, House, Inbox, Settings, ShieldCheck, SlidersHorizontal, Users, Workflow as WorkflowIcon } from "lucide-react";
+import { Bell, Box, ClipboardCheck, Cpu, House, Inbox, Settings, ShieldCheck, SlidersHorizontal, Users, Workflow as WorkflowIcon } from "lucide-react";
 import { useStore, type View } from "../store";
 import { navItems } from "../data/nav";
 import { endUsers } from "../data/users";
@@ -17,6 +17,7 @@ const navIconProps = { size: 20, strokeWidth: 1.7 };
 // Keyed by view so the rail can't miss one; the modes that aren't nav
 // destinations (Settings' full-screen rail, the builder) never render from here.
 const icons: Record<View, ReactNode> = {
+  review: <ClipboardCheck {...navIconProps} />,
   home: <House {...navIconProps} />,
   builder: <WorkflowIcon {...navIconProps} />,
   activity: <Bell {...navIconProps} />,

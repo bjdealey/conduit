@@ -271,14 +271,14 @@ function ReadinessPanel({ workflows }: { workflows: Workflow[] }) {
  *  when nothing fits, it says that too. */
 function InFlightPanel({ runs, workflows, onOpen }: { runs: Run[]; workflows: Workflow[]; onOpen: () => void }) {
   const live = runs.filter((r) => r.state === "Running" || r.state === "Queued");
-  const automationOf = (id: string) => workflows.find((a) => a.id === id);
+  const workflowOf = (id: string) => workflows.find((a) => a.id === id);
 
   return (
     <Section title="In flight" hint="Every placement, with the reason it was made.">
       <div className="flex flex-col rounded-xl border-border-default border-[0.5px] bg-page px-4 py-1 shadow-default">
         {live.length === 0 && <p className="py-6 text-center text-body-sm text-tertiary-foreground">Nothing running.</p>}
         {live.map((run, i) => {
-          const workflow = automationOf(run.workflowId);
+          const workflow = workflowOf(run.workflowId);
           const placed = run.runnerId ? runners.find((r) => r.id === run.runnerId) : null;
           // Queued work has no placement yet — ask the distributor now, so the row
           // shows where it would go rather than an empty cell.

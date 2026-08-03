@@ -3,7 +3,10 @@
 An assessment of the Conduit application against the **Automation Platform — Vision** document
 (IT Director / CIO audience), with the product framing settled: **Conduit is the replacement for
 the Automation Anywhere Control Room.** Every claim about the current app cites a file and line.
-Nothing here is implemented; it is a proposal for review.
+
+> **Status.** This began as a proposal. Stages A and B are now built, along with the review
+> lifecycle and the naming decision — the parity table and gap list below are marked accordingly.
+> What remains is listed in §5 and §7.
 
 ---
 
@@ -47,32 +50,33 @@ match it), **Invert** (the vision says AA is *wrong* here — do the opposite de
 
 | Control Room surface | Stance | Conduit today | Verdict |
 |---|---|---|---|
-| Home → Overview / Automations / Devices / Licenses | Parity, re-cut | Absent — app opens on the incident Inbox (`src/store.tsx:201`) | ❌ **Missing** |
+| Home → Overview / Automations / Devices / Licenses | Parity, re-cut | Built — pool, estate split, readiness mix, in-flight runs (`src/components/HomeView.tsx`) | ✅ **Delivered** |
 | Automation → Public / Private folder tree | Parity | Built (`folders`, `visibility`, `src/data/automations.ts:12`) | ✅ |
 | Automation → View history (versions) | Parity + review lifecycle | Absent — no version concept | ❌ **Missing** |
 | Automation → dependencies / references | Parity | Built, and *derived* (`packagesForSteps`, `src/data/actions.ts:200`) | ✅ Better than AA |
-| Bot editor | Parity | Built (`src/components/AutomationBuilder.tsx`) | 🟡 Linear only — no conditionals |
+| Workflow builder | Parity | Built (`src/components/WorkflowBuilder.tsx`) | 🟡 Linear only — no conditionals |
 | Activity → In progress / Historical / Insights | Parity | Built, incl. live-run detection (`ActivityView.tsx:51`) | 🟡 Real viewer, seed events |
-| Manage → Scheduled | **Invert** — schedules request work; the distributor places it | Table with a free-text `target` (`src/data/manage.ts:20`) | ❌ **Not inverted** |
+| Manage → Scheduled | **Invert** — schedules request work; the distributor places it | `Schedule.target` removed; the column reads "Chosen at run time" | ✅ **Inverted** |
 | Manage → Event triggers | Parity | Built (`src/data/manage.ts:44`) | ✅ |
-| Manage → **Devices** | **Invert** — stateful assigned desktops → an ephemeral pool | No runner entity at all | ❌ **Biggest gap** |
-| Manage → Device pools *(unused in AA)* | **Invert & elevate** — the pool is the whole point | Absent | ❌ **Missing** |
+| Manage → **Devices** | **Invert** — stateful assigned desktops → an ephemeral pool | `Runner` + the pool view, with no assign control anywhere (`src/components/RunnersView.tsx`) | ✅ **Inverted** |
+| Manage → Device pools *(unused in AA)* | **Invert & elevate** — the pool is the whole point | The pool grouped by class, plus `pickRunner` placing per run | ✅ **Delivered** |
 | Manage → Queues *(unused in AA)* | Defer | Capability id reserved, no UI | ✅ Correctly deferred |
 | Manage → Credentials / OAuth | Parity, Vault-backed | Metadata-only model + Supabase Vault server-side | ✅ Strong |
 | Manage → Packages | Parity → becomes **node types** | Table + palette, but compiled in (`src/data/actions.ts:41`) | 🟡 Not data-driven |
 | Manage → Global values | Parity | Built (`src/data/manage.ts:103`) | ✅ |
-| Administration → Users / Roles | **Invert** — one professional tier → three tiers | `admin \| developer \| user` (`src/data/types.ts:80`) | ❌ **Not inverted** |
+| Administration → Users / Roles | **Invert** — one professional tier → three tiers | `consumer · builder · professional · admin` + a permission table (`packages/domain/src/review.ts`) | ✅ **Inverted** |
 | Administration → Licenses | Parity | Built — already carries an "Automation runners" seat count (`src/data/admin.ts:41`) | ✅ |
 | Administration → Policies | Parity | Built — already carries "Production run approval" (`src/data/admin.ts:51`) | ✅ Hook for review |
 | Administration → Settings | Parity | Built | ✅ |
 | Administration → Bot update (agent versions) | **Invert** — ephemeral runners don't drift; only images version | Absent | 🟡 Becomes "Runner images" |
 | Audit log | Parity | Capability id reserved, no surface | ❌ **Missing** |
-| Migration tool | **Invert** — per-workflow, reversible, always-on | Absent | ❌ **Missing** |
+| Migration tool | **Invert** — per-workflow, reversible, always-on | `Workflow.migration` + platform/migration filters on the library | ✅ **Delivered** |
 | Incident inbox | **Add** — AA has no equivalent | Built, with `Issue.sourceRunId` back-links (`src/data/types.ts:73`) | ✅ Differentiator |
 
-**Score: parity is in good shape; the inversions are almost entirely unbuilt.** That is the finding.
-Conduit today is a competent Control Room. It is not yet a *better* one, because every place the
-vision says AA is wrong is a place Conduit currently copies AA or has nothing.
+**Original score: parity was in good shape; the inversions were almost entirely unbuilt.** That was
+the finding, and it drove everything since. All three inversions now exist. What's left is parity
+work Conduit still owes — versions, the audit surface — and the runner protocol that makes the
+execution plane real.
 
 ---
 
@@ -104,7 +108,7 @@ worth showing, and worth keeping out of the "parity" bucket where it gets unders
 
 ## 4. Gaps, re-ranked for the Control Room framing
 
-### Gap 1 — The runner pool does not exist *(blocks two of the three inversions)*
+### ~~Gap 1~~ — The runner pool ✅ **delivered** *(`packages/domain/src/runner.ts`, `RunnersView`)*
 
 A runner is free text today: `target: "prod-runner-1"` (`src/data/manage.ts:24`,
 `src/data/types.ts:113`). AA's Devices surface has no Conduit counterpart, and AA's *Device pools* —
@@ -122,7 +126,7 @@ marked unused in the reference material — is precisely the concept the vision 
   and `structure-map.md` §D.5 already nominated that card grid as the host for execution targets. It
   occupies the nav slot the pool should own (`src/data/nav.ts:21`).
 
-### Gap 2 — Workflows declare no requirements, so distribution cannot exist
+### ~~Gap 2~~ — Requirements + the distributor ✅ **delivered** *(`packages/domain/src/distributor.ts`)*
 
 Vision §6: *"A workflow declares its requirements (auth model, UI dependency, target platform), and
 the distributor routes it to a runner that fits."* `Automation` (`src/data/types.ts:141`) has no such
@@ -151,7 +155,11 @@ field. Without it, Inversion 1 is undemonstrable and the Manage → Scheduled su
   (`src/components/RunRow.tsx`, `ActivityView`). That line **is** Inversion 1, and it ships long
   before a real distributor.
 
-### Gap 3 — Tiers and the review lifecycle *(Inversion 3, and the largest feature with the smallest UI cost)*
+### ~~Gap 3~~ — Tiers and the review lifecycle ✅ **delivered**
+
+*Built in `packages/domain/src/review.ts` (permission table + transition rules, 16 tests) and
+`src/components/ReviewView.tsx` (the queue, on the Inbox chassis). Gates read `allowed(permission)`;
+no `role === "…"` comparison survives in the app. Original analysis follows.*
 
 Roles are `admin | developer | user` (`src/data/types.ts:80`) with descriptions written for an IT
 tool (`src/data/admin.ts:31`). `AutomationStatus` is `Active | Paused | Draft`
@@ -168,7 +176,7 @@ tool (`src/data/admin.ts:31`). `AutomationStatus` is `Active | Paused | Draft`
 - The `pol_approval` policy row already exists (`src/data/admin.ts:51`); wire it to the lifecycle
   instead of leaving it decorative.
 
-### Gap 4 — No Home. The CIO's first screen is an incident inbox
+### ~~Gap 4~~ — No Home ✅ **delivered** *(`src/components/HomeView.tsx`)*
 
 The Control Room opens on a Home dashboard (Overview / Automations / Devices / Licenses); Conduit
 opens on `inbox` (`src/store.tsx:201`). For a Control Room replacement this is a parity gap; for a
@@ -242,14 +250,14 @@ Version it *before* you branch it.
 Room replacement needs one for parity, and the tiered model needs it for governance — who submitted,
 who approved, who promoted, who ran. The `ActivityEvent` timeline is the right primitive again.
 
-### Gap 9 — Migration is invisible
+### ~~Gap 9~~ — Migration ✅ **delivered**
 
 Add `migration: "Not started" | "Piloting" | "Migrated" | "Won't move"` per workflow, and surface
 `platform` as a column, filter, and chip on the library and Activity stream — the filter/chip
 machinery already exists (`src/data/workspaceControls.tsx`, `src/lib/filterMenu.ts`). This is the
 Control Room's Migration tool, inverted: per-workflow, reversible, always-on.
 
-### Gap 10 — Vocabulary: pick one word
+### ~~Gap 10~~ — Vocabulary ✅ **settled and shipped: `Workflow` everywhere**
 
 Three registers today: the UI says **Automation**, the domain says **`Bot`**
 (`packages/domain/src/models.ts:31`), the vision says **workflow** throughout. `CLAUDE.md`
@@ -268,7 +276,7 @@ mechanical rename, cheap now and steadily more expensive as capabilities land.
 *Counter-argument worth weighing:* "Automation" is the more familiar business word and matches AA's
 own section name. Either choice is defensible; **using two is not.**
 
-### Gap 11 — The prototype over-promises
+### ~~Gap 11~~ — The prototype over-promises ✅ **delivered** *(`src/data/readiness.ts`)*
 
 Vision §7 lists what the prototype deliberately does not prove — *"scheduling, credentials,
 notifications, multi-user auth (all roadmap)"* — while the app renders complete-looking surfaces for
@@ -294,7 +302,7 @@ makes the app embody the same discipline §7 and §9 preach rather than undercut
 
 ## 5. Staged plan
 
-**Stage A — model and vocabulary** *(low risk, no UI churn, unblocks everything)*
+**Stage A — model and vocabulary** *(low risk, no UI churn, unblocks everything)* — ✅ **delivered**
 1. `CLAUDE.md` product framing: control plane / execution plane / migration bridge (§1).
 2. `Runner` + classes + `runners` capability (Gap 1).
 3. `WorkflowRequirements` + node `requires` + derivation from steps (Gap 2).
@@ -302,14 +310,14 @@ makes the app embody the same discipline §7 and §9 preach rather than undercut
 5. `version` + `schemaVersion` + `migrateWorkflow` (Gap 7).
 6. Naming decision, applied in one pass (Gap 10).
 
-**Stage B — the screens that sell the inversions** *(highest pitch value per hour; no infrastructure)*
+**Stage B — the screens that sell the inversions** *(highest pitch value per hour; no infrastructure)* — ✅ **delivered**
 7. **Home** — pool, estate split, readiness mix, in-flight runs (Gap 4).
 8. Environments → **Runners** pool view (Gap 1).
 9. `pickRunner()` + routing rationale on every run row (Gap 2).
 10. `platform` column/filter + migration state (Gap 9).
 11. Readiness badges (Gap 11).
 
-**Stage C — the control plane earns its name**
+**Stage C — the control plane earns its name** — *partly delivered: 14 (review queue) and the naming decision are done; 12, 13, 15, 16, 17 remain*
 12. Runner protocol: register, heartbeat, dispatch, claim (Gap 5).
 13. `run_events` + ingest + Realtime → nodes light up live (Gap 5).
 14. Review queue on the Inbox chassis + promote flow (Gap 3, UI).
@@ -342,7 +350,7 @@ From the vision's own §9 boundaries, plus the framing:
 | # | Decision | Recommendation |
 |---|---|---|
 | 1 | ~~Is Conduit the prototype or the control plane?~~ | **Settled: the control plane — the Control Room replacement.** |
-| 2 | One word for the central object (Gap 10) | `Workflow` everywhere — UI, domain, API. Drop `Bot`; AA bots normalise in. Either word works; two do not. |
+| 2 | ~~One word for the central object (Gap 10)~~ | **Settled and shipped: `Workflow` everywhere** — UI, domain, API, cache table, Edge Function, id prefix. `bot` survives only inside the A360 adapter. |
 | 3 | `devices` capability vs a new `runners` capability | Re-point `devices` and relabel. AA says devices, the vision says runners; one capability, two labels. |
 | 4 | Environments view: repurpose or keep | **Repurpose to Runners** — `structure-map.md` §D.5 already nominated it. |
 | 5 | Where the distributor lives | A pure function in `packages/domain` now; a service in Phase 2. Contract stays, implementation swaps. |

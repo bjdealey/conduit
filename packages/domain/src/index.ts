@@ -34,3 +34,19 @@ export {
 } from "./runner.ts";
 export type { RunnerAssignment } from "./distributor.ts";
 export { explainRequirements, pickRunner, poolByClass, readinessMix, runnerFits } from "./distributor.ts";
+export type { Permission, ReviewAction, Role, Transition, WorkflowStatus } from "./review.ts";
+export {
+  AWAITING_REVIEW,
+  PERMISSIONS,
+  REVIEW_ACTIONS,
+  ROLES,
+  ROLE_BLURB,
+  ROLE_LABEL,
+  WORKFLOW_STATUSES,
+  availableTransitions,
+  can,
+  canTransition,
+  isRunnable,
+  permissionsOf,
+  transitionsFrom,
+} from "./review.ts";

@@ -6,6 +6,8 @@ import { runners } from "../data/runners";
 import { VIEW_MODES, CONTEXT_LABEL } from "../data/viewLayout";
 import { SETTINGS_PAGES, DEFAULT_SETTINGS_PAGE } from "../data/settings";
 import { Breadcrumb, type Crumb } from "./Breadcrumb";
+import { Chip } from "./Chip";
+import { READINESS_META, readinessOfView } from "../data/readiness";
 import { SidebarToggle } from "./SidebarToggle";
 import { SegmentedControl } from "./SegmentedControl";
 import { Avatar } from "./Avatar";
@@ -69,6 +71,7 @@ function InfoPaneToggle({ label }: { label: string }) {
 
 const VIEW_LABEL: Record<Exclude<View, "inbox">, string> = {
   home: "Home",
+  review: "Review",
   builder: "Workflow builder",
   activity: "Activity",
   workflows: "Workflows",
@@ -87,6 +90,7 @@ export function Titlebar() {
   const {
     view,
     subview,
+    dataSource,
     selected,
     select,
     selectedUserId,
@@ -177,6 +181,7 @@ export function Titlebar() {
     items = [{ label: VIEW_LABEL[view] }];
   }
 
+  const readiness = readinessOfView(view, dataSource);
   const showSwitcher = (VIEW_MODES[view]?.length ?? 0) > 1;
   const showInfoToggle = hasContext && !!CONTEXT_LABEL[view];
   const showSubscribers = view === "inbox" && !!selected;
@@ -188,6 +193,17 @@ export function Titlebar() {
     >
       <SidebarToggle />
       <Breadcrumb items={items} />
+      {/* What this screen actually is. The vision names scheduling, credentials and
+          multi-user auth as roadmap, and the app draws all three convincingly — so
+          each surface says so rather than letting a complete-looking screen imply a
+          promise nobody made. */}
+      {readiness !== "prototype" && (
+        <span title={READINESS_META[readiness].blurb} className="inline-flex">
+          <Chip tone={READINESS_META[readiness].tone} dot={false}>
+            {READINESS_META[readiness].label}
+          </Chip>
+        </span>
+      )}
 
       <div className="ml-auto flex items-center gap-2">
         {showSwitcher && <ViewModeSwitcher view={view} />}

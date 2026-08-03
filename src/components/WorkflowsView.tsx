@@ -12,7 +12,7 @@ import {
   Workflow as WorkflowIcon,
 } from "lucide-react";
 import { useStore } from "../store";
-import { explainRequirements } from "@conduit/domain";
+import { WORKFLOW_STATUSES, availableTransitions, explainRequirements } from "@conduit/domain";
 import { PLATFORM_LABEL } from "../data/types";
 import type { Workflow, WorkflowStatus, Visibility } from "../data/types";
 import { folders as allFolders } from "../data/workflows";
@@ -32,7 +32,7 @@ const pct = (r: number) => `${Math.round(r * 100)}%`;
 
 /** Workflows narrowed and ordered by the workspace header — the same set the
  *  library tree, the search results, and the board all draw from. */
-function visibleAutomations(workflows: Workflow[], state: WorkspaceState): Workflow[] {
+function visibleWorkflows(workflows: Workflow[], state: WorkspaceState): Workflow[] {
   const rows = workflows.filter(
     (a) =>
       matchesQuery(state.query, [a.name, a.id, a.description, a.packages.join(" ")]) &&
@@ -121,7 +121,7 @@ function TreeRow({
 
 /** A selectable workflow leaf inside the library tree (status dot + name, with
  *  the owner avatar trailing). */
-function AutomationLeaf({
+function WorkflowLeaf({
   workflow,
   depth,
   active,
@@ -200,7 +200,7 @@ function FolderBranch({
             />
           ))}
           {autos.map((a) => (
-            <AutomationLeaf
+            <WorkflowLeaf
               key={a.id}
               workflow={a}
               depth={depth + 1}
@@ -221,7 +221,7 @@ function FolderBranch({
  *  navigation and selection live in one column instead of two. While the
  *  workspace header narrows the page (a search or a filter), the tree flattens to
  *  the matches — the folders are structure, not a second filter. */
-function AutomationLibrary({
+function WorkflowLibrary({
   workflows,
   narrowed,
   selectedId,
@@ -258,7 +258,7 @@ function AutomationLibrary({
             </p>
           ) : (
             workflows.map((a) => (
-              <AutomationLeaf
+              <WorkflowLeaf
                 key={a.id}
                 workflow={a}
                 depth={0}
@@ -320,8 +320,8 @@ function MetaRow({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function AutomationDetail({ workflow, onSelectAutomation }: { workflow: Workflow; onSelectAutomation: (id: string) => void }) {
-  const { memberById, runsForWorkflow, workflowById, editWorkflow, role } = useStore();
+function WorkflowDetail({ workflow, onSelectWorkflow }: { workflow: Workflow; onSelectWorkflow: (id: string) => void }) {
+  const { memberById, runsForWorkflow, workflowById, editWorkflow, reviewWorkflow, role, allowed } = useStore();
   const [tab, setTab] = useState<DetailTab>("History");
   const owner = memberById(workflow.ownerId);
   const runs = runsForWorkflow(workflow.id);
@@ -381,7 +381,7 @@ function AutomationDetail({ workflow, onSelectAutomation }: { workflow: Workflow
                         <button
                           key={rid}
                           type="button"
-                          onClick={() => onSelectAutomation(rid)}
+                          onClick={() => onSelectWorkflow(rid)}
                           className="focusable flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-transparent-hover"
                         >
                           <Link2 size={14} strokeWidth={1.8} className="shrink-0 text-tertiary-foreground" />
@@ -420,7 +420,7 @@ function AutomationDetail({ workflow, onSelectAutomation }: { workflow: Workflow
               </Button>
               {/* Only a natively-authored flow can be opened here; a mirrored one
                   lives on its own platform. */}
-              {role !== "user" && workflow.platform === "conduit" && (
+              {allowed("author") && workflow.platform === "conduit" && (
                 <Button
                   variant="outlined"
                   onClick={() => editWorkflow(workflow.id)}
@@ -430,6 +430,14 @@ function AutomationDetail({ workflow, onSelectAutomation }: { workflow: Workflow
                   Edit flow
                 </Button>
               )}
+              {/* The lifecycle moves this tier may make from here — the same table
+                  the Review queue and the store are built from, so an author sees
+                  "Submit for review" and never sees "Approve". */}
+              {availableTransitions(role, workflow.status).map((t) => (
+                <Button key={t.action} variant="outlined" onClick={() => reviewWorkflow(workflow.id, t.action)} className="w-fit">
+                  {t.label}
+                </Button>
+              ))}
             </div>
           </div>
 
@@ -496,12 +504,12 @@ function AutomationDetail({ workflow, onSelectAutomation }: { workflow: Workflow
 
 /* ------------------------------------------------------------------- board mode */
 
-const AUTOMATION_STATUSES: WorkflowStatus[] = ["Active", "Paused", "Draft"];
+const BOARD_STATUSES: WorkflowStatus[] = [...WORKFLOW_STATUSES];
 
 /** Board presentation: workflows laid out in columns by lifecycle status.
  *  Selecting a card returns to the list focused on that workflow — mirroring the
  *  inbox board → detail flow. */
-function AutomationsBoard({ items, onSelect }: { items: Workflow[]; onSelect: (id: string) => void }) {
+function WorkflowsBoard({ items, onSelect }: { items: Workflow[]; onSelect: (id: string) => void }) {
   const { memberById } = useStore();
   const columns = useMemo(() => {
     const by = new Map<WorkflowStatus, Workflow[]>();
@@ -510,7 +518,7 @@ function AutomationsBoard({ items, onSelect }: { items: Workflow[]; onSelect: (i
       arr.push(a);
       by.set(a.status, arr);
     }
-    return AUTOMATION_STATUSES.map((status) => ({ status, items: by.get(status) ?? [] }));
+    return BOARD_STATUSES.map((status) => ({ status, items: by.get(status) ?? [] }));
   }, [items]);
 
   return (
@@ -579,7 +587,7 @@ function AutomationsBoard({ items, onSelect }: { items: Workflow[]; onSelect: (i
 export function WorkflowsView() {
   const { workflows, viewMode, selectedWorkflowId, selectWorkflow, controls } = useStore();
   const state = controls("workflows");
-  const visible = visibleAutomations(workflows, state);
+  const visible = visibleWorkflows(workflows, state);
   const selected = selectedWorkflowId
     ? workflows.find((a) => a.id === selectedWorkflowId) ?? null
     : null;
@@ -590,9 +598,9 @@ export function WorkflowsView() {
     return (
       <SplitView>
         {selected ? (
-          <AutomationDetail workflow={selected} onSelectAutomation={selectWorkflow} />
+          <WorkflowDetail workflow={selected} onSelectWorkflow={selectWorkflow} />
         ) : (
-          <AutomationsBoard items={visible} onSelect={selectWorkflow} />
+          <WorkflowsBoard items={visible} onSelect={selectWorkflow} />
         )}
       </SplitView>
     );
@@ -600,14 +608,14 @@ export function WorkflowsView() {
 
   return (
     <SplitView>
-      <AutomationLibrary
+      <WorkflowLibrary
         workflows={visible}
         narrowed={isNarrowed(state)}
         selectedId={selectedWorkflowId}
         onSelect={selectWorkflow}
       />
       {selected ? (
-        <AutomationDetail workflow={selected} onSelectAutomation={selectWorkflow} />
+        <WorkflowDetail workflow={selected} onSelectWorkflow={selectWorkflow} />
       ) : (
         <EmptyDetail>Select an workflow.</EmptyDetail>
       )}

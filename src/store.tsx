@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { issues as seedIssues, members } from "./data/issues";
-import { workflows as seedAutomations, folders as seedFolders, runs as seedRuns } from "./data/workflows";
+import { workflows as seedWorkflows, folders as seedFolders, runs as seedRuns } from "./data/workflows";
 import { endUsers } from "./data/users";
 import { runners } from "./data/runners";
 import { currentUser } from "./data/user";
@@ -12,7 +12,16 @@ import { applyBrand } from "./lib/palette";
 import { isDark, setTheme } from "./lib/theme";
 import type { Workflow, WorkflowDraft, Folder, Issue, Member, Priority, Role, Run, Status } from "./data/types";
 import { blankDraft, commitDraft, testRun } from "./lib/builder";
-import { CAPABILITIES, Capability, type Workflow as DomainWorkflow } from "@conduit/domain";
+import {
+  CAPABILITIES,
+  Capability,
+  can,
+  canTransition,
+  transitionsFrom,
+  type Permission,
+  type ReviewAction,
+  type Workflow as DomainWorkflow,
+} from "@conduit/domain";
 import { EMPTY_WORKSPACE, type FilterOp, type SortDir, type WorkspaceState } from "./lib/workspace";
 import { isSupabaseConfigured } from "./lib/supabase";
 import { getWorkflows, getCapabilities } from "./lib/api";
@@ -43,6 +52,7 @@ export type View =
   | "activity"
   | "inbox"
   | "workflows"
+  | "review"
   | "manage"
   | "users"
   | "administration"
@@ -89,10 +99,16 @@ type Store = {
   dataSource: "live" | "seed";
   /** Set when a live load failed and the app fell back to seed data. */
   integrationError: string | null;
-  /** The signed-in user's role — gates permission-scoped UI. Switchable in
-   *  Settings so the gating is demonstrable in the prototype. */
+  /** The signed-in user's tier — gates permission-scoped UI. Switchable in Settings
+   *  so the three-tier model is demonstrable in the prototype. */
   role: Role;
   setRole: (r: Role) => void;
+  /** Whether the current tier holds a permission. Every gate reads this rather than
+   *  comparing role strings, so a new tier never means hunting for `role === …`. */
+  allowed: (permission: Permission) => boolean;
+  /** Move a workflow through the review lifecycle. Refuses any move the current tier
+   *  isn't permitted to make, so the store enforces the same rule the UI renders. */
+  reviewWorkflow: (id: string, action: ReviewAction, note?: string) => void;
   selectedId: number | null;
   selected: Issue | null;
   /** Selected end-user (Users view) and workflow (Workflows view). Lifted here
@@ -188,12 +204,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [issues, setIssues] = useState<Issue[]>(seedIssues);
   // The library and its run history are editable in the prototype: the builder
   // writes workflows, and a test run appends to the stream.
-  const [workflows, setAutomations] = useState<Workflow[]>(seedAutomations);
+  const [workflows, setWorkflows] = useState<Workflow[]>(seedWorkflows);
   const [runs, setRuns] = useState<Run[]>(seedRuns);
   const [draft, setDraft] = useState<WorkflowDraft | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(seedIssues[0]?.id ?? null);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(endUsers[0]?.id ?? null);
-  const [selectedWorkflowId, setSelectedAutomationId] = useState<string | null>(seedAutomations[0]?.id ?? null);
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(seedWorkflows[0]?.id ?? null);
   const [selectedRunnerId, setSelectedRunnerId] = useState<string | null>(runners[0]?.id ?? null);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [controlState, setControlState] = useState<Partial<Record<View, WorkspaceState>>>({});
@@ -339,8 +355,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     saveDraft: () => {
       if (!draft) return null;
       const { workflows: next, id } = commitDraft(workflows, draft);
-      setAutomations(next);
-      setSelectedAutomationId(id);
+      setWorkflows(next);
+      setSelectedWorkflowId(id);
       setDraft(null);
       setViewRaw("workflows");
       return id;
@@ -349,9 +365,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (!draft) return;
       const { workflows: next, id } = commitDraft(workflows, draft);
       const saved = next.find((a) => a.id === id)!;
-      setAutomations(next.map((a) => (a.id === id ? { ...a, runCount: a.runCount + 1, lastRunAt: "just now" } : a)));
+      setWorkflows(next.map((a) => (a.id === id ? { ...a, runCount: a.runCount + 1, lastRunAt: "just now" } : a)));
       setRuns((prev) => [testRun(saved, currentUser.name, prev, runners), ...prev]);
-      setSelectedAutomationId(id);
+      setSelectedWorkflowId(id);
       setDraft(null);
       setViewRaw("activity");
     },
@@ -368,18 +384,42 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setRole: (r) => {
       setRoleState(r);
       write("role", r);
-      // A demoted viewer loses the Administration surface they may be looking at.
-      if (r === "user" && view === "administration") {
-        setViewRaw("inbox");
+      // A demoted viewer loses any surface their new tier can't reach.
+      if (!can(r, "administer") && view === "administration") {
+        setViewRaw("home");
         setSubview(null);
       }
+      if (!can(r, "review") && view === "review") {
+        setViewRaw("home");
+        setSubview(null);
+      }
+    },
+    allowed: (permission) => can(role, permission),
+    reviewWorkflow: (id, action, note) => {
+      setWorkflows((prev) =>
+        prev.map((w) => {
+          if (w.id !== id) return w;
+          // The same check the buttons are built from — a move the tier can't make is
+          // refused here too, so the rule survives anyone reaching past the UI.
+          if (!canTransition(role, w.status, action)) return w;
+          const to = transitionsFrom(w.status).find((t) => t.action === action)!.to;
+          const who = currentUser.name;
+          const stamped =
+            action === "submit"
+              ? { submittedBy: who, submittedAt: "just now" }
+              : action === "withdraw"
+                ? {}
+                : { reviewedBy: who, reviewedAt: "just now", reviewNote: note ?? w.reviewNote };
+          return { ...w, status: to, updatedAgo: "just now", ...stamped };
+        }),
+      );
     },
     selectedId,
     selected: issues.find((i) => i.id === selectedId) ?? null,
     selectedUserId,
     selectUser: setSelectedUserId,
     selectedWorkflowId,
-    selectWorkflow: setSelectedAutomationId,
+    selectWorkflow: setSelectedWorkflowId,
     selectedRunnerId,
     selectRunner: setSelectedRunnerId,
     selectedRunId,

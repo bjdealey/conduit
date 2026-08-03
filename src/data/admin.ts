@@ -21,17 +21,19 @@ export type PlatformUser = {
 
 export const platformUsers: PlatformUser[] = [
   { id: "pu_ls", memberId: "ls", email: "luke@conduit.com", role: "admin", status: "Active", lastActive: "2 minutes ago" },
-  { id: "pu_pf", memberId: "pf", email: "priya@conduit.com", role: "developer", status: "Active", lastActive: "12 minutes ago" },
-  { id: "pu_jk", memberId: "jk", email: "jonas@conduit.com", role: "developer", status: "Active", lastActive: "an hour ago" },
-  { id: "pu_ps", memberId: "ps", email: "paulo@conduit.com", role: "user", status: "Invited", lastActive: "—" },
+  { id: "pu_pf", memberId: "pf", email: "priya@conduit.com", role: "professional", status: "Active", lastActive: "12 minutes ago" },
+  { id: "pu_jk", memberId: "jk", email: "jonas@conduit.com", role: "professional", status: "Active", lastActive: "an hour ago" },
+  { id: "pu_ps", memberId: "ps", email: "paulo@conduit.com", role: "builder", status: "Active", lastActive: "20 minutes ago" },
+  { id: "pu_am", memberId: "ls", email: "finance-ops@conduit.com", role: "consumer", status: "Invited", lastActive: "—" },
 ];
 
 export type RoleDef = { id: Role; name: string; description: string; permissions: string };
 
 export const roleDefs: RoleDef[] = [
-  { id: "admin", name: "Admin", description: "Full access: manage users, roles, policies and billing.", permissions: "All permissions" },
-  { id: "developer", name: "Developer", description: "Build and run workflows; read-only administration.", permissions: "Workflows · Runs · Manage" },
-  { id: "user", name: "User", description: "View incidents and workflow activity.", permissions: "Read incidents & activity" },
+  { id: "consumer", name: "Consumer", description: "Runs the workflows they're permitted to run, and reads the results. Doesn't build.", permissions: "Trigger · View output" },
+  { id: "builder", name: "Citizen builder", description: "Builds their own workflows and submits them for review. Cannot publish their own work.", permissions: "Trigger · Author · Submit" },
+  { id: "professional", name: "Professional", description: "Builds the hard workflows, reviews submissions, and owns what runs in production.", permissions: "Trigger · Author · Submit · Review · Publish" },
+  { id: "admin", name: "Admin", description: "Everything a professional can do, plus users, roles, policies and billing.", permissions: "All permissions" },
 ];
 
 export type License = { id: string; name: string; plan: string; seatsUsed: number; seatsTotal: number; renews: string };

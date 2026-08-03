@@ -6,7 +6,7 @@ import { Switch } from "./Switch";
 import { DataTable, type Column } from "./DataTable";
 import { Button } from "./Button";
 import { SETTINGS_PAGES, DEFAULT_SETTINGS_PAGE } from "../data/settings";
-import type { Workflow } from "@conduit/domain";
+import { ROLES, ROLE_BLURB, ROLE_LABEL, type Workflow } from "@conduit/domain";
 
 /* ---------------------------------------------------------------------------
    Shared form primitives
@@ -188,11 +188,9 @@ function DangerZone() {
    Profile (personal details + appearance preferences)
    --------------------------------------------------------------------------- */
 
-const ROLE_OPTIONS = [
-  { id: "admin", label: "Admin" },
-  { id: "developer", label: "Developer" },
-  { id: "user", label: "User" },
-] as const;
+/** The tiers, in the order they gain permissions — so the picker reads as a ladder
+ *  rather than a set of unrelated labels. */
+const ROLE_OPTIONS = ROLES.map((id) => ({ id, label: ROLE_LABEL[id] }));
 
 function ProfilePage() {
   const {
@@ -259,9 +257,7 @@ function ProfilePage() {
               );
             })}
           </div>
-          <span className="text-body-sm text-tertiary-foreground">
-            Gates permission-scoped UI — Administration is hidden for User and read-only for Developer.
-          </span>
+          <span className="text-body-sm text-tertiary-foreground">{ROLE_BLURB[role]}</span>
         </div>
       </Row>
 

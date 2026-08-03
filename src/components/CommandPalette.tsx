@@ -69,7 +69,9 @@ export function CommandPalette() {
       ["manage", "Go to Manage"],
       ["users", "Go to Users"],
       // Administration is permission-gated: hidden from the palette for `user`.
-      ...(store.role !== "user" ? ([["administration", "Go to Administration"]] as [View, string][]) : []),
+      ...(store.allowed("review")
+        ? ([["review", "Go to Review"], ["administration", "Go to Administration"]] as [View, string][])
+        : []),
       ["surfaces", "Go to Surfaces"],
       ["runners", "Go to Runners"],
       ["settings", "Go to Settings"],

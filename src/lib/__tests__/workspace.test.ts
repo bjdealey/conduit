@@ -11,6 +11,7 @@ import {
 import { visibleIssues } from "../select";
 import { issues } from "../../data/issues";
 import { workspaceControls } from "../../data/workspaceControls";
+import { ROLES, can } from "@conduit/domain";
 import { menuEntries, optionsFor } from "../filterMenu";
 
 const state = (patch: Partial<WorkspaceState> = {}): WorkspaceState => ({ ...EMPTY_WORKSPACE, ...patch });
@@ -103,11 +104,18 @@ describe("workspace control descriptors", () => {
     expect(workspaceControls("manage", "Packages")?.filters).toBeUndefined();
   });
 
-  it("gates page actions by role", () => {
+  it("gates page actions by the permission the action actually needs", () => {
+    // Asserting the tier list literally would just restate the source. What matters
+    // is that the gate agrees with the permission table: inviting people is
+    // governance, and starting a workflow is authoring.
     const invite = workspaceControls("administration", "Users")?.actions?.[0];
-    expect(invite?.roles).toEqual(["admin"]);
+    expect(invite?.roles?.every((r) => can(r, "administer"))).toBe(true);
+
     const newWorkflow = workspaceControls("workflows", "")?.actions?.[0];
-    expect(newWorkflow?.roles).toEqual(["admin", "developer"]);
+    expect(newWorkflow?.roles?.every((r) => can(r, "author"))).toBe(true);
+    // And every tier that can author is offered it — a citizen builder who can't
+    // start a workflow is not a tier, it's a dead end.
+    expect(ROLES.filter((r) => can(r, "author")).every((r) => newWorkflow?.roles?.includes(r))).toBe(true);
   });
 
   it("gives every filterable page a search field to host the filter glyph", () => {

@@ -50,12 +50,15 @@ export function RunStateChip({ state }: { state: RunState }) {
 }
 
 const WORKFLOW_STATUS_ACCENT: Record<WorkflowStatus, string> = {
-  Active: "grass",
-  Paused: "amber",
   Draft: "gray",
+  "In review": "blue",
+  "Changes requested": "amber",
+  Approved: "cyan",
+  Published: "grass",
+  Paused: "amber",
 };
 
-/** Workflow lifecycle chip (Active / Paused / Draft). */
+/** Workflow lifecycle chip (Draft → In review → Approved → Published). */
 export function WorkflowStatusChip({ status }: { status: WorkflowStatus }) {
   return <Chip tone={WORKFLOW_STATUS_ACCENT[status]}>{status}</Chip>;
 }

@@ -27,7 +27,7 @@ import {
   type Role,
   type RunState,
 } from "./types";
-import { RUNNER_CLASS_LABEL, RUNNER_CLASSES, RUNNER_STATES } from "@conduit/domain";
+import { RUNNER_CLASS_LABEL, RUNNER_CLASSES, RUNNER_STATES, WORKFLOW_STATUSES } from "@conduit/domain";
 import { RUNNER_STATE_ACCENT } from "../components/RunnersView";
 import { members } from "./issues";
 import { WORKFLOW_STATUS_ACCENT, PRIORITY_ACCENT, RUN_STATE_ACCENT, STATUS_ACCENT } from "../components/Badges";
@@ -162,7 +162,7 @@ const WORKFLOWS: WorkspaceControls = {
       id: "status",
       label: "Status",
       icon: <CircleDashed {...dim} />,
-      options: ["Active", "Paused", "Draft"].map(fromPalette(WORKFLOW_STATUS_ACCENT)),
+      options: [...WORKFLOW_STATUSES].map(fromPalette(WORKFLOW_STATUS_ACCENT)),
     },
     {
       id: "visibility",
@@ -194,7 +194,7 @@ const WORKFLOWS: WorkspaceControls = {
     { id: "success", label: "Success rate", defaultDir: "desc" },
     { id: "recent", label: "Last run", defaultDir: "desc" },
   ],
-  actions: [{ id: "new-workflow", label: "New workflow", icon: newIcon, roles: ["admin", "developer"] }],
+  actions: [{ id: "new-workflow", label: "New workflow", icon: newIcon, roles: ["admin", "professional", "builder"] }],
 };
 
 const USERS: WorkspaceControls = {
@@ -290,7 +290,7 @@ function manage(tab: string): WorkspaceControls {
   return {
     search: `Search or filter ${tab.toLowerCase()}…`,
     filters: togglable ? [MANAGE_ENABLED] : undefined,
-    actions: [{ id: "new", label: "New", icon: newIcon, roles: ["admin", "developer"] }],
+    actions: [{ id: "new", label: "New", icon: newIcon, roles: ["admin", "professional", "builder"] }],
   };
 }
 
@@ -306,8 +306,9 @@ function administration(tab: string): WorkspaceControls {
             icon: <ShieldCheck {...dim} />,
             options: [
               { id: "admin", label: "Admin", accent: "violet" },
-              { id: "developer", label: "Developer", accent: "blue" },
-              { id: "user", label: "User", accent: "gray" },
+              { id: "professional", label: "Professional", accent: "blue" },
+              { id: "builder", label: "Citizen builder", accent: "cyan" },
+              { id: "consumer", label: "Consumer", accent: "gray" },
             ],
           },
           {
@@ -342,6 +343,8 @@ export function workspaceControls(view: View, tab: string): WorkspaceControls | 
       return USERS;
     case "runners":
       return RUNNERS;
+    case "review":
+      return { search: "Search submissions…" };
     case "surfaces":
       return SURFACES;
     case "builder":
