@@ -177,10 +177,18 @@ supabase functions deploy runner
 A runner then posts to `/functions/v1/runner/<action>` with `x-runner-token`. Ingest is
 idempotent on `(run_id, sequence)`, so retrying a batch after a timeout is safe.
 
-**`claim` returns no work today.** Placement is decided by `pickRunner` in the control plane, but
-handing a run over needs an atomic claim-once so two runners can't take the same one. Until that
-lands, returning "nothing to do" is the honest answer rather than dispatching work nothing
-reconciles. Flagged `TODO(runner)` in the function.
+**`claim` is atomic.** `0008` adds `runs` and `app_claim_run`, which hands out one queued run
+inside a single statement holding a row lock (`for update skip locked`). Concurrent claimers skip
+past a locked candidate rather than blocking or — far worse — both reading the same row and
+proceeding. Two runners polling a second apart cannot execute the same workflow twice.
+
+The eligibility test is stated **twice**: in `app_claim_run` and in `claimableBy` in
+`packages/domain/src/dispatch.ts`. The TypeScript half is under test; if they diverge, a run gets
+claimed by a runner the placement rules would never have chosen. Change them together.
+
+**`drain` is recomputed per heartbeat** from the current pool and queue via `scalePlan`, rather
+than stored per runner — a stored flag goes stale the moment demand changes, and a runner told to
+wind down during a spike is exactly the wrong answer.
 
 `0006` adds `runners` and `run_events` and publishes `run_events` to `supabase_realtime`, which is
 what lets the run viewer light up nodes as they happen instead of polling.

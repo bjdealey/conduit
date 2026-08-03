@@ -93,3 +93,7 @@ export {
   categoryOfReviewAction,
   orderAudit,
 } from "./audit.ts";
+export type { QueuedRun } from "./dispatch.ts";
+export { MAX_ATTEMPTS, claimableBy, exhausted, nextClaim, unservable } from "./dispatch.ts";
+export type { ScalePlan } from "./autoscale.ts";
+export { MAX_PER_CLASS, WARM_FLOOR, isNoop, scalePlan, shouldDrain } from "./autoscale.ts";

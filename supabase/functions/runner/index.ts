@@ -14,14 +14,48 @@ import {
   isSupportedProtocol,
   type ClaimResponse,
   type HeartbeatRequest,
+  type HeartbeatResponse,
   type IngestRequest,
   type RegisterRequest,
 } from "@conduit/domain";
+import { scalePlan, shouldDrain, type QueuedRun, type Runner } from "@conduit/domain";
 import { serviceClient } from "../_shared/supabase.ts";
 import { json, methodNotAllowed } from "../_shared/http.ts";
 
 /** How often a registered runner must check in. */
 const HEARTBEAT_SECONDS = 15;
+
+/** Wall-clock budget handed to a runner with its work. */
+const RUN_DEADLINE_SECONDS = 900;
+
+/** snake_case row → the domain shape the pure functions take. */
+function toRunner(r: Record<string, unknown>): Runner {
+  return {
+    id: r.id as string,
+    name: r.name as string,
+    runnerClass: r.runner_class as Runner["runnerClass"],
+    state: ((r.state as string) ?? "idle").replace(/^./, (c) => c.toUpperCase()) as Runner["state"],
+    platform: r.platform as Runner["platform"],
+    authModels: (r.auth_models ?? []) as Runner["authModels"],
+    ephemeral: Boolean(r.ephemeral),
+    headed: Boolean(r.headed),
+    image: r.image as string,
+    uptime: "",
+    currentRunId: (r.current_run_id as string) ?? undefined,
+    runsCompleted: Number(r.runs_completed ?? 0),
+  };
+}
+
+function toQueuedRun(r: Record<string, unknown>): QueuedRun {
+  return {
+    runId: r.id as string,
+    workflowId: r.workflow_id as string,
+    workflowVersion: Number(r.workflow_version ?? 1),
+    requirements: r.requirements as QueuedRun["requirements"],
+    queuedAt: String(r.queued_at ?? ""),
+    attempts: Number(r.attempts ?? 0),
+  };
+}
 
 /** The shared secret a runner presents. Not a user token — runners are not users. */
 function authorised(req: Request): boolean {
@@ -78,18 +112,39 @@ Deno.serve(async (req) => {
       })
       .eq("id", h.runnerId);
     if (error) return json({ error: error.message }, 400);
-    // TODO(runner): drain is always false until pool autoscaling exists. When it does,
-    // this is where the control plane tells a runner to wind down.
-    return json({ drain: false });
+
+    // Whether to wind down is a pool-wide decision, so it is recomputed from the
+    // current pool and queue rather than stored per runner — a stored flag goes stale
+    // the moment demand changes, and a runner told to drain during a spike is exactly
+    // the wrong answer.
+    const [{ data: pool }, { data: queue }] = await Promise.all([
+      db.from("runners").select("*"),
+      db.from("runs").select("*").eq("state", "queued"),
+    ]);
+    const plan = scalePlan((pool ?? []).map(toRunner), (queue ?? []).map(toQueuedRun));
+    return json({ drain: shouldDrain(plan, h.runnerId) } satisfies HeartbeatResponse);
   }
 
   if (action === "claim") {
-    // TODO(runner): dispatch is not implemented. Placement is decided by pickRunner in
-    // the control plane; this endpoint will hand over the run it was placed on, and
-    // must do so atomically (claim-once) so two runners can't take the same run.
-    // Returning "no work" is the honest answer until that lands, rather than handing
-    // out work nothing will reconcile.
-    const response: ClaimResponse = { work: null };
+    // One statement, holding a row lock: two runners polling a second apart both see
+    // the same queued run, and if both take it the workflow executes twice.
+    const { data, error } = await db.rpc("app_claim_run", { p_runner_id: (body as { runnerId: string }).runnerId });
+    if (error) return json({ error: error.message }, 400);
+
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row) return json({ work: null } satisfies ClaimResponse);
+
+    const response: ClaimResponse = {
+      work: {
+        runId: row.id,
+        workflowId: row.workflow_id,
+        workflowVersion: row.workflow_version,
+        requirements: row.requirements,
+        schemaVersion: row.schema_version,
+        steps: row.steps ?? [],
+        deadlineSeconds: RUN_DEADLINE_SECONDS,
+      },
+    };
     return json(response);
   }
 
