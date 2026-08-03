@@ -81,7 +81,8 @@ export function ManageView() {
     { key: "cadence", header: "Cadence", render: (r) => r.cadence },
     { key: "next", header: "Next run", render: (r) => <span className="text-tertiary-foreground">{r.nextRun}</span> },
     { key: "last", header: "Last run", render: (r) => <span className="text-tertiary-foreground">{r.lastRun}</span> },
-    { key: "target", header: "Target", render: (r) => mono(r.target) },
+    // Not a machine name: the distributor picks a runner when the schedule fires.
+    { key: "placement", header: "Placement", render: () => <span className="text-tertiary-foreground">Chosen at run time</span> },
     { key: "status", header: "Status", width: 120, render: (r) => <EnabledChip on={r.enabled} /> },
   ];
 
@@ -131,7 +132,7 @@ export function ManageView() {
   const rows = {
     Scheduled: narrow(
       schedules,
-      (r) => [automationName(r.automationId), r.cadence, r.target, r.nextRun, r.lastRun],
+      (r) => [automationName(r.automationId), r.cadence, r.nextRun, r.lastRun],
       (r) => r.enabled,
     ),
     "Event triggers": narrow(

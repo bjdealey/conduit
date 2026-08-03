@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { issues as seedIssues, members } from "./data/issues";
 import { automations as seedAutomations, folders as seedFolders, runs as seedRuns } from "./data/automations";
 import { endUsers } from "./data/users";
-import { environments } from "./data/environments";
+import { runners } from "./data/runners";
 import { currentUser } from "./data/user";
 import { workspaces } from "./data/workspaces";
 import type { Workspace } from "./data/workspaces";
@@ -39,6 +39,7 @@ const write = (key: string, value: string): void => {
  *  filters, the layout switcher, and the info-pane toggle — rather than each
  *  reinventing it. */
 export type View =
+  | "home"
   | "activity"
   | "inbox"
   | "automations"
@@ -46,7 +47,7 @@ export type View =
   | "users"
   | "administration"
   | "surfaces"
-  | "environments"
+  | "runners"
   | "settings"
   | "builder";
 
@@ -98,8 +99,8 @@ type Store = {
   selectUser: (id: string | null) => void;
   selectedAutomationId: string | null;
   selectAutomation: (id: string | null) => void;
-  selectedEnvironmentId: string | null;
-  selectEnvironment: (id: string | null) => void;
+  selectedRunnerId: string | null;
+  selectRunner: (id: string | null) => void;
   /** Run opened from the Activity timeline. Null = the timeline itself is showing
    *  (the list layout expands runs in place instead, and ignores this). */
   selectedRunId: string | null;
@@ -190,7 +191,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [selectedId, setSelectedId] = useState<number | null>(seedIssues[0]?.id ?? null);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(endUsers[0]?.id ?? null);
   const [selectedAutomationId, setSelectedAutomationId] = useState<string | null>(seedAutomations[0]?.id ?? null);
-  const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<string | null>(environments[0]?.id ?? null);
+  const [selectedRunnerId, setSelectedRunnerId] = useState<string | null>(runners[0]?.id ?? null);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [controlState, setControlState] = useState<Partial<Record<View, WorkspaceState>>>({});
   const [sectionTabs, setSectionTabs] = useState<Partial<Record<View, string>>>({});
@@ -198,9 +199,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // Patch one page's control state, leaving every other page's untouched.
   const patchControls = (v: View, patch: Partial<WorkspaceState>) =>
     setControlState((prev) => ({ ...prev, [v]: { ...EMPTY_WORKSPACE, ...prev[v], ...patch } }));
-  const [view, setViewRaw] = useState<View>("inbox");
+  const [view, setViewRaw] = useState<View>("home");
   const [subview, setSubview] = useState<string | null>(null);
-  const [settingsReturn, setSettingsReturn] = useState<View>("inbox");
+  const [settingsReturn, setSettingsReturn] = useState<View>("home");
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
   // Global layout preference (list vs each page's board/grid alternate).
   const [layout, setLayoutState] = useState<"list" | "alt">(() => (read("layout", "list") === "alt" ? "alt" : "list"));
@@ -324,7 +325,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     },
     editAutomation: (id) => {
       const automation = automations.find((a) => a.id === id);
-      if (!automation) return;
+      // A mirrored automation is a reflection of another platform's flow. We can
+      // observe it and plan its move; we cannot author it here.
+      if (!automation || automation.platform !== "conduit") return;
       setDraft({ ...automation, isNew: false });
       if (view !== "builder") setSettingsReturn(view);
       setViewRaw("builder");
@@ -344,7 +347,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const { automations: next, id } = commitDraft(automations, draft);
       const saved = next.find((a) => a.id === id)!;
       setAutomations(next.map((a) => (a.id === id ? { ...a, runCount: a.runCount + 1, lastRunAt: "just now" } : a)));
-      setRuns((prev) => [testRun(saved, currentUser.name, prev), ...prev]);
+      setRuns((prev) => [testRun(saved, currentUser.name, prev, runners), ...prev]);
       setSelectedAutomationId(id);
       setDraft(null);
       setViewRaw("activity");
@@ -374,8 +377,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     selectUser: setSelectedUserId,
     selectedAutomationId,
     selectAutomation: setSelectedAutomationId,
-    selectedEnvironmentId,
-    selectEnvironment: setSelectedEnvironmentId,
+    selectedRunnerId,
+    selectRunner: setSelectedRunnerId,
     selectedRunId,
     selectRun: setSelectedRunId,
     controls: (v) => controlState[v] ?? EMPTY_WORKSPACE,

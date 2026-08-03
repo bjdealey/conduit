@@ -19,7 +19,8 @@ import { ManageView } from "./components/ManageView";
 import { AdministrationView } from "./components/AdministrationView";
 import { UsersView } from "./components/UsersView";
 import { SurfacesView } from "./components/SurfacesView";
-import { EnvironmentsView } from "./components/EnvironmentsView";
+import { RunnersView } from "./components/RunnersView";
+import { HomeView } from "./components/HomeView";
 
 function InboxView() {
   const { issues, selected, viewMode, controls } = useStore();
@@ -51,6 +52,7 @@ function Body() {
   const { view } = useStore();
   return (
     <div key={view} className="animate-in fade-in-0 duration-200 ease-out flex min-h-0 flex-1">
+      {view === "home" && <HomeView />}
       {view === "activity" && <ActivityView />}
       {view === "inbox" && <InboxView />}
       {view === "automations" && <AutomationsView />}
@@ -58,7 +60,7 @@ function Body() {
       {view === "administration" && <AdministrationView />}
       {view === "users" && <UsersView />}
       {view === "surfaces" && <SurfacesView />}
-      {view === "environments" && <EnvironmentsView />}
+      {view === "runners" && <RunnersView />}
       {view === "builder" && <AutomationBuilder />}
       {view === "settings" && <SettingsContent />}
     </div>

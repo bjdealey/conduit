@@ -71,7 +71,7 @@ export function CommandPalette() {
       // Administration is permission-gated: hidden from the palette for `user`.
       ...(store.role !== "user" ? ([["administration", "Go to Administration"]] as [View, string][]) : []),
       ["surfaces", "Go to Surfaces"],
-      ["environments", "Go to Environments"],
+      ["runners", "Go to Runners"],
       ["settings", "Go to Settings"],
     ];
     const nav: Cmd[] = navDefs

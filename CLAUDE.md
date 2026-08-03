@@ -2,7 +2,32 @@
 
 Guidance for AI sessions working in this repo. Read this before proposing or writing code for
 the integration layer. The full plan lives in `docs/integration-layer-plan.md`; the pre-existing
-A360 mapping in `docs/structure-map.md`.
+A360 mapping in `docs/structure-map.md`; the vision gap analysis in `docs/vision-alignment.md`.
+
+## Product framing (settled — read this first)
+
+**Conduit is the control plane that replaces the Automation Anywhere Control Room.** It is not the
+execution runtime. Three artefacts, clean boundaries:
+
+| Plane | Owns | Lives |
+|---|---|---|
+| **Control plane — Conduit** | Authoring, the library, scheduling, **distribution**, the runner pool, credentials, node types, activity, audit, governance | This repo |
+| **Execution plane — runners** | Executing a workflow and reporting events. Stateless, ephemeral, cross-platform | Separate artefact |
+| **Migration bridge — connectors** | Normalising other platforms (A360 first) into our domain so both estates render through one UI | `packages/connector-sdk`, `connectors/*` |
+
+**Conduit replaces the Control Room by first wrapping it.** The A360 connector makes Conduit a
+mirror of the incumbent estate; native workloads land in the same library, distinguished only by
+`Automation.platform`. Migration is one attribute on one row, reversible, no cutover.
+
+**Parity where the Control Room is right; deliberate inversion where it is wrong.** Three inversions
+carry the product, and none of them may be quietly un-done:
+
+1. **No assignment.** Workflows declare `requirements`; `pickRunner` places them. Never add a UI
+   that pins a workflow to a named machine — not on a schedule, not on a runner, not anywhere.
+2. **No drift.** Runners are ephemeral and carry only an `image`. There is no agent-version or
+   patch surface to build, by construction.
+3. **Three tiers, not one.** Consumers trigger, citizen builders submit, professionals review and
+   promote. (Model work not yet started — see `docs/vision-alignment.md` Gap 3.)
 
 ## What this repo is today
 
@@ -270,3 +295,43 @@ no errors, the capability-gated nav renders, and the Integrations page shows liv
   from a connector's type.
 - **New app dependency:** `@supabase/supabase-js` (the client for our API). Tests use Vitest; app
   tests live in `src/**/*.test.ts` (boundary coercion + seed→domain mapping).
+
+## Implemented so far — stage 5: runner pool + distribution
+
+The first two of the three inversions, made visible. Verified in a real browser (Chromium): no page
+errors, Home/Runners/Activity/Automations all render, 104 tests pass.
+
+**Layout**
+- `packages/domain/src/runner.ts` — `Runner`, `RunnerClass` (`lightweight` ·
+  `windows-service-account` · `windows-interactive`), `RunnerState`, `AuthModel`,
+  `WorkflowRequirements`, and `readinessOf` / `requiredRunnerClass`.
+- `packages/domain/src/distributor.ts` — `pickRunner(requirements, pool)` plus `runnerFits`,
+  `explainRequirements`, `poolByClass`, `readinessMix`. Pure functions, 22 tests.
+- `src/data/runners.ts` — the seed pool, deliberately mid-change (starting / draining / offline).
+- `src/components/RunnersView.tsx` — the pool, replacing the old Environments view (deleted, along
+  with `src/data/environments.ts`). Nav slot, breadcrumb, palette and controls renamed with it.
+- `src/components/HomeView.tsx` — the landing view: pool, estate split, readiness mix, in-flight
+  runs. `view` defaults to `home`.
+- `Automation` gained `platform`, `migration`, `requirements`; `Run.target` became `Run.runnerId`;
+  `Schedule.target` was **removed** (a schedule says when, never where).
+- `StepAction.requires` + `requirementsForSteps` / `effectiveRequirements` in `src/data/actions.ts`.
+
+**Contract details that concretized**
+- **Requirements are derived, not trusted.** `commitDraft` raises a draft's declared requirements to
+  the floor its steps impose (`effectiveRequirements`) — the same pattern `packagesForSteps` uses.
+  A headed browser step makes the flow headed whether or not the author said so.
+- **Placement is explained everywhere it appears.** `pickRunner` returns a `rationale`; Home, the
+  run rows and the builder's test-run log all show it. A queued run is re-decided live against the
+  current pool and rendered with a `→` so a proposal never reads as a placement.
+- **The distributor falls up, never down.** A runner may take work below its class (an interactive
+  runner can run API work) but never above it. Preference is cheapest-first, then already-up over
+  starting, then least-used, then id — so the same pool and workflow always place identically.
+- **Mirrored automations have no steps.** `platform !== "conduit"` means the flow lives on its own
+  platform: `steps`/`packages` are empty and `editAutomation` refuses to open the builder. Tests
+  pin both halves of this.
+- **Seed placements are checked, not assumed.** A test asserts every seeded run sits on a runner
+  that `runnerFits` its automation's requirements.
+
+**Not yet built after stage 5** (do not assume these exist): the runner protocol (register /
+heartbeat / dispatch / claim / ingest), `run_events` + Realtime streaming, tiers and the review
+lifecycle, workflow versions, the audit surface, the backend-served node catalogue, and AI nodes.

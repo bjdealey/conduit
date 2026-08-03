@@ -39,7 +39,7 @@ export const VIEW_MODES: Partial<Record<View, ViewMode[]>> = {
     { id: "list", label: "List", icon: <List {...icon} /> },
     { id: "board", label: "Board", icon: <Columns3 {...icon} /> },
   ],
-  environments: [
+  runners: [
     { id: "list", label: "List", icon: <List {...icon} /> },
     { id: "grid", label: "Grid", icon: <LayoutGrid {...icon} /> },
   ],
@@ -58,6 +58,6 @@ export const CONTEXT_LABEL: Partial<Record<View, string>> = {
   automations: "Summary",
   surfaces: "Overview",
   activity: "Incidents",
-  environments: "Details",
+  runners: "Details",
   builder: "Configuration",
 };

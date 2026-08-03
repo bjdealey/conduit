@@ -3,6 +3,7 @@ import { ArrowUpRight, Layers, Workflow } from "lucide-react";
 import { useStore } from "../store";
 import { RUN_STATES, type Automation, type Issue, type Run, type RunState } from "../data/types";
 import { RUN_STATE_ACCENT, RunStateChip } from "./Badges";
+import { runnerById } from "../data/runners";
 import { RunRow } from "./RunRow";
 import { ActivityFeed } from "./ActivityFeed";
 import { SurfaceChart } from "./SurfaceChart";
@@ -25,7 +26,7 @@ const HISTORICAL: RunState[] = ["Completed", "Failed"];
  *  belongs to, who or what started it, and the machine it ran on. */
 function runPasses(run: Run, automationName: string, state: WorkspaceState): boolean {
   return (
-    matchesQuery(state.query, [run.id, automationName, run.startedBy, run.state, run.trigger, run.target]) &&
+    matchesQuery(state.query, [run.id, automationName, run.startedBy, run.state, run.trigger, runnerNameOf(run)]) &&
     passesFilter(state, "state", run.state) &&
     passesFilter(state, "trigger", run.trigger)
   );
@@ -49,6 +50,10 @@ function sortRuns(runs: Run[], state: WorkspaceState, tab: string, nameOf: (id: 
 const byRecency = (a: Run, b: Run) => (minutesAgo(a.startedAt) ?? -1) - (minutesAgo(b.startedAt) ?? -1);
 
 const isLive = (run: Run) => run.state === "Running" || run.state === "Queued";
+
+/** The runner a run was placed on, by name — what an operator scans a stream by.
+ *  Empty while a run is still queued, because nothing has been placed yet. */
+const runnerNameOf = (run: Run): string => (run.runnerId ? runnerById(run.runnerId)?.name ?? run.runnerId : "");
 
 /** One automation's slice of the run stream. Both the sources pane and the
  *  timeline's lanes are built from these, so the two read the same way. */
@@ -467,7 +472,7 @@ function RunDetail({ run }: { run: Run }) {
             <Fact label="Started by">{run.startedBy}</Fact>
             <Fact label="Started">{run.startedAt}</Fact>
             <Fact label="Duration">{run.duration}</Fact>
-            {run.target && <Fact label="Target">{run.target}</Fact>}
+            {runnerNameOf(run) && <Fact label="Runner">{runnerNameOf(run)}</Fact>}
           </div>
 
           <div className="h-px w-full" style={{ background: "var(--color-border-default)" }} />

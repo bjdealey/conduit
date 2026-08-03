@@ -11,8 +11,10 @@ import {
 } from "../builder";
 import { paletteGroups } from "../builder";
 import { EMPTY_WORKSPACE, type WorkspaceState } from "../workspace";
-import { ACTIONS, actionById, packagesForSteps } from "../../data/actions";
+import { ACTIONS, actionById, packagesForSteps, requirementsForSteps } from "../../data/actions";
+import { runnerFits } from "@conduit/domain";
 import { automations, runs } from "../../data/automations";
+import { runners } from "../../data/runners";
 import { workspaceControls } from "../../data/workspaceControls";
 import type { AutomationDraft } from "../../data/types";
 
@@ -114,12 +116,29 @@ describe("test runs", () => {
 
   it("starts in flight, manually triggered, with a log that walks the flow", () => {
     const automation = automations[0];
-    const run = testRun(automation, "Keith Kennedy", runs);
+    const run = testRun(automation, "Keith Kennedy", runs, runners);
     expect(run).toMatchObject({ state: "Running", trigger: "Manual", startedBy: "Keith Kennedy", startedAt: "just now" });
     expect(run.automationId).toBe(automation.id);
-    // One log line per step, after the "started" line.
-    expect(run.activity).toHaveLength(automation.steps.length + 1);
-    expect(run.activity[1].title).toBe(`1. ${actionById(automation.steps[0].actionId)?.label}`);
+    // One log line per step, after the "started" and placement lines.
+    expect(run.activity).toHaveLength(automation.steps.length + 2);
+    expect(run.activity[2].title).toBe(`1. ${actionById(automation.steps[0].actionId)?.label}`);
+  });
+
+  it("places the run through the distributor and records why", () => {
+    const automation = automations[0];
+    const run = testRun(automation, "Keith Kennedy", runs, runners);
+    const placed = runners.find((r) => r.id === run.runnerId);
+    expect(placed).toBeDefined();
+    // The reason is on the log, not just the placement — a choice nobody can read
+    // is the same bottleneck in a different place.
+    expect(run.activity[1].body).toBeTruthy();
+  });
+
+  it("queues rather than inventing a runner when the pool can't take the work", () => {
+    const headedOnly = { ...automations[0], requirements: { auth: "none", ui: "headed", platform: "windows" } as const };
+    const run = testRun(headedOnly, "Keith Kennedy", runs, []);
+    expect(run.state).toBe("Queued");
+    expect(run.runnerId).toBeUndefined();
   });
 });
 
@@ -132,11 +151,41 @@ describe("the action palette", () => {
   });
 
   it("resolves every step in the seed library to a real action", () => {
-    for (const automation of automations) {
+    // Only natively-authored flows have steps to resolve. A mirrored automation's
+    // flow lives on its own platform, and inventing steps for it here would be the
+    // one lie that makes the whole estate view untrustworthy.
+    for (const automation of automations.filter((a) => a.platform === "conduit")) {
       expect(automation.steps.length, automation.id).toBeGreaterThan(0);
       for (const step of automation.steps) expect(actionById(step.actionId), `${automation.id}/${step.id}`).toBeDefined();
       // The declared dependencies match what the flow actually uses.
       expect(automation.packages, automation.id).toEqual(packagesForSteps(automation.steps));
+    }
+  });
+
+  it("keeps mirrored automations empty — they are reflections, not authored flows", () => {
+    for (const automation of automations.filter((a) => a.platform !== "conduit")) {
+      expect(automation.steps, automation.id).toEqual([]);
+      expect(automation.packages, automation.id).toEqual([]);
+    }
+  });
+
+  it("declares requirements no weaker than its steps demand", () => {
+    // The floor is derived, so an author can ask for more than the flow needs but
+    // never for less — otherwise a headed step lands on a runner with no session.
+    for (const automation of automations) {
+      const derived = requirementsForSteps(automation.steps);
+      if (derived.ui === "headed") expect(automation.requirements.ui, automation.id).toBe("headed");
+      if (derived.platform === "windows") expect(automation.requirements.platform, automation.id).toBe("windows");
+    }
+  });
+
+  it("places every seeded run on a runner that could actually carry it", () => {
+    for (const run of runs) {
+      if (!run.runnerId) continue;
+      const runner = runners.find((r) => r.id === run.runnerId);
+      expect(runner, run.id).toBeDefined();
+      const automation = automations.find((a) => a.id === run.automationId)!;
+      expect(runnerFits(runner!, automation.requirements), `${run.id} on ${run.runnerId}`).toBe(true);
     }
   });
 

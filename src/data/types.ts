@@ -1,5 +1,7 @@
 /** Domain model for the Conduit platform prototype. */
 
+import type { WorkflowRequirements } from "@conduit/domain";
+
 /** Priorities, in the order they rank (highest first). */
 export const PRIORITIES = ["High", "Medium", "Low"] as const;
 export type Priority = (typeof PRIORITIES)[number];
@@ -110,8 +112,9 @@ export type Run = {
   startedBy: string;
   startedAt: string;
   duration: string;
-  /** Execution target (device/environment label), when applicable. */
-  target?: string;
+  /** The runner this run was placed on (see `src/data/runners.ts`). Absent while a
+   *  run is queued — nothing has been placed yet. */
+  runnerId?: string;
   /** Append-only run log, rendered with the shared <ActivityFeed>. */
   activity: ActivityEvent[];
   /** The incident this run spawned on failure, if any. */
@@ -120,6 +123,24 @@ export type Run = {
 
 /** The automation lifecycle, distinct from an incident's workflow status. */
 export type AutomationStatus = "Active" | "Paused" | "Draft";
+
+/** The platform that executes an automation today. `conduit` is native — authored
+ *  here, run on our runners. Anything else is a connected platform mirrored into the
+ *  library by its connector: we show it and observe it, but its flow lives over there. */
+export const WORKFLOW_PLATFORMS = ["conduit", "automation-anywhere"] as const;
+export type WorkflowPlatform = (typeof WORKFLOW_PLATFORMS)[number];
+
+/** Display names for the platforms an automation can run on. */
+export const PLATFORM_LABEL: Record<WorkflowPlatform, string> = {
+  conduit: "Conduit",
+  "automation-anywhere": "Automation Anywhere",
+};
+
+/** How far along the move onto Conduit an automation is. Per automation and
+ *  reversible: there is no cutover date, so this is a state rather than a milestone,
+ *  and "Won't move" is a legitimate resting place rather than a failure. */
+export const MIGRATION_STATES = ["Not started", "Piloting", "Migrated", "Won't move"] as const;
+export type MigrationState = (typeof MIGRATION_STATES)[number];
 
 /** How an automation starts. `detail` carries the cadence for a schedule
  *  ("Every 15 minutes"), the event key for an event ("user.signup"), or who may
@@ -147,6 +168,15 @@ export type Automation = {
   status: AutomationStatus;
   /** Owning team member id (see `members`). */
   ownerId: string;
+  /** Which platform runs it today. Mirrored automations (`platform !== "conduit"`)
+   *  have no `steps` — their flow is authored on their own platform. */
+  platform: WorkflowPlatform;
+  /** Where it sits in the move onto Conduit. */
+  migration: MigrationState;
+  /** What it needs from a runner — the only thing the distributor routes on.
+   *  Declared here and raised on save to at least what its steps require, so a flow
+   *  can't quietly need more than it admits to. */
+  requirements: WorkflowRequirements;
   /** What starts it. Edited in the builder; mirrored by the runs it produces. */
   trigger: AutomationTrigger;
   /** The flow itself, in execution order. Authored in the builder; the

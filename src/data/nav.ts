@@ -19,6 +19,7 @@ export type NavItemDef = {
 /** Sidebar navigation structure. Items with `subpages` expand in the sidebar and
  *  show a hover flyout when collapsed. */
 export const navItems: NavItemDef[] = [
+  { id: "home", label: "Home" },
   { id: "activity", label: "Activity" },
   { id: "inbox", label: "Inbox" },
   { id: "automations", label: "Automations", capability: "bots" as Capability },
@@ -26,6 +27,6 @@ export const navItems: NavItemDef[] = [
   { id: "users", label: "Users" },
   { id: "administration", label: "Administration", roles: ["admin", "developer"] },
   { id: "surfaces", label: "Surfaces" },
-  { id: "environments", label: "Environments" },
+  { id: "runners", label: "Runners", capability: "devices" as Capability },
   { id: "settings", label: "Settings" },
 ];
