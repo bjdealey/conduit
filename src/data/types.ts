@@ -148,15 +148,36 @@ export type MigrationState = (typeof MIGRATION_STATES)[number];
  *  run it by hand — the same vocabulary a Run's `startedBy` reads in. */
 export type WorkflowTrigger = { kind: RunTrigger; detail: string };
 
-/** One step in an workflow's flow: an action from the palette
- *  (`src/data/actions.ts`) plus the values filled in for that action's fields.
+/** One action in a flow: a palette entry plus the values filled in for its fields.
  *  `config` is keyed by field id; a missing key means the field is unset. */
-export type WorkflowStep = {
+export type ActionStep = {
+  kind: "action";
   id: string;
   /** Action id from the palette — resolves to its label, package, and fields. */
   actionId: string;
   config: Record<string, string>;
 };
+
+/**
+ * A conditional. `condition` is an expression in the same `{{ }}` vocabulary the
+ * action configs use, so an author who can fill in a field can write one.
+ *
+ * `then` and `else` are full step lists, which makes the flow a tree rather than a
+ * list — the change schema v2 exists for. A linear array can express "do this, then
+ * that" and nothing else, and the vision's API-first workloads are explicitly HTTP
+ * calls, transformations, *conditionals* and orchestration.
+ */
+export type BranchStep = {
+  kind: "branch";
+  id: string;
+  /** e.g. "{{ response.status }} == 200". */
+  condition: string;
+  then: WorkflowStep[];
+  else: WorkflowStep[];
+};
+
+/** One step in a workflow's flow. */
+export type WorkflowStep = ActionStep | BranchStep;
 
 /** A first-class workflow definition. Lives in a Folder; produces Runs;
  *  its failures can spin off Issues. */

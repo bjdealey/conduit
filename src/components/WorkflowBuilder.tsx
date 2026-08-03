@@ -1,11 +1,29 @@
 import { useState, type ReactNode } from "react";
-import { ArrowDown, ArrowUp, Package, Play, Plus, Trash2, Workflow as WorkflowIcon, Zap } from "lucide-react";
+import { ArrowDown, ArrowUp, Package, Play, Plus, Split, Trash2, Workflow as WorkflowIcon, Zap } from "lucide-react";
 import { useStore } from "../store";
 import { folders as allFolders } from "../data/workflows";
 import { members } from "../data/issues";
 import { actionById, packagesForSteps, stepSummary, type ActionField } from "../data/actions";
-import { RUN_TRIGGERS, type WorkflowDraft, type WorkflowStep, type RunTrigger, type Visibility } from "../data/types";
-import { draftProblems, moveStep, newStep, paletteGroups, type PaletteGroup } from "../lib/builder";
+import {
+  RUN_TRIGGERS,
+  type BranchStep,
+  type RunTrigger,
+  type Visibility,
+  type WorkflowDraft,
+  type WorkflowStep,
+} from "../data/types";
+import {
+  addStepTo,
+  draftProblems,
+  findStep,
+  moveStep,
+  newBranch,
+  newStep,
+  paletteGroups,
+  removeStep,
+  updateStep,
+  type PaletteGroup,
+} from "../lib/builder";
 import { isNarrowed } from "../lib/workspace";
 import { SplitView, Pane, DetailPane, ContextPane, PANE_WIDTH } from "./layout/SplitView";
 import { Avatar } from "./Avatar";
@@ -119,10 +137,37 @@ function ActionInput({ field, value, onChange }: { field: ActionField; value: st
 /** Left column: the actions a flow can be built from. The workspace header's
  *  search, Package filter, and sort decide what's in `groups` — sorting by name
  *  flattens the package grouping into one alphabetical list. */
-function Palette({ groups, narrowed, onAdd }: { groups: PaletteGroup[]; narrowed: boolean; onAdd: (actionId: string) => void }) {
+function Palette({
+  groups,
+  narrowed,
+  onAdd,
+  onAddBranch,
+}: {
+  groups: PaletteGroup[];
+  narrowed: boolean;
+  onAdd: (actionId: string) => void;
+  onAddBranch: () => void;
+}) {
   return (
     <Pane width={PANE_WIDTH.list}>
       <div className="scrollbar-none flex-1 overflow-y-auto px-2 py-2">
+        {/* Control flow isn't a package, so it sits above the catalogue rather than
+            inside it — a conditional is something the builder does, not something a
+            node type provides. */}
+        <button
+          type="button"
+          onClick={onAddBranch}
+          className="focusable mb-2 flex w-full flex-col gap-0.5 rounded-lg px-3 py-2 text-left transition-colors hover:bg-transparent-hover"
+        >
+          <span className="flex items-center gap-2">
+            <Split size={14} strokeWidth={1.8} className="shrink-0 text-tertiary-foreground" />
+            <span className="min-w-0 flex-1 truncate text-body-sm text-primary-foreground">Add a condition</span>
+            <Plus size={13} strokeWidth={2} className="shrink-0 text-tertiary-foreground" />
+          </span>
+          <span className="text-[0.72rem] leading-tight text-tertiary-foreground">
+            Branch the flow on a value from an earlier step.
+          </span>
+        </button>
         {groups.length === 0 && (
           <p className="px-3 py-6 text-center text-body-sm text-tertiary-foreground">
             {narrowed ? "No actions match the current search or filter." : "No actions available."}
@@ -192,8 +237,9 @@ function StepRow({
   onMove: (direction: -1 | 1) => void;
   onRemove: () => void;
 }) {
-  const action = actionById(step.actionId);
-  const summary = stepSummary(step.actionId, step.config);
+  const action = step.kind === "action" ? actionById(step.actionId) : undefined;
+  const summary =
+    step.kind === "action" ? stepSummary(step.actionId, step.config) : step.condition;
 
   return (
     <div
@@ -205,11 +251,13 @@ function StepRow({
     >
       <span className="w-5 shrink-0 font-departure-mono text-[0.72rem] text-tertiary-foreground">{index + 1}</span>
       <button type="button" onClick={onSelect} className="focusable flex min-w-0 flex-1 flex-col text-left">
-        <span className="truncate text-body-sm text-primary-foreground">{action?.label ?? step.actionId}</span>
+        <span className="truncate text-body-sm text-primary-foreground">
+          {step.kind === "branch" ? "If" : action?.label ?? step.actionId}
+        </span>
         {summary && <span className="truncate text-[0.72rem] text-tertiary-foreground">{summary}</span>}
       </button>
       <span className="shrink-0 rounded-md bg-component px-1.5 py-0.5 font-departure-mono text-[0.65rem] text-tertiary-foreground">
-        {action?.package}
+        {step.kind === "branch" ? "flow" : action?.package}
       </span>
       <span className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
         <IconButton label="Move up" disabled={index === 0} onClick={() => onMove(-1)}>
@@ -308,6 +356,113 @@ function NoSteps() {
   );
 }
 
+/**
+ * One list of steps, which may contain branches containing further lists.
+ *
+ * Recursive because the flow is a tree now. Each arm is indented and labelled rather
+ * than flattened with a marker, because "which branch is this step in" is the one
+ * question a reader of a conditional actually has.
+ */
+function StepList({
+  steps,
+  selection,
+  onSelect,
+  onMove,
+  onRemove,
+  depth = 0,
+}: {
+  steps: WorkflowStep[];
+  selection: Selection;
+  onSelect: (s: Selection) => void;
+  onMove: (id: string, direction: -1 | 1) => void;
+  onRemove: (id: string) => void;
+  depth?: number;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      {steps.map((step, i) => (
+        <div key={step.id} className="flex flex-col gap-2">
+          <StepRow
+            step={step}
+            index={i}
+            count={steps.length}
+            active={selection.kind === "step" && selection.id === step.id}
+            onSelect={() => onSelect({ kind: "step", id: step.id })}
+            onMove={(direction) => onMove(step.id, direction)}
+            onRemove={() => onRemove(step.id)}
+          />
+          {step.kind === "branch" && (
+            <div className="flex flex-col gap-2 pl-4">
+              {(["then", "else"] as const).map((arm) => (
+                <div key={arm} className="flex flex-col gap-1.5">
+                  <span className="font-departure-mono text-[0.65rem] uppercase tracking-wide text-tertiary-foreground">
+                    {arm === "then" ? "then" : "otherwise"}
+                  </span>
+                  {step[arm].length === 0 ? (
+                    <p className="rounded-lg border-border-default border-[0.5px] px-3 py-2 text-[0.72rem] text-tertiary-foreground">
+                      Nothing here yet — select this branch and add a step into it.
+                    </p>
+                  ) : (
+                    <StepList
+                      steps={step[arm]}
+                      selection={selection}
+                      onSelect={onSelect}
+                      onMove={onMove}
+                      onRemove={onRemove}
+                      depth={depth + 1}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+      {steps.length === 0 && depth === 0 && <NoSteps />}
+    </div>
+  );
+}
+
+/** Configuring a conditional: the expression, and what it does. */
+function BranchConfig({
+  step,
+  onChange,
+  onRemove,
+}: {
+  step: BranchStep;
+  onChange: (condition: string) => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-1">
+        <h3 className="text-body-base font-medium text-primary-foreground">If</h3>
+        <span className="text-body-sm text-tertiary-foreground">
+          Runs the steps under <strong>then</strong> when this holds, and the ones under{" "}
+          <strong>otherwise</strong> when it doesn't.
+        </span>
+      </div>
+      <Field label="Condition">
+        <TextInput value={step.condition} onChange={onChange} placeholder="{{ response.status }} == 200" />
+      </Field>
+      <span className="text-[0.72rem] text-tertiary-foreground">
+        Both arms count towards what the flow needs: a headed step inside <strong>otherwise</strong>
+        makes the whole workflow headed, because placement happens before anyone knows which way it
+        goes.
+      </span>
+      <button
+        type="button"
+        onClick={onRemove}
+        className="focusable inline-flex w-fit items-center gap-1.5 rounded-lg px-2 py-1 text-body-sm transition-colors hover:bg-transparent-hover"
+        style={{ color: "var(--tomato-a11)" }}
+      >
+        <Trash2 size={14} strokeWidth={1.8} />
+        Remove this branch and its steps
+      </button>
+    </div>
+  );
+}
+
 /** Steps mode: the flow as an ordered list — dense, and quickest to reorder. */
 function FlowSteps({ draft, selection, onSelect, onMove, onRemove }: FlowProps) {
   return (
@@ -318,21 +473,13 @@ function FlowSteps({ draft, selection, onSelect, onMove, onRemove }: FlowProps) 
         active={selection.kind === "trigger"}
         onSelect={() => onSelect({ kind: "trigger" })}
       />
-      <div className="flex flex-col gap-2">
-        {draft.steps.map((step, i) => (
-          <StepRow
-            key={step.id}
-            step={step}
-            index={i}
-            count={draft.steps.length}
-            active={selection.kind === "step" && selection.id === step.id}
-            onSelect={() => onSelect({ kind: "step", id: step.id })}
-            onMove={(direction) => onMove(step.id, direction)}
-            onRemove={() => onRemove(step.id)}
-          />
-        ))}
-        {draft.steps.length === 0 && <NoSteps />}
-      </div>
+      <StepList
+        steps={draft.steps}
+        selection={selection}
+        onSelect={onSelect}
+        onMove={onMove}
+        onRemove={onRemove}
+      />
     </>
   );
 }
@@ -364,8 +511,8 @@ function FlowDiagram({ draft, selection, onSelect, onMove, onRemove }: FlowProps
         </>
       ) : (
         draft.steps.map((step, i) => {
-          const action = actionById(step.actionId);
-          const summary = stepSummary(step.actionId, step.config);
+          const action = step.kind === "action" ? actionById(step.actionId) : undefined;
+          const summary = step.kind === "action" ? stepSummary(step.actionId, step.config) : step.condition;
           const active = selection.kind === "step" && selection.id === step.id;
           return (
             <div key={step.id} className="flex flex-col items-center">
@@ -383,10 +530,10 @@ function FlowDiagram({ draft, selection, onSelect, onMove, onRemove }: FlowProps
                   <span className="flex items-center gap-2">
                     <span className="font-departure-mono text-[0.72rem] text-tertiary-foreground">{i + 1}</span>
                     <span className="min-w-0 flex-1 truncate text-body-sm text-primary-foreground">
-                      {action?.label ?? step.actionId}
+                      {step.kind === "branch" ? "If" : action?.label ?? step.actionId}
                     </span>
                     <span className="shrink-0 rounded-md bg-component px-1.5 py-0.5 font-departure-mono text-[0.65rem] text-tertiary-foreground">
-                      {action?.package}
+                      {step.kind === "branch" ? "flow" : action?.package}
                     </span>
                   </span>
                   {summary && <span className="truncate text-[0.72rem] text-tertiary-foreground">{summary}</span>}
@@ -431,18 +578,35 @@ export function WorkflowBuilder() {
 
   const problems = draftProblems(draft);
   const owner = memberById(draft.ownerId);
-  const selectedStep = selection.kind === "step" ? draft.steps.find((s) => s.id === selection.id) ?? null : null;
+  const selectedStep = selection.kind === "step" ? findStep(draft.steps, selection.id) ?? null : null;
   const packages = packagesForSteps(draft.steps);
+
+  /**
+   * Where a new step lands.
+   *
+   * If a branch is selected, into its `then` arm — because selecting a conditional and
+   * then picking an action almost always means "do this when the condition holds", and
+   * dropping it after the branch instead is a silent wrong answer. Otherwise, the end
+   * of the top-level flow.
+   */
+  const addTarget = selectedStep?.kind === "branch" ? { branchId: selectedStep.id, arm: "then" as const } : null;
 
   const addStep = (actionId: string) => {
     const step = newStep(actionId, draft.steps);
-    updateDraft({ steps: [...draft.steps, step] });
+    updateDraft({ steps: addStepTo(draft.steps, addTarget, step) });
+    setSelection({ kind: "step", id: step.id });
+  };
+  const addBranch = () => {
+    const step = newBranch(draft.steps);
+    updateDraft({ steps: addStepTo(draft.steps, addTarget, step) });
     setSelection({ kind: "step", id: step.id });
   };
   const patchStep = (id: string, config: Record<string, string>) =>
-    updateDraft({ steps: draft.steps.map((s) => (s.id === id ? { ...s, config } : s)) });
-  const removeStep = (id: string) => {
-    updateDraft({ steps: draft.steps.filter((s) => s.id !== id) });
+    updateDraft({ steps: updateStep(draft.steps, id, (s) => (s.kind === "action" ? { ...s, config } : s)) });
+  const patchCondition = (id: string, condition: string) =>
+    updateDraft({ steps: updateStep(draft.steps, id, (s) => (s.kind === "branch" ? { ...s, condition } : s)) });
+  const deleteStep = (id: string) => {
+    updateDraft({ steps: removeStep(draft.steps, id) });
     if (selection.kind === "step" && selection.id === id) setSelection({ kind: "workflow" });
   };
 
@@ -451,13 +615,13 @@ export function WorkflowBuilder() {
     selection,
     onSelect: setSelection,
     onMove: (id, direction) => updateDraft({ steps: moveStep(draft.steps, id, direction) }),
-    onRemove: removeStep,
+    onRemove: deleteStep,
   };
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <SplitView>
-        <Palette groups={groups} narrowed={isNarrowed(state)} onAdd={addStep} />
+        <Palette groups={groups} narrowed={isNarrowed(state)} onAdd={addStep} onAddBranch={addBranch} />
 
         <DetailPane>
           <div className="scrollbar-none flex-1 overflow-y-auto px-6 py-6">
@@ -486,7 +650,8 @@ export function WorkflowBuilder() {
                 key={selectedStep.id}
                 step={selectedStep}
                 onChange={(config) => patchStep(selectedStep.id, config)}
-                onRemove={() => removeStep(selectedStep.id)}
+                onCondition={(condition) => patchCondition(selectedStep.id, condition)}
+                onRemove={() => deleteStep(selectedStep.id)}
               />
             ) : selection.kind === "trigger" ? (
               <div className="flex flex-col gap-4">
@@ -611,12 +776,16 @@ export function WorkflowBuilder() {
 function StepConfig({
   step,
   onChange,
+  onCondition,
   onRemove,
 }: {
   step: WorkflowStep;
   onChange: (config: Record<string, string>) => void;
+  onCondition: (condition: string) => void;
   onRemove: () => void;
 }) {
+  if (step.kind === "branch") return <BranchConfig step={step} onChange={onCondition} onRemove={onRemove} />;
+
   const action = actionById(step.actionId);
   if (!action) return <p className="text-body-sm text-tertiary-foreground">Unknown action “{step.actionId}”.</p>;
 

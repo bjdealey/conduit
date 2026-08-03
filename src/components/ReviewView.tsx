@@ -9,6 +9,7 @@ import {
 } from "@conduit/domain";
 import { useStore } from "../store";
 import type { Workflow } from "../data/types";
+import { flattenSteps } from "../data/actions";
 import { WorkflowStatusChip } from "./Badges";
 import { Button } from "./Button";
 import { Avatar } from "./Avatar";
@@ -141,7 +142,7 @@ function Submission({ workflow }: { workflow: Workflow }) {
           )}
 
           <section className="flex flex-col gap-1">
-            <Row label="Steps">{workflow.steps.length}</Row>
+            <Row label="Steps">{flattenSteps(workflow.steps).length}</Row>
             <Row label="Packages">{workflow.packages.join(" · ") || "—"}</Row>
             <Row label="Needs">{explainRequirements(workflow.requirements)}</Row>
             <Row label="Trigger">
@@ -152,12 +153,12 @@ function Submission({ workflow }: { workflow: Workflow }) {
           <section className="flex flex-col gap-3">
             <h3 className="text-body-base font-medium text-primary-foreground">The flow</h3>
             <ol className="flex flex-col rounded-xl border-border-default border-[0.5px] bg-page px-4 shadow-default">
-              {workflow.steps.map((step, i) => (
+              {flattenSteps(workflow.steps).map((step, i) => (
                 <li
                   key={step.id}
                   className={
                     "flex items-center gap-3 py-2.5 border-border-default " +
-                    (i < workflow.steps.length - 1 ? "border-b-[0.5px]" : "")
+                    (i < flattenSteps(workflow.steps).length - 1 ? "border-b-[0.5px]" : "")
                   }
                 >
                   <span className="w-5 shrink-0 font-departure-mono text-[0.7rem] text-tertiary-foreground">{i + 1}</span>

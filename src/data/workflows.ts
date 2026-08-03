@@ -1,5 +1,5 @@
 import type { ActivityEvent, Workflow, WorkflowTrigger, Folder, MigrationState, Run } from "./types";
-import { CURRENT_SCHEMA_VERSION, type WorkflowRequirements, type WorkflowVersion } from "@conduit/domain";
+import { CURRENT_SCHEMA_VERSION, migrateWorkflow, type WorkflowRequirements, type WorkflowVersion } from "@conduit/domain";
 
 /**
  * Seed data for the workflow library — the first-class entity. Workflows live
@@ -349,8 +349,11 @@ export const runs: Run[] = [
 
 /* ------------------------------------------------------------------- workflows */
 
-/** A seed row before its version history is derived. */
-type Authored = Omit<Workflow, "schemaVersion" | "versions">;
+/** A v1 step, as the seed literals below are written. */
+type V1Step = { id: string; actionId: string; config: Record<string, string> };
+
+/** A seed row before its history is derived and its steps are migrated. */
+type Authored = Omit<Workflow, "schemaVersion" | "versions" | "steps"> & { steps: V1Step[] };
 
 /**
  * The editorial history a row of this status would plausibly have.
@@ -668,9 +671,17 @@ const library: Authored[] = [
   mirrored("wf_aa_fx_rates", "FX rate refresh", "Pulls daily FX rates from a vendor API. Already API-shaped — ready to move.", "ps", apiFirst("api-key"), "Not started", { runCount: 730, successRate: 0.99, lastRunAt: "5 hours ago", trigger: schedule("Daily at 05:00") }),
 ];
 
-/** The seed library, each row carrying the version history its status implies. */
-export const workflows: Workflow[] = library.map((w) => ({
-  ...w,
-  schemaVersion: CURRENT_SCHEMA_VERSION,
-  versions: historyFor(w),
-}));
+/**
+ * The seed library.
+ *
+ * The literals above are written in **schema v1** — flat, untagged steps — and are
+ * brought up to date through the same `migrateWorkflow` a stored workflow goes
+ * through. That is deliberate: the migration is exercised on every page load rather
+ * than only in its unit test, so a v1→v2 step that silently dropped something would
+ * break the app immediately instead of lying dormant until a real old workflow
+ * arrives.
+ */
+export const workflows: Workflow[] = library.map((w) => {
+  const migrated = migrateWorkflow({ ...w, schemaVersion: 1 }) as unknown as Omit<Workflow, "versions">;
+  return { ...migrated, versions: historyFor(w) };
+});

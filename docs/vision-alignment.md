@@ -54,7 +54,7 @@ match it), **Invert** (the vision says AA is *wrong* here — do the opposite de
 | Automation → Public / Private folder tree | Parity | Built (`folders`, `visibility`, `src/data/automations.ts:12`) | ✅ |
 | Automation → View history (versions) | Parity + review lifecycle | Absent — no version concept | ❌ **Missing** |
 | Automation → dependencies / references | Parity | Built, and *derived* (`packagesForSteps`, `src/data/actions.ts:200`) | ✅ Better than AA |
-| Workflow builder | Parity | Built (`src/components/WorkflowBuilder.tsx`) | 🟡 Linear only — no conditionals |
+| Workflow builder | Parity | Built, with conditionals (`src/components/WorkflowBuilder.tsx`) | ✅ |
 | Activity → In progress / Historical / Insights | Parity | Built, incl. live-run detection (`ActivityView.tsx:51`) | 🟡 Real viewer, seed events |
 | Manage → Scheduled | **Invert** — schedules request work; the distributor places it | `Schedule.target` removed; the column reads "Chosen at run time" | ✅ **Inverted** |
 | Manage → Event triggers | Parity | Built (`src/data/manage.ts:44`) | ✅ |
@@ -240,7 +240,7 @@ version. **Schema version:** `Automation` has no `schemaVersion` and `steps` is 
 **Change:** `version: number` + an immutable version history per workflow; `schemaVersion: number` +
 `migrateWorkflow(raw)` with a test per version, written on save (`commitDraft`, `src/lib/builder.ts:114`).
 
-**More urgent than it looks:** the flow model is a **linear array**. Vision §3 promises conditionals.
+✅ **Delivered — schema v2 makes the flow a tree.** Original note: the flow model was a **linear array**. Vision §3 promises conditionals.
 A linear array cannot express one, so the first genuinely useful API workflow breaks the schema.
 Version it *before* you branch it.
 
@@ -317,7 +317,7 @@ makes the app embody the same discipline §7 and §9 preach rather than undercut
 10. `platform` column/filter + migration state (Gap 9).
 11. Readiness badges (Gap 11).
 
-**Stage C — the control plane earns its name** — ✅ **delivered**, except atomic run dispatch (`claim`), pool autoscaling, and conditionals in the workflow schema
+**Stage C — the control plane earns its name** — ✅ **delivered in full.** Atomic dispatch, autoscaling and conditionals landed in stage 8.
 12. Runner protocol: register, heartbeat, dispatch, claim (Gap 5).
 13. `run_events` + ingest + Realtime → nodes light up live (Gap 5).
 14. Review queue on the Inbox chassis + promote flow (Gap 3, UI).

@@ -9,15 +9,19 @@ import {
   nextRunId,
   testRun,
   fakeRunnerEvents,
+  addStepTo,
+  findStep,
+  removeStep,
+  updateStep,
 } from "../builder";
 import { paletteGroups } from "../builder";
 import { EMPTY_WORKSPACE, type WorkspaceState } from "../workspace";
-import { ACTIONS, actionById, packagesForSteps, requirementsForSteps } from "../../data/actions";
+import { ACTIONS, actionById, flattenSteps, packagesForSteps, requirementsForSteps } from "../../data/actions";
 import { CURRENT_SCHEMA_VERSION, latestVersion, publishedVersion, runnerFits } from "@conduit/domain";
 import { workflows, runs } from "../../data/workflows";
 import { runners } from "../../data/runners";
 import { workspaceControls } from "../../data/workspaceControls";
-import type { WorkflowDraft } from "../../data/types";
+import type { ActionStep, WorkflowDraft, WorkflowStep as WorkflowStepT } from "../../data/types";
 
 const controls = (patch: Partial<WorkspaceState> = {}): WorkspaceState => ({ ...EMPTY_WORKSPACE, ...patch });
 
@@ -45,12 +49,16 @@ describe("starting a draft", () => {
 
 describe("editing the flow", () => {
   it("adds a step ready to read, not blank", () => {
-    const step = newStep("browser.open", []);
+    const step = newStep("browser.open", []) as ActionStep;
+    expect(step.kind).toBe("action");
     expect(step.actionId).toBe("browser.open");
     // `choice` fields start on their first option.
     expect(step.config).toEqual({ engine: "Chromium", mode: "Headless" });
     // Text fields start on their placeholder, so a new step says something.
-    expect(newStep("browser.goto", []).config).toEqual({ url: "https://app.conduit.com/…", timeout: "30" });
+    expect((newStep("browser.goto", []) as ActionStep).config).toEqual({
+      url: "https://app.conduit.com/…",
+      timeout: "30",
+    });
   });
 
   it("keeps step ids unique within a flow", () => {
@@ -64,7 +72,7 @@ describe("editing the flow", () => {
   });
 
   it("moves a step within the flow and ignores moves off either end", () => {
-    const steps = [newStep("browser.open", []), newStep("browser.goto", [{ id: "stp_1" } as never])];
+    const steps = [newStep("browser.open", []), newStep("browser.goto", [newStep("browser.open", [])])];
     const [first, second] = steps;
     expect(moveStep(steps, second.id, -1).map((s) => s.id)).toEqual([second.id, first.id]);
     expect(moveStep(steps, first.id, -1)).toBe(steps);
@@ -73,9 +81,12 @@ describe("editing the flow", () => {
   });
 
   it("derives packages from the steps, deduped and in flow order", () => {
-    expect(packagesForSteps([{ actionId: "browser.open" }, { actionId: "browser.goto" }, { actionId: "metrics.record" }]))
-      .toEqual(["browser", "metrics"]);
-    expect(packagesForSteps([{ actionId: "not-an-action" }])).toEqual([]);
+    const act = (actionId: string, id = actionId): ActionStep => ({ kind: "action", id, actionId, config: {} });
+    expect(packagesForSteps([act("browser.open"), act("browser.goto"), act("metrics.record")])).toEqual([
+      "browser",
+      "metrics",
+    ]);
+    expect(packagesForSteps([act("not-an-action")])).toEqual([]);
   });
 });
 
@@ -122,7 +133,7 @@ describe("test runs", () => {
     expect(run.workflowId).toBe(workflow.id);
     // One log line per step, after the "started" and placement lines.
     expect(run.activity).toHaveLength(workflow.steps.length + 2);
-    expect(run.activity[2].title).toBe(`1. ${actionById(workflow.steps[0].actionId)?.label}`);
+    expect(run.activity[2].title).toBe(`1. ${actionById(flattenSteps(workflow.steps)[0].actionId)?.label}`);
   });
 
   it("places the run through the distributor and records why", () => {
@@ -170,7 +181,7 @@ describe("the action palette", () => {
     // one lie that makes the whole estate view untrustworthy.
     for (const workflow of workflows.filter((a) => a.platform === "conduit")) {
       expect(workflow.steps.length, workflow.id).toBeGreaterThan(0);
-      for (const step of workflow.steps) expect(actionById(step.actionId), `${workflow.id}/${step.id}`).toBeDefined();
+      for (const step of flattenSteps(workflow.steps)) expect(actionById(step.actionId), `${workflow.id}/${step.id}`).toBeDefined();
       // The declared dependencies match what the flow actually uses.
       expect(workflow.packages, workflow.id).toEqual(packagesForSteps(workflow.steps));
     }
@@ -205,7 +216,7 @@ describe("the action palette", () => {
 
   it("uses field ids that the seeded configs actually set", () => {
     for (const workflow of workflows) {
-      for (const step of workflow.steps) {
+      for (const step of flattenSteps(workflow.steps)) {
         const fields = new Set(actionById(step.actionId)!.fields.map((f) => f.id));
         for (const key of Object.keys(step.config)) expect(fields, `${step.actionId}.${key}`).toContain(key);
       }
@@ -298,5 +309,84 @@ describe("version history", () => {
         expect(publishedVersion(w.versions)?.approvedBy, w.id).toBeTruthy();
       }
     }
+  });
+});
+
+describe("conditionals", () => {
+  const branch = (id: string, thenArm: WorkflowStepT[] = [], elseArm: WorkflowStepT[] = []): WorkflowStepT => ({
+    kind: "branch",
+    id,
+    condition: "{{ response.status }} == 200",
+    then: thenArm,
+    else: elseArm,
+  });
+
+  it("derives packages and requirements from inside both arms", () => {
+    // A package used only on the unhappy path is still a dependency, and a headed
+    // step inside an `else` still makes the flow headed — placement happens before
+    // anyone knows which way it goes.
+    const flow = [
+      newStep("http.request", []),
+      branch("b1", [newStep("storage.put", [])], [newStep("browser.open", [])]),
+    ];
+    expect(packagesForSteps(flow)).toContain("storage-s3");
+    expect(packagesForSteps(flow)).toContain("browser");
+    expect(requirementsForSteps(flow).auth).toBe("managed-identity");
+  });
+
+  it("makes the flow headed when a headed step hides in an arm", () => {
+    const headedInside = branch("b1", [], [{ kind: "action", id: "s9", actionId: "browser.open", config: { mode: "Headed" } }]);
+    expect(requirementsForSteps([headedInside]).ui).toBe("headed");
+  });
+
+  it("keeps step ids unique across the whole tree", () => {
+    // A duplicate id inside an `else` would make selection ambiguous.
+    const flow = [branch("stp_1", [{ kind: "action", id: "stp_2", actionId: "http.request", config: {} }])];
+    const fresh = newStep("metrics.record", flow);
+    expect(["stp_1", "stp_2"]).not.toContain(fresh.id);
+  });
+
+  it("moves a step within its own arm and never across a boundary", () => {
+    const a = { kind: "action", id: "a", actionId: "http.request", config: {} } as WorkflowStepT;
+    const b = { kind: "action", id: "b", actionId: "metrics.record", config: {} } as WorkflowStepT;
+    const flow = [branch("b1", [a, b])];
+    const moved = moveStep(flow, "b", -1);
+    const arm = (moved[0] as { then: WorkflowStepT[] }).then;
+    expect(arm.map((s) => s.id)).toEqual(["b", "a"]);
+    // Moving the first step of an arm up does nothing — it does not escape the branch.
+    expect(moveStep(flow, "a", -1)).toBe(flow);
+  });
+
+  it("edits and removes a step nested in an arm", () => {
+    const flow = [branch("b1", [{ kind: "action", id: "s1", actionId: "http.request", config: { method: "GET" } }])];
+    const edited = updateStep(flow, "s1", (s) => (s.kind === "action" ? { ...s, config: { method: "POST" } } : s));
+    expect(((edited[0] as { then: WorkflowStepT[] }).then[0] as ActionStep).config.method).toBe("POST");
+    expect((removeStep(flow, "s1")[0] as { then: WorkflowStepT[] }).then).toEqual([]);
+  });
+
+  it("removing a branch takes its arms with it", () => {
+    const flow = [branch("b1", [newStep("http.request", [])]), newStep("metrics.record", [])];
+    const after = removeStep(flow, "b1");
+    expect(after).toHaveLength(1);
+    expect(flattenSteps(after).map((s) => s.actionId)).toEqual(["metrics.record"]);
+  });
+
+  it("adds a step into the arm it was aimed at", () => {
+    const flow = [branch("b1")];
+    const added = addStepTo(flow, { branchId: "b1", arm: "else" }, newStep("email.send", flow));
+    expect((added[0] as { else: WorkflowStepT[] }).else).toHaveLength(1);
+    expect((added[0] as { then: WorkflowStepT[] }).then).toHaveLength(0);
+  });
+
+  it("finds a step however deep it is", () => {
+    const flow = [branch("b1", [branch("b2", [{ kind: "action", id: "deep", actionId: "http.request", config: {} }])])];
+    expect(findStep(flow, "deep")?.id).toBe("deep");
+    expect(findStep(flow, "nope")).toBeUndefined();
+  });
+
+  it("logs every step that would execute, including nested ones", () => {
+    const workflow = { ...workflows[0], steps: [branch("b1", [newStep("http.request", [])])] };
+    const events = fakeRunnerEvents("run_x", workflow, "Placed", "why");
+    expect(events.filter((e) => e.kind === "step-started")).toHaveLength(1);
   });
 });
