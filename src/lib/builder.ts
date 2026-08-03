@@ -1,6 +1,15 @@
 import { ACTIONS, actionById, actionsByPackage, defaultConfig, effectiveRequirements, packagesForSteps, type StepAction } from "../data/actions";
-import { DEFAULT_REQUIREMENTS, pickRunner, type Runner } from "@conduit/domain";
-import type { Workflow, WorkflowDraft, WorkflowStep, Run } from "../data/types";
+import {
+  CURRENT_SCHEMA_VERSION,
+  DEFAULT_REQUIREMENTS,
+  nextVersion,
+  orderEvents,
+  pickRunner,
+  type RunEvent,
+  type Runner,
+  type WorkflowVersion,
+} from "@conduit/domain";
+import type { ActivityEvent, Workflow, WorkflowDraft, WorkflowStep, Run } from "../data/types";
 import { workspaceControls } from "../data/workspaceControls";
 import { matchesQuery, ordered, passesFilter, resolveSort, type WorkspaceState } from "./workspace";
 
@@ -22,7 +31,7 @@ export type PaletteGroup = { package: string | null; actions: StepAction[] };
  * label, package, or summary, its Package filter keeps one package, and its sort
  * chooses between the grouped view and one alphabetical list.
  */
-export function paletteGroups(state: WorkspaceState): PaletteGroup[] {
+export function paletteGroups(state: WorkspaceState, catalogue: readonly StepAction[] = ACTIONS): PaletteGroup[] {
   const keep = (action: StepAction) =>
     matchesQuery(state.query, [action.label, action.package, action.summary]) &&
     passesFilter(state, "package", action.package);
@@ -30,11 +39,11 @@ export function paletteGroups(state: WorkspaceState): PaletteGroup[] {
   const { id, dir } = resolveSort(state, workspaceControls("builder", "")?.sorts ?? []);
 
   if (id === "name") {
-    const actions = ordered(ACTIONS.filter(keep), dir, (a, b) => a.label.localeCompare(b.label));
+    const actions = ordered(catalogue.filter(keep), dir, (a, b) => a.label.localeCompare(b.label));
     return actions.length > 0 ? [{ package: null, actions }] : [];
   }
 
-  const groups = actionsByPackage()
+  const groups = actionsByPackage(catalogue)
     .map((group) => ({ package: group.package as string | null, actions: group.actions.filter(keep) }))
     .filter((group) => group.actions.length > 0);
   return dir === "desc" ? [...groups].reverse() : groups;
@@ -54,6 +63,8 @@ export function blankDraft(ownerId: string, folderId: string): WorkflowDraft {
     platform: "conduit",
     migration: "Migrated",
     requirements: { ...DEFAULT_REQUIREMENTS },
+    schemaVersion: CURRENT_SCHEMA_VERSION,
+    versions: [],
     trigger: { kind: "Manual", detail: "Owner and admins" },
     steps: [],
     runCount: 0,
@@ -117,9 +128,36 @@ export function draftProblems(draft: WorkflowDraft): string[] {
  * `requirements` is raised to the floor its steps impose, so a flow can never be
  * placed on a runner that can't actually carry it.
  */
+/** A one-line summary of what this version is, for the history list. */
+function summarise(draft: WorkflowDraft): string {
+  const steps = `${draft.steps.length} step${draft.steps.length === 1 ? "" : "s"}`;
+  return draft.versions.length === 0 ? `First version — ${steps}` : `Edited — ${steps}`;
+}
+
+/**
+ * Append a new version to the history.
+ *
+ * Every save cuts one. That looks noisy until the alternative is considered: if
+ * saving mutates the approved version in place, an approval silently comes to cover
+ * text nobody read, which is precisely what the review lifecycle exists to prevent.
+ */
+export function cutVersion(history: WorkflowVersion[], authoredBy: string, summary: string): WorkflowVersion[] {
+  return [
+    ...history,
+    {
+      version: nextVersion(history),
+      authoredBy,
+      authoredAt: "just now",
+      summary,
+      schemaVersion: CURRENT_SCHEMA_VERSION,
+    },
+  ];
+}
+
 export function commitDraft(
   workflows: Workflow[],
   draft: WorkflowDraft,
+  author: string,
 ): { workflows: Workflow[]; id: string } {
   const { isNew, ...rest } = draft;
   const id = isNew ? workflowId(draft.name, workflows.map((a) => a.id)) : draft.id;
@@ -129,6 +167,8 @@ export function commitDraft(
     name: draft.name.trim() || "Untitled workflow",
     packages: packagesForSteps(draft.steps),
     requirements: effectiveRequirements(draft.requirements, draft.steps),
+    schemaVersion: CURRENT_SCHEMA_VERSION,
+    versions: cutVersion(draft.versions, author, summarise(draft)),
     updatedAgo: "just now",
   };
   return {
@@ -165,21 +205,45 @@ export function testRun(workflow: Workflow, startedBy: string, runs: Run[], pool
     startedAt: "just now",
     duration: "2 s",
     runnerId: runner?.id,
-    activity: [
-      { id: `${id}-1`, kind: "status", time: "just now", title: "Test run started from the builder" },
-      {
-        id: `${id}-p`,
-        kind: "fact",
-        time: "just now",
-        title: runner ? `Placed on ${runner.name}` : "Waiting for a runner",
-        body: rationale,
-      },
-      ...workflow.steps.map((step, i) => ({
-        id: `${id}-s${i + 1}`,
-        kind: "fact" as const,
-        time: "just now",
-        title: `${i + 1}. ${actionById(step.actionId)?.label ?? step.actionId}`,
-      })),
-    ],
+    activity: runEventsToActivity(
+      fakeRunnerEvents(id, workflow, runner ? `Placed on ${runner.name}` : "Waiting for a runner", rationale),
+    ),
   };
+}
+
+/**
+ * The events a runner would report for this flow.
+ *
+ * A test run has no real runner behind it yet, so this stands in for one — but it
+ * emits the *protocol's* events rather than fabricating a screen. When a real runner
+ * arrives it posts the same shapes to `runner/ingest`, and the viewer needs no
+ * change: the fake is a fake runner, not a fake log.
+ */
+export function fakeRunnerEvents(runId: string, workflow: Workflow, placement: string, rationale: string): RunEvent[] {
+  const at = "just now";
+  const events: RunEvent[] = [
+    { runId, sequence: 1, kind: "started", message: "Test run started from the builder", at },
+    { runId, sequence: 2, kind: "log", message: `${placement} — ${rationale}`, at },
+  ];
+  workflow.steps.forEach((step, i) => {
+    events.push({
+      runId,
+      sequence: 3 + i,
+      kind: "step-started",
+      stepId: step.id,
+      message: `${i + 1}. ${actionById(step.actionId)?.label ?? step.actionId}`,
+      at,
+    });
+  });
+  return events;
+}
+
+/** Protocol events rendered as the timeline the run viewer already speaks. */
+export function runEventsToActivity(events: readonly RunEvent[]): ActivityEvent[] {
+  return orderEvents(events).map((e) => ({
+    id: `${e.runId}-${e.sequence}`,
+    kind: e.kind === "failed" ? ("problem" as const) : e.kind === "log" ? ("fact" as const) : ("status" as const),
+    time: e.at,
+    title: e.message,
+  }));
 }

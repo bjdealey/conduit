@@ -59,6 +59,7 @@ const BASE: Readonly<Record<View, SurfaceReadiness>> = Object.freeze({
   inbox: "prototype",
   workflows: "prototype",
   review: "prototype",
+  audit: "prototype",
   runners: "prototype",
   builder: "prototype",
   settings: "prototype",

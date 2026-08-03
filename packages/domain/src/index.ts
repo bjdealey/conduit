@@ -50,3 +50,46 @@ export {
   permissionsOf,
   transitionsFrom,
 } from "./review.ts";
+export type { StoredWorkflow, WorkflowVersion } from "./version.ts";
+export {
+  CURRENT_SCHEMA_VERSION,
+  hasUnpublishedChanges,
+  latestVersion,
+  migrateWorkflow,
+  needsMigration,
+  nextVersion,
+  publishedVersion,
+} from "./version.ts";
+export type {
+  ClaimRequest,
+  ClaimResponse,
+  HeartbeatRequest,
+  HeartbeatResponse,
+  IngestRequest,
+  IngestResponse,
+  RegisterRejection,
+  RegisterRequest,
+  RegisterResponse,
+  RunEvent,
+  RunEventKind,
+} from "./protocol.ts";
+export {
+  MAX_EVENTS_PER_BATCH,
+  MISSED_HEARTBEATS_BEFORE_OFFLINE,
+  PROTOCOL_VERSION,
+  RUN_EVENT_KINDS,
+  SUPPORTED_PROTOCOL_VERSIONS,
+  isStale,
+  isSupportedProtocol,
+  isTerminal,
+  orderEvents,
+} from "./protocol.ts";
+export type { AuditCategory, AuditEntry } from "./audit.ts";
+export {
+  AUDIT_CATEGORIES,
+  AUDIT_CATEGORY_LABEL,
+  REVIEW_ACTION_VERB,
+  auditByCategory,
+  categoryOfReviewAction,
+  orderAudit,
+} from "./audit.ts";

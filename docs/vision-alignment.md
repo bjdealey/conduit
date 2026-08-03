@@ -194,7 +194,7 @@ better* in five seconds.
   something you track on a chart instead of apologise for in a meeting.
 - **In-flight runs** — reusing the existing Activity primitives and `ImpactChart`/`SurfaceChart`.
 
-### Gap 5 — The runner protocol, not a runtime *(correcting my first pass)*
+### ~~Gap 5~~ — The runner protocol ✅ **delivered** *(`packages/domain/src/protocol.ts`; `claim` still returns no work)*
 
 My first draft recommended building `packages/runtime` inside Conduit. With the framing settled,
 that is wrong: execution is not the control plane's job. What Conduit owes the runner is a
@@ -217,7 +217,7 @@ Define the protocol as versioned TypeScript in `packages/domain` so the runtime 
 it. Until a real runner exists, `testRun()` (`src/lib/builder.ts:147`) can post through the same
 ingest path — a fake runner rather than a fake screen, which means the UI is never rewritten.
 
-### Gap 6 — The node catalogue is compiled in
+### ~~Gap 6~~ — The node catalogue ✅ **delivered** *(`node_types` + the `node-types` function; `ACTIONS` is the fallback)*
 
 Vision §6: *"New node types appear in the builder by adding metadata, not by rewriting the canvas."*
 `ACTIONS` is a hardcoded array in the frontend bundle (`src/data/actions.ts:41`), so a new node type
@@ -230,7 +230,7 @@ backs `bots` today (`src/store.tsx:213`, `src/data/toDomain.ts`). One code path,
 Carry `requires` (Gap 2) on each node type, so adding a node type also teaches the distributor how
 to route workflows that use it.
 
-### Gap 7 — No versions, no version history, and an unversioned schema
+### ~~Gap 7~~ — Versions ✅ **delivered** *(`packages/domain/src/version.ts`; conditionals still absent)*
 
 Two related holes. **Workflow versions:** the Control Room's *View history* has no Conduit
 counterpart, and the review lifecycle (Gap 3) is meaningless without one — promotion promotes a
@@ -244,7 +244,7 @@ version. **Schema version:** `Automation` has no `schemaVersion` and `steps` is 
 A linear array cannot express one, so the first genuinely useful API workflow breaks the schema.
 Version it *before* you branch it.
 
-### Gap 8 — Audit log
+### ~~Gap 8~~ — Audit log ✅ **delivered** *(`packages/domain/src/audit.ts`, `AuditView`)*
 
 `Capability.Audit` is reserved (`packages/domain/src/capability.ts:12`) with no surface. A Control
 Room replacement needs one for parity, and the tiered model needs it for governance — who submitted,
@@ -289,7 +289,7 @@ makes the app embody the same discipline §7 and §9 preach rather than undercut
 
 ### Gap 12 — Two smaller alignments
 
-- **AI extension point** (§6: *"AI plugs in through the same node interface"*). Three node stubs —
+- ~~**AI extension point**~~ ✅ **delivered** — three stubs, `readiness: "roadmap"`. (§6: *"AI plugs in through the same node interface"*). Three node stubs —
   extract from document, classify, summarise — declared through the ordinary node-type interface and
   badged `roadmap`. The point is proving the interface holds, not building the feature; §8 is
   explicit that AI lands last.
@@ -317,7 +317,7 @@ makes the app embody the same discipline §7 and §9 preach rather than undercut
 10. `platform` column/filter + migration state (Gap 9).
 11. Readiness badges (Gap 11).
 
-**Stage C — the control plane earns its name** — *partly delivered: 14 (review queue) and the naming decision are done; 12, 13, 15, 16, 17 remain*
+**Stage C — the control plane earns its name** — ✅ **delivered**, except atomic run dispatch (`claim`), pool autoscaling, and conditionals in the workflow schema
 12. Runner protocol: register, heartbeat, dispatch, claim (Gap 5).
 13. `run_events` + ingest + Realtime → nodes light up live (Gap 5).
 14. Review queue on the Inbox chassis + promote flow (Gap 3, UI).

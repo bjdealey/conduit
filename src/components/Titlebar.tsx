@@ -72,6 +72,7 @@ function InfoPaneToggle({ label }: { label: string }) {
 const VIEW_LABEL: Record<Exclude<View, "inbox">, string> = {
   home: "Home",
   review: "Review",
+  audit: "Audit",
   builder: "Workflow builder",
   activity: "Activity",
   workflows: "Workflows",

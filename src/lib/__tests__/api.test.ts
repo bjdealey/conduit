@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { coerceWorkflow, coerceWorkflows, coerceCapabilities } from "../api";
+import { coerceCapabilities, coerceNodeType, coerceWorkflow, coerceWorkflows } from "../api";
 
 describe("api boundary coercion (defensive parsing of our API responses)", () => {
   it("coerceWorkflow returns a valid domain Workflow and guards the state field", () => {
@@ -45,5 +45,37 @@ describe("api boundary coercion (defensive parsing of our API responses)", () =>
   it("coerceCapabilities keeps only recognised capability ids", () => {
     expect(coerceCapabilities(["workflows", "schedules", "made-up", 7])).toEqual(["workflows", "schedules"]);
     expect(coerceCapabilities(null)).toEqual([]);
+  });
+});
+
+describe("node-type catalogue coercion", () => {
+  it("accepts a well-formed catalogue row", () => {
+    const node = coerceNodeType({
+      id: "ai.extract",
+      label: "Extract from document",
+      package: "ai",
+      summary: "Pull structured fields out of a document.",
+      fields: [{ id: "source", label: "Document", kind: "text" }],
+      requires: { auth: "api-key" },
+      readiness: "roadmap",
+    });
+    expect(node).toMatchObject({ id: "ai.extract", package: "ai", readiness: "roadmap" });
+    expect(node?.requires).toEqual({ auth: "api-key" });
+  });
+
+  it("defaults readiness to live rather than hiding an unmarked node", () => {
+    expect(coerceNodeType({ id: "a", label: "A", package: "p", summary: "s" })?.readiness).toBe("live");
+  });
+
+  it("drops a row missing anything the palette needs to render it", () => {
+    expect(coerceNodeType({ id: "a", label: "A", package: "p" })).toBeNull();
+    expect(coerceNodeType({ label: "A", package: "p", summary: "s" })).toBeNull();
+    expect(coerceNodeType(null)).toBeNull();
+    expect(coerceNodeType("nope")).toBeNull();
+  });
+
+  it("tolerates a missing or malformed fields array", () => {
+    expect(coerceNodeType({ id: "a", label: "A", package: "p", summary: "s" })?.fields).toEqual([]);
+    expect(coerceNodeType({ id: "a", label: "A", package: "p", summary: "s", fields: "no" })?.fields).toEqual([]);
   });
 });

@@ -256,6 +256,9 @@ const BUILDER: WorkspaceControls = {
       id: "package",
       label: "Package",
       icon: <Package {...dim} />,
+      // From the compiled-in fallback: the header is built before the live
+      // catalogue loads, and a filter that flickers is worse than one that is a
+      // superset. Live-only packages still search.
       options: [...new Set(ACTIONS.map((a) => a.package))].map((p) => option(p)),
     },
   ],
@@ -345,6 +348,8 @@ export function workspaceControls(view: View, tab: string): WorkspaceControls | 
       return RUNNERS;
     case "review":
       return { search: "Search submissions…" };
+    case "audit":
+      return { search: "Search the audit trail…" };
     case "surfaces":
       return SURFACES;
     case "builder":

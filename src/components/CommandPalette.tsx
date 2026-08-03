@@ -70,7 +70,11 @@ export function CommandPalette() {
       ["users", "Go to Users"],
       // Administration is permission-gated: hidden from the palette for `user`.
       ...(store.allowed("review")
-        ? ([["review", "Go to Review"], ["administration", "Go to Administration"]] as [View, string][])
+        ? ([
+            ["review", "Go to Review"],
+            ["audit", "Go to Audit"],
+            ["administration", "Go to Administration"],
+          ] as [View, string][])
         : []),
       ["surfaces", "Go to Surfaces"],
       ["runners", "Go to Runners"],

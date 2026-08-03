@@ -8,11 +8,12 @@ import {
   newStep,
   nextRunId,
   testRun,
+  fakeRunnerEvents,
 } from "../builder";
 import { paletteGroups } from "../builder";
 import { EMPTY_WORKSPACE, type WorkspaceState } from "../workspace";
 import { ACTIONS, actionById, packagesForSteps, requirementsForSteps } from "../../data/actions";
-import { runnerFits } from "@conduit/domain";
+import { CURRENT_SCHEMA_VERSION, latestVersion, publishedVersion, runnerFits } from "@conduit/domain";
 import { workflows, runs } from "../../data/workflows";
 import { runners } from "../../data/runners";
 import { workspaceControls } from "../../data/workspaceControls";
@@ -80,7 +81,7 @@ describe("editing the flow", () => {
 
 describe("saving a draft", () => {
   it("appends a new workflow with a readable id and derived packages", () => {
-    const { workflows: next, id } = commitDraft(workflows, draftWith());
+    const { workflows: next, id } = commitDraft(workflows, draftWith(), "Keith Kennedy");
     expect(id).toBe("wf_nightly_export");
     expect(next).toHaveLength(workflows.length + 1);
     const saved = next.find((a) => a.id === id)!;
@@ -96,14 +97,14 @@ describe("saving a draft", () => {
   it("replaces in place when editing an existing workflow", () => {
     const existing = workflows[0];
     const edited: WorkflowDraft = { ...existing, isNew: false, name: "Renamed audit" };
-    const { workflows: next, id } = commitDraft(workflows, edited);
+    const { workflows: next, id } = commitDraft(workflows, edited, "Keith Kennedy");
     expect(id).toBe(existing.id);
     expect(next).toHaveLength(workflows.length);
     expect(next.find((a) => a.id === id)?.name).toBe("Renamed audit");
   });
 
   it("falls back to a title rather than saving an empty name", () => {
-    const { workflows: next, id } = commitDraft(workflows, draftWith({ name: "   " }));
+    const { workflows: next, id } = commitDraft(workflows, draftWith({ name: "   " }), "Keith Kennedy");
     expect(next.find((a) => a.id === id)?.name).toBe("Untitled workflow");
   });
 });
@@ -131,7 +132,20 @@ describe("test runs", () => {
     expect(placed).toBeDefined();
     // The reason is on the log, not just the placement — a choice nobody can read
     // is the same bottleneck in a different place.
-    expect(run.activity[1].body).toBeTruthy();
+    expect(run.activity[1].title).toContain(placed!.name);
+  });
+
+  it("emits the protocol's events rather than fabricating a log", () => {
+    // The fake is a fake *runner*, not a fake log: a real runner posts these same
+    // shapes to runner/ingest and the viewer needs no change.
+    const workflow = workflows[0];
+    const events = fakeRunnerEvents("run_test", workflow, "Placed on lightweight-1", "API-only");
+    expect(events[0].kind).toBe("started");
+    expect(events.filter((e) => e.kind === "step-started")).toHaveLength(workflow.steps.length);
+    // Sequences are unique and ascending, because the viewer orders on them.
+    const seqs = events.map((e) => e.sequence);
+    expect(new Set(seqs).size).toBe(seqs.length);
+    expect(seqs).toEqual([...seqs].sort((a, b) => a - b));
   });
 
   it("queues rather than inventing a runner when the pool can't take the work", () => {
@@ -248,5 +262,41 @@ describe("the builder's chrome", () => {
   it("offers every package the palette actually provides", () => {
     const offered = workspaceControls("builder", "")?.filters?.[0].options.map((o) => o.id) ?? [];
     expect(new Set(offered)).toEqual(new Set(ACTIONS.map((a) => a.package)));
+  });
+});
+
+describe("version history", () => {
+  it("cuts v1 on first save and appends on every edit", () => {
+    const { workflows: afterNew, id } = commitDraft(workflows, draftWith(), "Keith Kennedy");
+    const created = afterNew.find((w) => w.id === id)!;
+    expect(created.versions.map((v) => v.version)).toEqual([1]);
+    expect(created.versions[0].authoredBy).toBe("Keith Kennedy");
+
+    const edited = commitDraft(afterNew, { ...created, isNew: false, name: "Renamed" }, "Priya Fenn");
+    expect(edited.workflows.find((w) => w.id === id)!.versions.map((v) => v.version)).toEqual([1, 2]);
+  });
+
+  it("never mutates an approved version in place", () => {
+    // Editing after approval must produce a new version, or the approval silently
+    // comes to cover text nobody read.
+    const approved = workflows.find((w) => w.status === "Approved")!;
+    const before = approved.versions.find((v) => v.approvedBy !== undefined)!;
+    const { workflows: after } = commitDraft(workflows, { ...approved, isNew: false }, "Paulo Santos");
+    const now = after.find((w) => w.id === approved.id)!;
+    expect(now.versions.length).toBe(approved.versions.length + 1);
+    expect(now.versions.find((v) => v.version === before.version)).toEqual(before);
+    expect(latestVersion(now.versions)!.approvedBy).toBeUndefined();
+  });
+
+  it("gives every seeded workflow a history its status could have produced", () => {
+    for (const w of workflows) {
+      expect(w.versions.length, w.id).toBeGreaterThan(0);
+      expect(w.schemaVersion, w.id).toBe(CURRENT_SCHEMA_VERSION);
+      // A published workflow always carries an approval — there is no transition
+      // that reaches Published without one.
+      if (w.status === "Published" || w.status === "Paused") {
+        expect(publishedVersion(w.versions)?.approvedBy, w.id).toBeTruthy();
+      }
+    }
   });
 });

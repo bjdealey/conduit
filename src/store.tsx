@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { issues as seedIssues, members } from "./data/issues";
 import { workflows as seedWorkflows, folders as seedFolders, runs as seedRuns } from "./data/workflows";
+import { auditEntries as seedAudit } from "./data/audit";
 import { endUsers } from "./data/users";
 import { runners } from "./data/runners";
 import { currentUser } from "./data/user";
@@ -12,19 +13,24 @@ import { applyBrand } from "./lib/palette";
 import { isDark, setTheme } from "./lib/theme";
 import type { Workflow, WorkflowDraft, Folder, Issue, Member, Priority, Role, Run, Status } from "./data/types";
 import { blankDraft, commitDraft, testRun } from "./lib/builder";
+import { ACTIONS, type StepAction } from "./data/actions";
 import {
   CAPABILITIES,
   Capability,
+  REVIEW_ACTION_VERB,
   can,
   canTransition,
+  categoryOfReviewAction,
+  latestVersion,
   transitionsFrom,
+  type AuditEntry,
   type Permission,
   type ReviewAction,
   type Workflow as DomainWorkflow,
 } from "@conduit/domain";
 import { EMPTY_WORKSPACE, type FilterOp, type SortDir, type WorkspaceState } from "./lib/workspace";
 import { isSupabaseConfigured } from "./lib/supabase";
-import { getWorkflows, getCapabilities } from "./lib/api";
+import { getWorkflows, getCapabilities, getNodeTypes } from "./lib/api";
 import { seedConnectedWorkflows } from "./data/toDomain";
 
 const read = (key: string, fallback: string): string => {
@@ -53,6 +59,7 @@ export type View =
   | "inbox"
   | "workflows"
   | "review"
+  | "audit"
   | "manage"
   | "users"
   | "administration"
@@ -109,6 +116,11 @@ type Store = {
   /** Move a workflow through the review lifecycle. Refuses any move the current tier
    *  isn't permitted to make, so the store enforces the same rule the UI renders. */
   reviewWorkflow: (id: string, action: ReviewAction, note?: string) => void;
+  /** The audit trail, newest first. Append-only — every lifecycle move writes one. */
+  audit: AuditEntry[];
+  /** The builder palette. Served by our API when configured, else the compiled-in
+   *  fallback — so a new node type is a row, never a frontend redeploy. */
+  nodeTypes: StepAction[];
   selectedId: number | null;
   selected: Issue | null;
   /** Selected end-user (Users view) and workflow (Workflows view). Lifted here
@@ -230,6 +242,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   // Integration data plane. Defaults to the seed-derived domain view (so the prototype
   // runs with no backend); if Supabase is configured, live data replaces it on mount.
+  const [audit, setAudit] = useState<AuditEntry[]>(seedAudit);
+  const [nodeTypes, setNodeTypes] = useState<StepAction[]>(ACTIONS);
   const [connectedWorkflows, setConnectedWorkflows] = useState<DomainWorkflow[]>(() => seedConnectedWorkflows());
   const [capabilitySet, setCapabilitySet] = useState<Set<Capability>>(() => new Set(CAPABILITIES));
   const [dataSource, setDataSource] = useState<"live" | "seed">("seed");
@@ -240,10 +254,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     (async () => {
       try {
-        const [caps, live] = await Promise.all([getCapabilities(), getWorkflows()]);
+        const [caps, live, palette] = await Promise.all([getCapabilities(), getWorkflows(), getNodeTypes()]);
         if (cancelled) return;
         setCapabilitySet(new Set(caps));
         setConnectedWorkflows(live);
+        // An empty catalogue means the table hasn't been seeded; keep the fallback
+        // rather than handing the builder a palette with nothing in it.
+        if (palette.length > 0) setNodeTypes(palette);
         setDataSource("live");
         setIntegrationError(null);
       } catch (e) {
@@ -354,7 +371,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     updateDraft: (patch) => setDraft((prev) => (prev ? { ...prev, ...patch } : prev)),
     saveDraft: () => {
       if (!draft) return null;
-      const { workflows: next, id } = commitDraft(workflows, draft);
+      const { workflows: next, id } = commitDraft(workflows, draft, currentUser.name);
       setWorkflows(next);
       setSelectedWorkflowId(id);
       setDraft(null);
@@ -363,7 +380,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     },
     testRunDraft: () => {
       if (!draft) return;
-      const { workflows: next, id } = commitDraft(workflows, draft);
+      const { workflows: next, id } = commitDraft(workflows, draft, currentUser.name);
       const saved = next.find((a) => a.id === id)!;
       setWorkflows(next.map((a) => (a.id === id ? { ...a, runCount: a.runCount + 1, lastRunAt: "just now" } : a)));
       setRuns((prev) => [testRun(saved, currentUser.name, prev, runners), ...prev]);
@@ -395,6 +412,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     },
     allowed: (permission) => can(role, permission),
+    audit,
+    nodeTypes,
     reviewWorkflow: (id, action, note) => {
       setWorkflows((prev) =>
         prev.map((w) => {
@@ -410,9 +429,48 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               : action === "withdraw"
                 ? {}
                 : { reviewedBy: who, reviewedAt: "just now", reviewNote: note ?? w.reviewNote };
-          return { ...w, status: to, updatedAgo: "just now", ...stamped };
+          // An approval or a publish attaches to the version it read, not to the
+          // workflow — otherwise a later edit inherits a decision nobody made about it.
+          const target = latestVersion(w.versions)?.version;
+          const versions =
+            target === undefined
+              ? w.versions
+              : w.versions.map((v) =>
+                  v.version !== target
+                    ? v
+                    : action === "approve"
+                      ? { ...v, approvedBy: who, approvedAt: "just now" }
+                      : action === "publish"
+                        ? { ...v, publishedAt: "just now" }
+                        : v,
+                );
+          return { ...w, status: to, updatedAgo: "just now", versions, ...stamped };
         }),
       );
+      // Every move writes to the trail. Delegation is only defensible if "who
+      // approved this, and when" survives the click that did it.
+      const moved = workflows.find((w) => w.id === id);
+      if (moved && canTransition(role, moved.status, action)) {
+        const version = latestVersion(moved.versions)?.version;
+        setAudit((prev) => {
+          const seq = `aud_${String(prev.length + 1).padStart(4, "0")}`;
+          return [
+            ...prev,
+            {
+              id: seq,
+              sourceId: seq,
+              platform: "conduit",
+              connectorId: "seed",
+              category: categoryOfReviewAction(action),
+              actor: currentUser.name,
+              action: REVIEW_ACTION_VERB[action],
+              target: version ? `${moved.name} v${version}` : moved.name,
+              at: "just now",
+              detail: note,
+            },
+          ];
+        });
+      }
     },
     selectedId,
     selected: issues.find((i) => i.id === selectedId) ?? null,
