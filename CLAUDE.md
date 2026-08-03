@@ -496,6 +496,19 @@ menu takes the metadata's slot on hover instead of a reserved column, which woul
 ~30px of a 20rem pane. The tree is a `<nav aria-label="Library tree">`, because the breadcrumb names
 the same folders and "Onboarding" would otherwise mean two different controls.
 
+**Breadcrumb carries the path for every kind.** Workflow, folder and file all render the folder
+trail (`Workflows › Shared › Monitoring › Synthetics › …`), every ancestor clickable. "Workflows ›
+Bulk invoice export" named the thing without saying where it lived.
+
+**`<Reveal>`** (`src/components/Reveal.tsx`) animates a branch open and closed with the grid trick —
+a one-row grid interpolating `0fr → 1fr`, which reaches the content's natural height with no ref
+measuring, no ResizeObserver, and no `max-height` guess that clips tall content or animates empty
+space. The price is that children stay **mounted while closed** — there is nothing to animate out of
+a subtree React has unmounted — so closed content is made `inert`, or a collapsed branch would still
+be tabbable and still read out by a screen reader. Note `grid-template-rows` is not a
+compositor-animated property: it needs main-thread style recalc, so it can't be timed from a
+throttled headless browser (the transition is observable there, its wall-clock duration isn't).
+
 **Still seed-backed.** Edits live in React state: they survive navigation, not a reload. The
 persistence path is the same one the library's reads will take (PostgREST/Edge Functions), and the
 rules in `src/lib/library.ts` are the ones a server would have to enforce too.

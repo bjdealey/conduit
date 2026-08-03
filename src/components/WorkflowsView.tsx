@@ -42,6 +42,7 @@ import { isNarrowed, matchesQuery, ordered, passesFilter, resolveSort, type Work
 import { workspaceControls } from "../data/workspaceControls";
 import { TabStrip } from "./TabStrip";
 import { StatTile } from "./StatTile";
+import { Reveal } from "./Reveal";
 import { ActionMenu, type ActionItem, type MenuPanel } from "./ActionMenu";
 import { Button } from "./Button";
 
@@ -539,7 +540,9 @@ function FolderBranch({
         onCancelRename={edits.cancelRename}
         menu={edits.editable ? (control) => <RowMenu node={node} edits={edits} control={control} /> : undefined}
       />
-      {open && (
+      {/* Mounted whether or not it's open, so closing animates too — <Reveal>
+          makes the closed subtree inert so nothing in it is tabbable. */}
+      <Reveal open={open}>
         <>
           {kids.map((k) => (
             <FolderBranch
@@ -580,7 +583,7 @@ function FolderBranch({
             />
           ))}
         </>
-      )}
+      </Reveal>
     </>
   );
 }
@@ -781,8 +784,8 @@ function WorkflowLibrary({
                       : undefined
                   }
                 />
-                {open &&
-                  topFolders.map((f) => (
+                <Reveal open={open}>
+                  {topFolders.map((f) => (
                     <FolderBranch
                       key={f.id}
                       folderId={f.id}
@@ -800,6 +803,7 @@ function WorkflowLibrary({
                       edits={edits}
                     />
                   ))}
+                </Reveal>
               </div>
             );
           })
