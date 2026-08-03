@@ -8,6 +8,7 @@ import { SplitView, Pane, DetailPane, ContextPane, EmptyDetail, PANE_WIDTH } fro
 import { isNarrowed, matchesQuery, ordered, passesFilter, resolveSort, type WorkspaceState } from "../lib/workspace";
 import { workspaceControls } from "../data/workspaceControls";
 import { TabStrip } from "./TabStrip";
+import { Chip } from "./Chip";
 
 const TONE_SOLID: Record<Environment["statusTone"], string> = {
   ok: "var(--grass-9)",
@@ -21,15 +22,10 @@ const TONE_PREFIX: Record<Environment["statusTone"], string> = {
 };
 
 function StatusChip({ env }: { env: Environment }) {
-  const accent = TONE_PREFIX[env.statusTone];
   return (
-    <span
-      className="inline-flex w-fit items-center gap-1.5 rounded-full px-2 py-0.5 text-[0.72rem] font-medium"
-      style={{ background: `var(--${accent}-a3)`, color: `var(--${accent}-a11)` }}
-    >
-      <span className="size-1.5 shrink-0 rounded-full" style={{ background: `var(--${accent}-9)` }} />
+    <Chip tone={TONE_PREFIX[env.statusTone]} className="w-fit">
       {env.status}
-    </span>
+    </Chip>
   );
 }
 
@@ -128,12 +124,9 @@ function EnvironmentCard({ env, onOpen }: { env: Environment; onOpen: () => void
       <div className="flex items-center gap-2">
         <span className="size-2.5 shrink-0 rounded-full" style={{ background: TONE_SOLID[env.statusTone] }} />
         <span className="text-body-base font-medium text-primary-foreground">{env.name}</span>
-        <span
-          className="ml-auto rounded-full px-2 py-0.5 text-[0.72rem] font-medium"
-          style={{ background: `var(--${accent}-a3)`, color: `var(--${accent}-a11)` }}
-        >
+        <Chip tone={accent} dot={false} className="ml-auto">
           {env.status}
-        </span>
+        </Chip>
       </div>
 
       <span className="inline-flex items-center gap-1.5 truncate font-departure-mono text-[0.72rem] text-tertiary-foreground">
@@ -339,12 +332,9 @@ function EnvironmentMain({ env }: { env: Environment }) {
                       {d.branch}
                     </span>
                   </div>
-                  <span
-                    className="shrink-0 rounded-full px-2 py-0.5 text-[0.72rem] font-medium"
-                    style={{ background: `var(--${accent}-a3)`, color: `var(--${accent}-a11)` }}
-                  >
+                  <Chip tone={accent} dot={false} className="shrink-0">
                     {d.state}
-                  </span>
+                  </Chip>
                   <span className="w-24 shrink-0 text-right text-[0.72rem] text-tertiary-foreground">{d.when}</span>
                 </div>
               );
