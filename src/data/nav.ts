@@ -25,6 +25,7 @@ export const navItems: NavItemDef[] = [
   { id: "workflows", label: "Workflows", capability: "workflows" as Capability },
   { id: "review", label: "Review", roles: ["admin", "professional"] },
   { id: "manage", label: "Manage" },
+  { id: "audit", label: "Audit", roles: ["admin", "professional"], capability: "audit" as Capability },
   { id: "users", label: "Users" },
   { id: "administration", label: "Administration", roles: ["admin", "professional"] },
   { id: "surfaces", label: "Surfaces" },

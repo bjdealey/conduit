@@ -345,6 +345,8 @@ export function workspaceControls(view: View, tab: string): WorkspaceControls | 
       return RUNNERS;
     case "review":
       return { search: "Search submissions…" };
+    case "audit":
+      return { search: "Search the audit trail…" };
     case "surfaces":
       return SURFACES;
     case "builder":

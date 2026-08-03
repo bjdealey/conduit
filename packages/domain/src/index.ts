@@ -84,3 +84,12 @@ export {
   isTerminal,
   orderEvents,
 } from "./protocol.ts";
+export type { AuditCategory, AuditEntry } from "./audit.ts";
+export {
+  AUDIT_CATEGORIES,
+  AUDIT_CATEGORY_LABEL,
+  REVIEW_ACTION_VERB,
+  auditByCategory,
+  categoryOfReviewAction,
+  orderAudit,
+} from "./audit.ts";

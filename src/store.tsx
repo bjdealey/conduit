@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { issues as seedIssues, members } from "./data/issues";
 import { workflows as seedWorkflows, folders as seedFolders, runs as seedRuns } from "./data/workflows";
+import { auditEntries as seedAudit } from "./data/audit";
 import { endUsers } from "./data/users";
 import { runners } from "./data/runners";
 import { currentUser } from "./data/user";
@@ -15,10 +16,13 @@ import { blankDraft, commitDraft, testRun } from "./lib/builder";
 import {
   CAPABILITIES,
   Capability,
+  REVIEW_ACTION_VERB,
   can,
   canTransition,
+  categoryOfReviewAction,
   latestVersion,
   transitionsFrom,
+  type AuditEntry,
   type Permission,
   type ReviewAction,
   type Workflow as DomainWorkflow,
@@ -54,6 +58,7 @@ export type View =
   | "inbox"
   | "workflows"
   | "review"
+  | "audit"
   | "manage"
   | "users"
   | "administration"
@@ -110,6 +115,8 @@ type Store = {
   /** Move a workflow through the review lifecycle. Refuses any move the current tier
    *  isn't permitted to make, so the store enforces the same rule the UI renders. */
   reviewWorkflow: (id: string, action: ReviewAction, note?: string) => void;
+  /** The audit trail, newest first. Append-only — every lifecycle move writes one. */
+  audit: AuditEntry[];
   selectedId: number | null;
   selected: Issue | null;
   /** Selected end-user (Users view) and workflow (Workflows view). Lifted here
@@ -231,6 +238,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   // Integration data plane. Defaults to the seed-derived domain view (so the prototype
   // runs with no backend); if Supabase is configured, live data replaces it on mount.
+  const [audit, setAudit] = useState<AuditEntry[]>(seedAudit);
   const [connectedWorkflows, setConnectedWorkflows] = useState<DomainWorkflow[]>(() => seedConnectedWorkflows());
   const [capabilitySet, setCapabilitySet] = useState<Set<Capability>>(() => new Set(CAPABILITIES));
   const [dataSource, setDataSource] = useState<"live" | "seed">("seed");
@@ -396,6 +404,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     },
     allowed: (permission) => can(role, permission),
+    audit,
     reviewWorkflow: (id, action, note) => {
       setWorkflows((prev) =>
         prev.map((w) => {
@@ -429,6 +438,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           return { ...w, status: to, updatedAgo: "just now", versions, ...stamped };
         }),
       );
+      // Every move writes to the trail. Delegation is only defensible if "who
+      // approved this, and when" survives the click that did it.
+      const moved = workflows.find((w) => w.id === id);
+      if (moved && canTransition(role, moved.status, action)) {
+        const version = latestVersion(moved.versions)?.version;
+        setAudit((prev) => {
+          const seq = `aud_${String(prev.length + 1).padStart(4, "0")}`;
+          return [
+            ...prev,
+            {
+              id: seq,
+              sourceId: seq,
+              platform: "conduit",
+              connectorId: "seed",
+              category: categoryOfReviewAction(action),
+              actor: currentUser.name,
+              action: REVIEW_ACTION_VERB[action],
+              target: version ? `${moved.name} v${version}` : moved.name,
+              at: "just now",
+              detail: note,
+            },
+          ];
+        });
+      }
     },
     selectedId,
     selected: issues.find((i) => i.id === selectedId) ?? null,
