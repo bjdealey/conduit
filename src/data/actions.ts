@@ -11,6 +11,11 @@
  * Each action also declares what it needs from a runner (`requires`), which is what
  * lets `requirementsForSteps` derive a flow's placement requirements from its content
  * — the same way `packagesForSteps` derives its dependencies.
+ *
+ * **This array is the fallback, not the source of truth.** The catalogue is served from
+ * the `node_types` table via the `node-types` Edge Function; these entries are what the
+ * builder falls back to with no backend configured, exactly as `seedConnectedWorkflows`
+ * backs the workflow list. One code path either way.
  */
 import { AUTH_MODELS, DEFAULT_REQUIREMENTS, type AuthModel, type WorkflowRequirements } from "@conduit/domain";
 
@@ -45,6 +50,14 @@ export type StepAction = {
    * route every browser flow onto the most expensive class in the pool.
    */
   requires?: NodeRequirement | ((config: Record<string, string>) => NodeRequirement);
+  /**
+   * `roadmap` surfaces the node in the palette but marks it unbuilt.
+   *
+   * The AI nodes ship this way deliberately: the vision is explicit that AI lands
+   * last and shouldn't lead, so what's being proven here is that the node interface
+   * holds an AI step without reshaping — not that the step works.
+   */
+  readiness?: "live" | "roadmap";
 };
 
 /** The part of `WorkflowRequirements` an action can raise. */
@@ -186,6 +199,46 @@ export const ACTIONS: StepAction[] = [
     summary: "Emit a metric point from the run.",
     fields: [text("name", "Metric", "login.latency"), text("value", "Value", "{{ timer.elapsed }}")],
   },
+
+  /* ------------------------------------------------------------------------ ai
+     Three stubs, through the same interface as everything above — same shape,
+     same `requires`, same derivation. That is the entire point: the claim being
+     tested is that an AI step needs no special case in the runtime or the
+     canvas. They are marked `roadmap` because none of them execute, and the
+     vision is explicit that AI lands last rather than leading. */
+  {
+    id: "ai.extract",
+    label: "Extract from document",
+    package: "ai",
+    summary: "Pull structured fields out of an unstructured document.",
+    fields: [
+      text("source", "Document", "{{ attachment.url }}"),
+      { id: "schema", label: "Fields", kind: "long", placeholder: "invoiceNumber, total, dueDate" },
+    ],
+    requires: { auth: "api-key" },
+    readiness: "roadmap",
+  },
+  {
+    id: "ai.classify",
+    label: "Classify input",
+    package: "ai",
+    summary: "Sort an input into one of a set of categories.",
+    fields: [
+      text("input", "Input", "{{ email.body }}"),
+      { id: "labels", label: "Categories", kind: "long", placeholder: "billing, technical, account" },
+    ],
+    requires: { auth: "api-key" },
+    readiness: "roadmap",
+  },
+  {
+    id: "ai.summarise",
+    label: "Summarise",
+    package: "ai",
+    summary: "Condense a long input to a short summary.",
+    fields: [text("input", "Input", "{{ ticket.thread }}"), number("maxWords", "Max words", "120")],
+    requires: { auth: "api-key" },
+    readiness: "roadmap",
+  },
 ];
 
 const BY_ID = new Map(ACTIONS.map((a) => [a.id, a]));
@@ -194,9 +247,9 @@ const BY_ID = new Map(ACTIONS.map((a) => [a.id, a]));
 export const actionById = (id: string): StepAction | undefined => BY_ID.get(id);
 
 /** Palette actions grouped by package, in declaration order. */
-export function actionsByPackage(): { package: string; actions: StepAction[] }[] {
+export function actionsByPackage(catalogue: readonly StepAction[] = ACTIONS): { package: string; actions: StepAction[] }[] {
   const groups = new Map<string, StepAction[]>();
-  for (const action of ACTIONS) {
+  for (const action of catalogue) {
     const list = groups.get(action.package) ?? [];
     list.push(action);
     groups.set(action.package, list);

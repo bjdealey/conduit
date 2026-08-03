@@ -13,6 +13,7 @@ import { applyBrand } from "./lib/palette";
 import { isDark, setTheme } from "./lib/theme";
 import type { Workflow, WorkflowDraft, Folder, Issue, Member, Priority, Role, Run, Status } from "./data/types";
 import { blankDraft, commitDraft, testRun } from "./lib/builder";
+import { ACTIONS, type StepAction } from "./data/actions";
 import {
   CAPABILITIES,
   Capability,
@@ -29,7 +30,7 @@ import {
 } from "@conduit/domain";
 import { EMPTY_WORKSPACE, type FilterOp, type SortDir, type WorkspaceState } from "./lib/workspace";
 import { isSupabaseConfigured } from "./lib/supabase";
-import { getWorkflows, getCapabilities } from "./lib/api";
+import { getWorkflows, getCapabilities, getNodeTypes } from "./lib/api";
 import { seedConnectedWorkflows } from "./data/toDomain";
 
 const read = (key: string, fallback: string): string => {
@@ -117,6 +118,9 @@ type Store = {
   reviewWorkflow: (id: string, action: ReviewAction, note?: string) => void;
   /** The audit trail, newest first. Append-only — every lifecycle move writes one. */
   audit: AuditEntry[];
+  /** The builder palette. Served by our API when configured, else the compiled-in
+   *  fallback — so a new node type is a row, never a frontend redeploy. */
+  nodeTypes: StepAction[];
   selectedId: number | null;
   selected: Issue | null;
   /** Selected end-user (Users view) and workflow (Workflows view). Lifted here
@@ -239,6 +243,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // Integration data plane. Defaults to the seed-derived domain view (so the prototype
   // runs with no backend); if Supabase is configured, live data replaces it on mount.
   const [audit, setAudit] = useState<AuditEntry[]>(seedAudit);
+  const [nodeTypes, setNodeTypes] = useState<StepAction[]>(ACTIONS);
   const [connectedWorkflows, setConnectedWorkflows] = useState<DomainWorkflow[]>(() => seedConnectedWorkflows());
   const [capabilitySet, setCapabilitySet] = useState<Set<Capability>>(() => new Set(CAPABILITIES));
   const [dataSource, setDataSource] = useState<"live" | "seed">("seed");
@@ -249,10 +254,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     (async () => {
       try {
-        const [caps, live] = await Promise.all([getCapabilities(), getWorkflows()]);
+        const [caps, live, palette] = await Promise.all([getCapabilities(), getWorkflows(), getNodeTypes()]);
         if (cancelled) return;
         setCapabilitySet(new Set(caps));
         setConnectedWorkflows(live);
+        // An empty catalogue means the table hasn't been seeded; keep the fallback
+        // rather than handing the builder a palette with nothing in it.
+        if (palette.length > 0) setNodeTypes(palette);
         setDataSource("live");
         setIntegrationError(null);
       } catch (e) {
@@ -405,6 +413,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     },
     allowed: (permission) => can(role, permission),
     audit,
+    nodeTypes,
     reviewWorkflow: (id, action, note) => {
       setWorkflows((prev) =>
         prev.map((w) => {

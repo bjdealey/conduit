@@ -17,6 +17,7 @@ import {
   type WorkflowRunState,
 } from "@conduit/domain";
 import { supabase } from "./supabase";
+import type { NodeRequirement, StepAction } from "../data/actions";
 
 function nonEmptyString(v: unknown): string | null {
   return typeof v === "string" && v.length > 0 ? v : null;
@@ -119,4 +120,37 @@ export function subscribeRunEvents(runId: string, onEvent: (event: RunEvent) => 
   return () => {
     void supabase?.removeChannel(channel);
   };
+}
+
+/* --------------------------------------------------------------- node types */
+
+/**
+ * Coerce an untrusted catalogue row into a palette action.
+ *
+ * `requires` arrives as JSON, so it can only ever be the static object form here — a
+ * config-dependent requirement is a function and cannot cross a wire. Nodes whose need
+ * varies with configuration stay compiled in until the catalogue grows an expression
+ * for it; this is the honest boundary rather than a silent downgrade.
+ */
+export function coerceNodeType(raw: unknown): StepAction | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const r = raw as Record<string, unknown>;
+  const id = nonEmptyString(r.id);
+  const label = nonEmptyString(r.label);
+  const pkg = nonEmptyString(r.package);
+  const summary = nonEmptyString(r.summary);
+  if (!id || !label || !pkg || !summary) return null;
+  const fields = Array.isArray(r.fields) ? (r.fields as StepAction["fields"]) : [];
+  const requires = typeof r.requires === "object" && r.requires !== null ? (r.requires as NodeRequirement) : undefined;
+  const readiness = r.readiness === "roadmap" ? ("roadmap" as const) : ("live" as const);
+  return { id, label, package: pkg, summary, fields, requires, readiness };
+}
+
+/** The builder palette from our API. Malformed rows are dropped, not rendered. */
+export async function getNodeTypes(): Promise<StepAction[]> {
+  if (!supabase) throw new Error("Supabase is not configured");
+  const { data, error } = await supabase.functions.invoke("node-types", { method: "GET" });
+  if (error) throw error;
+  const list = (data as { nodeTypes?: unknown } | null)?.nodeTypes;
+  return Array.isArray(list) ? list.map(coerceNodeType).filter((n): n is StepAction => n !== null) : [];
 }

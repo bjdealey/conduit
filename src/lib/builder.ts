@@ -31,7 +31,7 @@ export type PaletteGroup = { package: string | null; actions: StepAction[] };
  * label, package, or summary, its Package filter keeps one package, and its sort
  * chooses between the grouped view and one alphabetical list.
  */
-export function paletteGroups(state: WorkspaceState): PaletteGroup[] {
+export function paletteGroups(state: WorkspaceState, catalogue: readonly StepAction[] = ACTIONS): PaletteGroup[] {
   const keep = (action: StepAction) =>
     matchesQuery(state.query, [action.label, action.package, action.summary]) &&
     passesFilter(state, "package", action.package);
@@ -39,11 +39,11 @@ export function paletteGroups(state: WorkspaceState): PaletteGroup[] {
   const { id, dir } = resolveSort(state, workspaceControls("builder", "")?.sorts ?? []);
 
   if (id === "name") {
-    const actions = ordered(ACTIONS.filter(keep), dir, (a, b) => a.label.localeCompare(b.label));
+    const actions = ordered(catalogue.filter(keep), dir, (a, b) => a.label.localeCompare(b.label));
     return actions.length > 0 ? [{ package: null, actions }] : [];
   }
 
-  const groups = actionsByPackage()
+  const groups = actionsByPackage(catalogue)
     .map((group) => ({ package: group.package as string | null, actions: group.actions.filter(keep) }))
     .filter((group) => group.actions.length > 0);
   return dir === "desc" ? [...groups].reverse() : groups;

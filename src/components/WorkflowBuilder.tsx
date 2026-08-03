@@ -9,6 +9,7 @@ import { draftProblems, moveStep, newStep, paletteGroups, type PaletteGroup } fr
 import { isNarrowed } from "../lib/workspace";
 import { SplitView, Pane, DetailPane, ContextPane, PANE_WIDTH } from "./layout/SplitView";
 import { Avatar } from "./Avatar";
+import { Chip } from "./Chip";
 import { Button } from "./Button";
 
 /* =============================================================================
@@ -145,6 +146,13 @@ function Palette({ groups, narrowed, onAdd }: { groups: PaletteGroup[]; narrowed
                 >
                   <span className="flex items-center gap-2">
                     <span className="min-w-0 flex-1 truncate text-body-sm text-primary-foreground">{action.label}</span>
+                    {/* Surfaced but unbuilt — the node interface holds it, the step
+                        doesn't execute yet. */}
+                    {action.readiness === "roadmap" && (
+                      <Chip tone="gray" mono dot={false} className="shrink-0">
+                        roadmap
+                      </Chip>
+                    )}
                     {!group.package && (
                       <span className="shrink-0 font-departure-mono text-[0.65rem] text-tertiary-foreground">
                         {action.package}
@@ -409,7 +417,8 @@ function FlowDiagram({ draft, selection, onSelect, onMove, onRemove }: FlowProps
 /* ------------------------------------------------------------------- builder */
 
 export function WorkflowBuilder() {
-  const { draft, updateDraft, saveDraft, testRunDraft, closeBuilder, memberById, controls, viewMode } = useStore();
+  const { draft, updateDraft, saveDraft, testRunDraft, closeBuilder, memberById, controls, viewMode, nodeTypes } =
+    useStore();
   const [selection, setSelection] = useState<Selection>({ kind: "workflow" });
 
   if (!draft) return null;
@@ -417,7 +426,7 @@ export function WorkflowBuilder() {
   // The workspace header narrows the palette; the titlebar switcher picks the
   // flow's presentation; the info-pane toggle hides the configuration column.
   const state = controls("builder");
-  const groups = paletteGroups(state);
+  const groups = paletteGroups(state, nodeTypes);
   const diagram = viewMode("builder") === "diagram";
 
   const problems = draftProblems(draft);
@@ -616,6 +625,12 @@ function StepConfig({
       <div className="flex flex-col gap-1">
         <h3 className="text-body-base font-medium text-primary-foreground">{action.label}</h3>
         <span className="text-body-sm text-tertiary-foreground">{action.summary}</span>
+        {action.readiness === "roadmap" && (
+          <span className="text-body-sm" style={{ color: "var(--amber-a11)" }}>
+            This node type is declared but not yet executable. It's here to show the interface holds
+            an AI step without reshaping the runtime or the canvas.
+          </span>
+        )}
         <span className="mt-1 inline-flex w-fit items-center gap-1.5 rounded-md bg-component px-1.5 py-0.5 font-departure-mono text-[0.65rem] text-tertiary-foreground">
           <Package size={12} strokeWidth={1.8} />
           {action.package}
