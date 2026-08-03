@@ -15,7 +15,7 @@ import { Avatar } from "./Avatar";
  *  Switching to a non-list mode clears the open item so the board/grid shows (the
  *  detail returns only when you click into an item), matching the inbox. */
 function ViewModeSwitcher({ view }: { view: View }) {
-  const { layout, setLayout, select, selectUser, selectAutomation, selectRunner, selectRun } = useStore();
+  const { layout, setLayout, select, selectUser, selectWorkflow, selectRunner, selectRun } = useStore();
   const modes = VIEW_MODES[view];
   if (!modes || modes.length < 2) return null;
   // Switching to the alternate layout clears every page's open item, so each page
@@ -23,7 +23,7 @@ function ViewModeSwitcher({ view }: { view: View }) {
   const clearAllSelections = () => {
     select(null);
     selectUser(null);
-    selectAutomation(null);
+    selectWorkflow(null);
     selectRunner(null);
     selectRun(null);
   };
@@ -69,9 +69,9 @@ function InfoPaneToggle({ label }: { label: string }) {
 
 const VIEW_LABEL: Record<Exclude<View, "inbox">, string> = {
   home: "Home",
-  builder: "Automation builder",
+  builder: "Workflow builder",
   activity: "Activity",
-  automations: "Automations",
+  workflows: "Workflows",
   manage: "Manage",
   users: "Users",
   administration: "Administration",
@@ -91,8 +91,8 @@ export function Titlebar() {
     select,
     selectedUserId,
     selectUser,
-    selectedAutomationId,
-    selectAutomation,
+    selectedWorkflowId,
+    selectWorkflow,
     selectedRunnerId,
     selectRunner,
     selectedRunId,
@@ -101,15 +101,15 @@ export function Titlebar() {
     draft,
     closeBuilder,
     viewMode,
-    automations,
+    workflows,
     setView,
     openSubview,
     members,
   } = useStore();
 
   const openUser = selectedUserId ? endUsers.find((u) => u.id === selectedUserId) ?? null : null;
-  const openAutomation = selectedAutomationId
-    ? automations.find((a) => a.id === selectedAutomationId) ?? null
+  const openWorkflow = selectedWorkflowId
+    ? workflows.find((a) => a.id === selectedWorkflowId) ?? null
     : null;
   const openRunner = selectedRunnerId ? runners.find((r) => r.id === selectedRunnerId) ?? null : null;
   // Only the Activity timeline opens a run full-pane; the list layout expands runs
@@ -133,11 +133,11 @@ export function Titlebar() {
     items = openUser
       ? [{ label: "Users", onClick: () => selectUser(null) }, { label: openUser.name }]
       : [{ label: "Users" }];
-  } else if (view === "automations") {
-    hasContext = !!openAutomation;
-    items = openAutomation
-      ? [{ label: "Automations", onClick: () => selectAutomation(null) }, { label: openAutomation.name }]
-      : [{ label: "Automations" }];
+  } else if (view === "workflows") {
+    hasContext = !!openWorkflow;
+    items = openWorkflow
+      ? [{ label: "Workflows", onClick: () => selectWorkflow(null) }, { label: openWorkflow.name }]
+      : [{ label: "Workflows" }];
   } else if (view === "settings") {
     const pageId = subview ?? DEFAULT_SETTINGS_PAGE;
     const page = SETTINGS_PAGES.find((p) => p.id === pageId);
@@ -154,8 +154,8 @@ export function Titlebar() {
     // step configuration, so the info toggle acts on that.
     hasContext = true;
     items = [
-      { label: "Automations", onClick: closeBuilder },
-      { label: draft?.isNew ? "New automation" : draft?.name || "Untitled automation" },
+      { label: "Workflows", onClick: closeBuilder },
+      { label: draft?.isNew ? "New workflow" : draft?.name || "Untitled workflow" },
     ];
   } else if (view === "activity") {
     hasContext = true;

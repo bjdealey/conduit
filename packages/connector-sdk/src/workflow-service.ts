@@ -1,12 +1,12 @@
 /**
- * BotService — the first capability service. It dispatches to every enabled
- * connector that declares `bots`, health-gates each, merges their domain models,
+ * WorkflowService — the first capability service. It dispatches to every enabled
+ * connector that declares `workflows`, health-gates each, merges their domain models,
  * and collects a per-connector error for any that fail. It takes and returns only
  * domain types; no vendor type crosses this boundary.
  */
 import { Capability, MappingError } from "@conduit/domain";
-import type { Bot } from "@conduit/domain";
-import { isBotProvider } from "./connector.ts";
+import type { Workflow } from "@conduit/domain";
+import { isWorkflowProvider } from "./connector.ts";
 import type { Connector } from "./connector.ts";
 import { ConnectorRegistry } from "./registry.ts";
 import {
@@ -25,41 +25,41 @@ export type BotFilter = {
   connectorId?: string;
 };
 
-export class BotService {
+export class WorkflowService {
   constructor(
     private readonly registry: ConnectorRegistry,
     private readonly logger: Logger = consoleLogger,
   ) {}
 
-  async list(filter: BotFilter = {}): Promise<ServiceResult<Bot>> {
+  async list(filter: BotFilter = {}): Promise<ServiceResult<Workflow>> {
     const connectors = this.registry
-      .enabledWith(Capability.Bots)
+      .enabledWith(Capability.Workflows)
       .filter((c) => (filter.connectorId ? c.id === filter.connectorId : true))
       .filter((c) => (filter.platform ? c.type === filter.platform : true));
 
-    const items: Bot[] = [];
+    const items: Workflow[] = [];
     const errors: ConnectorError[] = [];
 
     for (const connector of connectors) {
       if (!(await this.isHealthy(connector, errors))) continue;
 
-      if (!isBotProvider(connector)) {
+      if (!isWorkflowProvider(connector)) {
         recordConnectorError(
           errors,
           this.logger,
           connector,
-          "BotService",
+          "WorkflowService",
           "unavailable",
-          `declares "bots" but does not implement listBots()`,
+          `declares "workflows" but does not implement listWorkflows()`,
         );
         continue;
       }
 
       try {
-        items.push(...(await connector.listBots()));
+        items.push(...(await connector.listWorkflows()));
       } catch (e) {
         const kind = e instanceof MappingError ? "mapping" : "unavailable";
-        recordConnectorError(errors, this.logger, connector, "BotService", kind, messageOf(e), e);
+        recordConnectorError(errors, this.logger, connector, "WorkflowService", kind, messageOf(e), e);
       }
     }
 
@@ -75,7 +75,7 @@ export class BotService {
           errors,
           this.logger,
           connector,
-          "BotService",
+          "WorkflowService",
           "health",
           health.detail ?? "health check reported not ok",
         );
@@ -83,7 +83,7 @@ export class BotService {
       }
       return true;
     } catch (e) {
-      recordConnectorError(errors, this.logger, connector, "BotService", "health", messageOf(e), e);
+      recordConnectorError(errors, this.logger, connector, "WorkflowService", "health", messageOf(e), e);
       return false;
     }
   }

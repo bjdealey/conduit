@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { BOT_STATES, MappingError, asRecord, requireEnum, requireString, stampId } from "../index";
+import { WORKFLOW_RUN_STATES, MappingError, asRecord, requireEnum, requireString, stampId } from "../index";
 
-const ctx = { connectorId: "inst-1", platform: "fake", capability: "bots" };
+const ctx = { connectorId: "inst-1", platform: "fake", capability: "workflows" };
 
 describe("mapping primitives fail loudly", () => {
   it("asRecord rejects non-object payloads with a MappingError", () => {
@@ -28,8 +28,8 @@ describe("mapping primitives fail loudly", () => {
   });
 
   it("requireEnum rejects values outside the allowed set", () => {
-    expect(() => requireEnum({ status: "Exploded" }, "status", BOT_STATES, ctx)).toThrow(MappingError);
-    expect(requireEnum({ status: "Running" }, "status", BOT_STATES, ctx)).toBe("Running");
+    expect(() => requireEnum({ status: "Exploded" }, "status", WORKFLOW_RUN_STATES, ctx)).toThrow(MappingError);
+    expect(requireEnum({ status: "Running" }, "status", WORKFLOW_RUN_STATES, ctx)).toBe("Running");
   });
 
   it("stampId namespaces the vendor id by instance", () => {

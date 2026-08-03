@@ -13,7 +13,7 @@ import {
 } from "@conduit/domain";
 import { useStore } from "../store";
 import { runners } from "../data/runners";
-import { PLATFORM_LABEL, type Automation, type MigrationState, type Run } from "../data/types";
+import { PLATFORM_LABEL, type Workflow, type MigrationState, type Run } from "../data/types";
 import { DetailPane } from "./layout/SplitView";
 import { RunStateChip } from "./Badges";
 import { RUNNER_STATE_ACCENT } from "./RunnersView";
@@ -161,22 +161,22 @@ function PoolPanel({ pool }: { pool: readonly Runner[] }) {
 /** Where the estate runs today, and how far each part has moved. The point of
  *  showing "Won't move" alongside the rest is that it is a real answer — a number
  *  here beats discovering it in year three. */
-function EstatePanel({ automations, onOpen }: { automations: Automation[]; onOpen: () => void }) {
+function EstatePanel({ workflows, onOpen }: { workflows: Workflow[]; onOpen: () => void }) {
   const platforms = ["automation-anywhere", "conduit"] as const;
   const counts = platforms.map((platform) => ({
     platform,
-    count: automations.filter((a) => a.platform === platform).length,
+    count: workflows.filter((a) => a.platform === platform).length,
   }));
-  const total = automations.length || 1;
+  const total = workflows.length || 1;
 
   const migrations: MigrationState[] = ["Migrated", "Piloting", "Not started", "Won't move"];
   const byMigration = migrations.map((migration) => ({
     migration,
-    count: automations.filter((a) => a.migration === migration).length,
+    count: workflows.filter((a) => a.migration === migration).length,
   }));
 
   return (
-    <Section title="Estate" hint="One library, both platforms. Migration is per automation and reversible.">
+    <Section title="Estate" hint="One library, both platforms. Migration is per workflow and reversible.">
       <div className="grid grid-cols-2 gap-3">
         {counts.map(({ platform, count }) => (
           <Tile
@@ -222,12 +222,12 @@ function EstatePanel({ automations, onOpen }: { automations: Automation[]; onOpe
 
 /* ----------------------------------------------------------- readiness panel */
 
-/** The workload mix, derived from each automation's declared requirements rather
+/** The workload mix, derived from each workflow's declared requirements rather
  *  than from a slide. `entra-pending` is the band that shrinks on its own as
  *  target systems move to Entra — which is the compounding the business case rests
  *  on, and the number to watch if it stalls. */
-function ReadinessPanel({ automations }: { automations: Automation[] }) {
-  const mix = readinessMix(automations);
+function ReadinessPanel({ workflows }: { workflows: Workflow[] }) {
+  const mix = readinessMix(workflows);
   const entra = mix.find((m) => m.readiness === "entra-pending");
 
   return (
@@ -252,7 +252,7 @@ function ReadinessPanel({ automations }: { automations: Automation[] }) {
         </div>
         {entra && entra.count > 0 && (
           <p className="border-border-default border-t-[0.5px] pt-3 text-body-sm text-tertiary-foreground">
-            {entra.count} {entra.count === 1 ? "automation runs" : "automations run"} on a Windows service-account
+            {entra.count} {entra.count === 1 ? "workflow runs" : "workflows run"} on a Windows service-account
             runner only because of Windows-integrated auth. Each becomes API-eligible when its target system
             finishes moving to Entra — a pace set by the app owners, not by this platform.
           </p>
@@ -269,23 +269,23 @@ function ReadinessPanel({ automations }: { automations: Automation[] }) {
  *  A queued run is re-decided live against the current pool, so the rationale on
  *  screen is the distributor's actual reasoning rather than a stored string — and
  *  when nothing fits, it says that too. */
-function InFlightPanel({ runs, automations, onOpen }: { runs: Run[]; automations: Automation[]; onOpen: () => void }) {
+function InFlightPanel({ runs, workflows, onOpen }: { runs: Run[]; workflows: Workflow[]; onOpen: () => void }) {
   const live = runs.filter((r) => r.state === "Running" || r.state === "Queued");
-  const automationOf = (id: string) => automations.find((a) => a.id === id);
+  const automationOf = (id: string) => workflows.find((a) => a.id === id);
 
   return (
     <Section title="In flight" hint="Every placement, with the reason it was made.">
       <div className="flex flex-col rounded-xl border-border-default border-[0.5px] bg-page px-4 py-1 shadow-default">
         {live.length === 0 && <p className="py-6 text-center text-body-sm text-tertiary-foreground">Nothing running.</p>}
         {live.map((run, i) => {
-          const automation = automationOf(run.automationId);
+          const workflow = automationOf(run.workflowId);
           const placed = run.runnerId ? runners.find((r) => r.id === run.runnerId) : null;
           // Queued work has no placement yet — ask the distributor now, so the row
           // shows where it would go rather than an empty cell.
-          const proposed = automation && !placed ? pickRunner(automation.requirements, runners) : null;
+          const proposed = workflow && !placed ? pickRunner(workflow.requirements, runners) : null;
           // Every row carries its reason, placed or not. A row that just says
           // "placed" is the opaque hand-off this platform exists to replace.
-          const why = automation ? explainRequirements(automation.requirements) : "";
+          const why = workflow ? explainRequirements(workflow.requirements) : "";
           const target = placed?.name ?? proposed?.runner?.name;
 
           return (
@@ -296,7 +296,7 @@ function InFlightPanel({ runs, automations, onOpen }: { runs: Run[]; automations
               <RunStateChip state={run.state} />
               <div className="flex min-w-0 flex-1 flex-col leading-tight">
                 <span className="truncate text-body-sm text-primary-foreground">
-                  {automation?.name ?? run.automationId}
+                  {workflow?.name ?? run.workflowId}
                 </span>
                 <span className="truncate text-[0.72rem] text-tertiary-foreground" title={why}>
                   {why}
@@ -329,7 +329,7 @@ function InFlightPanel({ runs, automations, onOpen }: { runs: Run[]; automations
 
 /** Home — the landing view. Pool, estate, readiness, and what's running. */
 export function HomeView() {
-  const { automations, runs, setView } = useStore();
+  const { workflows, runs, setView } = useStore();
 
   return (
     <DetailPane>
@@ -338,16 +338,16 @@ export function HomeView() {
           <header className="flex flex-col gap-1">
             <h2 className="font-sans text-heading-3 font-medium text-primary-foreground">Overview</h2>
             <p className="text-body-sm text-tertiary-foreground">
-              {num(automations.length)} automations across {new Set(automations.map((a) => a.platform)).size} platforms,
+              {num(workflows.length)} workflows across {new Set(workflows.map((a) => a.platform)).size} platforms,
               running on a pool of {runners.filter((r) => r.state !== "Offline").length} runners.
             </p>
           </header>
 
           <div className="grid gap-8 lg:grid-cols-2">
             <PoolPanel pool={runners} />
-            <EstatePanel automations={automations} onOpen={() => setView("automations")} />
-            <ReadinessPanel automations={automations} />
-            <InFlightPanel runs={runs} automations={automations} onOpen={() => setView("activity")} />
+            <EstatePanel workflows={workflows} onOpen={() => setView("workflows")} />
+            <ReadinessPanel workflows={workflows} />
+            <InFlightPanel runs={runs} workflows={workflows} onOpen={() => setView("activity")} />
           </div>
         </div>
       </div>

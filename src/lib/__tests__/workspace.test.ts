@@ -85,7 +85,7 @@ describe("visibleIssues (shared by the inbox list and the board)", () => {
 describe("workspace control descriptors", () => {
   it("declares controls for the collection pages and none for settings", () => {
     expect(workspaceControls("inbox", "")?.search).toBeDefined();
-    expect(workspaceControls("automations", "")?.filters?.length).toBeGreaterThan(0);
+    expect(workspaceControls("workflows", "")?.filters?.length).toBeGreaterThan(0);
     expect(workspaceControls("settings", "")).toBeNull();
   });
 
@@ -106,8 +106,8 @@ describe("workspace control descriptors", () => {
   it("gates page actions by role", () => {
     const invite = workspaceControls("administration", "Users")?.actions?.[0];
     expect(invite?.roles).toEqual(["admin"]);
-    const newAutomation = workspaceControls("automations", "")?.actions?.[0];
-    expect(newAutomation?.roles).toEqual(["admin", "developer"]);
+    const newWorkflow = workspaceControls("workflows", "")?.actions?.[0];
+    expect(newWorkflow?.roles).toEqual(["admin", "developer"]);
   });
 
   it("gives every filterable page a search field to host the filter glyph", () => {
@@ -116,7 +116,7 @@ describe("workspace control descriptors", () => {
     // a standalone Filter button — a second door, which is what this pins shut.
     const pages: [Parameters<typeof workspaceControls>[0], string][] = [
       ["inbox", ""],
-      ["automations", ""],
+      ["workflows", ""],
       ["users", ""],
       ["runners", ""],
       ["surfaces", ""],
@@ -223,7 +223,7 @@ describe("sort direction", () => {
   });
 
   it("declares a direction for every sort on every page, so chips never guess", () => {
-    for (const view of ["inbox", "activity", "automations", "users", "runners", "builder"] as const) {
+    for (const view of ["inbox", "activity", "workflows", "users", "runners", "builder"] as const) {
       for (const sort of workspaceControls(view, "")?.sorts ?? []) {
         expect(sort.defaultDir, `${view}/${sort.id}`).toBeDefined();
         // Labels name the field; the arrow says which way it runs.

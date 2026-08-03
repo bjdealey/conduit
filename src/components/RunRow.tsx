@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowUpRight, ChevronRight, Cpu, Workflow } from "lucide-react";
+import { ArrowUpRight, ChevronRight, Cpu, Workflow as WorkflowIcon } from "lucide-react";
 import { explainRequirements, pickRunner } from "@conduit/domain";
 import { useStore } from "../store";
 import { runners } from "../data/runners";
@@ -27,15 +27,15 @@ function placementOf(run: Run, requirements: Parameters<typeof pickRunner>[0] | 
 }
 
 /** A single run in a table/timeline. Expands to show its log (the shared
- *  <ActivityFeed>) and links out to the automation it belongs to and any
- *  incident its failure spawned. Set `showAutomation` in cross-automation
- *  contexts (Activity) to surface the automation name; omit it inside a single
- *  automation's history. */
-export function RunRow({ run, showAutomation = false }: { run: Run; showAutomation?: boolean }) {
-  const { select, setView, automationById } = useStore();
+ *  <ActivityFeed>) and links out to the workflow it belongs to and any
+ *  incident its failure spawned. Set `showWorkflow` in cross-workflow
+ *  contexts (Activity) to surface the workflow name; omit it inside a single
+ *  workflow's history. */
+export function RunRow({ run, showWorkflow = false }: { run: Run; showWorkflow?: boolean }) {
+  const { select, setView, workflowById } = useStore();
   const [open, setOpen] = useState(false);
-  const automation = showAutomation ? automationById(run.automationId) : undefined;
-  const placement = placementOf(run, automationById(run.automationId)?.requirements);
+  const workflow = showWorkflow ? workflowById(run.workflowId) : undefined;
+  const placement = placementOf(run, workflowById(run.workflowId)?.requirements);
 
   return (
     <div className="flex flex-col border-border-default border-b-[0.5px]">
@@ -52,10 +52,10 @@ export function RunRow({ run, showAutomation = false }: { run: Run; showAutomati
         />
         <span className="w-20 shrink-0 font-departure-mono text-[0.7rem] text-tertiary-foreground">{run.id}</span>
         <RunStateChip state={run.state} />
-        {showAutomation ? (
+        {showWorkflow ? (
           <span className="flex min-w-0 flex-1 items-center gap-1.5">
-            <Workflow size={13} strokeWidth={1.8} className="shrink-0 text-tertiary-foreground" />
-            <span className="truncate text-body-sm text-primary-foreground">{automation?.name ?? run.automationId}</span>
+            <WorkflowIcon size={13} strokeWidth={1.8} className="shrink-0 text-tertiary-foreground" />
+            <span className="truncate text-body-sm text-primary-foreground">{workflow?.name ?? run.workflowId}</span>
           </span>
         ) : (
           <span className="min-w-0 flex-1 truncate text-body-sm text-secondary-foreground">{run.startedBy}</span>
@@ -81,15 +81,15 @@ export function RunRow({ run, showAutomation = false }: { run: Run; showAutomati
               {placement.rationale}
             </p>
           )}
-          {showAutomation && (
+          {showWorkflow && (
             <div className="mb-3 flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setView("automations")}
+                onClick={() => setView("workflows")}
                 className="focusable inline-flex items-center gap-1 rounded-md bg-component px-2 py-1 text-body-sm text-secondary-foreground transition-colors hover:text-primary-foreground"
               >
-                <Workflow size={13} strokeWidth={1.8} />
-                {automation?.name ?? "Open automation"}
+                <WorkflowIcon size={13} strokeWidth={1.8} />
+                {workflow?.name ?? "Open workflow"}
               </button>
               <span className="text-body-sm text-tertiary-foreground">·</span>
               <span className="text-body-sm text-tertiary-foreground">Triggered by {run.startedBy}</span>

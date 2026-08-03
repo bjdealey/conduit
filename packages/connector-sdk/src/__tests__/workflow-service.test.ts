@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import { Capability } from "@conduit/domain";
-import { BotService, ConnectorRegistry, type Logger } from "../index";
+import { WorkflowService, ConnectorRegistry, type Logger } from "../index";
 import { FakeConnector, fakeConnectorFactory, type FakeBotPayload } from "../testing";
 
-/** A valid vendor-shaped bot payload with an overridable field. */
-const bot = (over: Partial<FakeBotPayload> = {}): FakeBotPayload => ({
+/** A valid vendor-shaped workflow payload with an overridable field. */
+const workflow = (over: Partial<FakeBotPayload> = {}): FakeBotPayload => ({
   botId: "b1",
-  label: "Invoice Bot",
+  label: "Invoice Workflow",
   status: "Running",
   assignee: "Brad",
   ...over,
@@ -18,27 +18,27 @@ const capturingLogger = (): Logger & { calls: string[] } => {
 };
 
 describe("Acceptance 1: a service returns results only from enabled connectors that declare the capability", () => {
-  it("includes bots-capable connectors and skips those that do not declare bots", async () => {
+  it("includes workflows-capable connectors and skips those that do not declare workflows", async () => {
     const registry = new ConnectorRegistry();
-    registry.register(new FakeConnector({ id: "has-bots", bots: [bot({ botId: "1" })] }));
+    registry.register(new FakeConnector({ id: "has-workflows", workflows: [workflow({ botId: "1" })] }));
     registry.register(
-      new FakeConnector({ id: "no-bots", capabilities: [Capability.Schedules], bots: [bot({ botId: "2" })] }),
+      new FakeConnector({ id: "no-workflows", capabilities: [Capability.Schedules], workflows: [workflow({ botId: "2" })] }),
     );
 
-    const { items, errors } = await new BotService(registry).list();
+    const { items, errors } = await new WorkflowService(registry).list();
 
     expect(items).toHaveLength(1);
-    expect(items[0].connectorId).toBe("has-bots");
+    expect(items[0].connectorId).toBe("has-workflows");
     expect(errors).toEqual([]);
   });
 });
 
 describe("Acceptance 2: disabling a connector at runtime removes its data with no restart and no error", () => {
-  it("drops a disabled connector's bots and restores them on re-enable", async () => {
+  it("drops a disabled connector's workflows and restores them on re-enable", async () => {
     const registry = new ConnectorRegistry();
-    registry.register(new FakeConnector({ id: "c1", bots: [bot({ botId: "1" })] }));
-    registry.register(new FakeConnector({ id: "c2", bots: [bot({ botId: "2" })] }));
-    const service = new BotService(registry);
+    registry.register(new FakeConnector({ id: "c1", workflows: [workflow({ botId: "1" })] }));
+    registry.register(new FakeConnector({ id: "c2", workflows: [workflow({ botId: "2" })] }));
+    const service = new WorkflowService(registry);
 
     expect((await service.list()).items).toHaveLength(2);
 
@@ -56,15 +56,15 @@ describe("Acceptance 3: two instances of the same type are addressable independe
   it("builds two A360 instances from config and keeps their results distinct", async () => {
     const registry = new ConnectorRegistry();
     registry.defineType(fakeConnectorFactory("automation-anywhere"));
-    registry.add({ id: "a360-eu", type: "automation-anywhere", config: { bots: [bot({ botId: "b1", label: "EU Bot", assignee: "Brad" })] } });
-    registry.add({ id: "a360-us", type: "automation-anywhere", config: { bots: [bot({ botId: "b1", label: "US Bot", status: "Idle", assignee: "Dana" })] } });
-    const service = new BotService(registry);
+    registry.add({ id: "a360-eu", type: "automation-anywhere", config: { workflows: [workflow({ botId: "b1", label: "EU Workflow", assignee: "Brad" })] } });
+    registry.add({ id: "a360-us", type: "automation-anywhere", config: { workflows: [workflow({ botId: "b1", label: "US Workflow", status: "Idle", assignee: "Dana" })] } });
+    const service = new WorkflowService(registry);
 
     const { items } = await service.list();
     // Same vendor id "b1" on both, but namespaced ids never collide.
     expect(items.map((b) => b.id).sort()).toEqual(["a360-eu:b1", "a360-us:b1"]);
-    expect(items.find((b) => b.connectorId === "a360-eu")?.title).toBe("EU Bot");
-    expect(items.find((b) => b.connectorId === "a360-us")?.title).toBe("US Bot");
+    expect(items.find((b) => b.connectorId === "a360-eu")?.title).toBe("EU Workflow");
+    expect(items.find((b) => b.connectorId === "a360-us")?.title).toBe("US Workflow");
     expect(items.every((b) => b.platform === "automation-anywhere")).toBe(true);
 
     // Independently addressable by instance.
@@ -77,11 +77,11 @@ describe("Acceptance 3: two instances of the same type are addressable independe
 describe("Acceptance 4: a failing health check degrades gracefully", () => {
   it("returns healthy results plus a per-connector error and does not throw", async () => {
     const registry = new ConnectorRegistry();
-    registry.register(new FakeConnector({ id: "healthy", bots: [bot({ botId: "1" })] }));
-    registry.register(new FakeConnector({ id: "sick", healthy: false, bots: [bot({ botId: "2" })] }));
-    registry.register(new FakeConnector({ id: "boom", failHealth: true, bots: [bot({ botId: "3" })] }));
+    registry.register(new FakeConnector({ id: "healthy", workflows: [workflow({ botId: "1" })] }));
+    registry.register(new FakeConnector({ id: "sick", healthy: false, workflows: [workflow({ botId: "2" })] }));
+    registry.register(new FakeConnector({ id: "boom", failHealth: true, workflows: [workflow({ botId: "3" })] }));
 
-    const { items, errors } = await new BotService(registry).list();
+    const { items, errors } = await new WorkflowService(registry).list();
 
     expect(items).toHaveLength(1);
     expect(items[0].connectorId).toBe("healthy");
@@ -92,16 +92,16 @@ describe("Acceptance 4: a failing health check degrades gracefully", () => {
 });
 
 describe("Acceptance 5: an unmappable vendor payload fails loudly, never as a silent partial model", () => {
-  it("surfaces a logged mapping error and yields no partial bot", async () => {
+  it("surfaces a logged mapping error and yields no partial workflow", async () => {
     const logger = capturingLogger();
     const registry = new ConnectorRegistry();
-    registry.register(new FakeConnector({ id: "good", bots: [bot({ botId: "1", label: "Good" })] }));
+    registry.register(new FakeConnector({ id: "good", workflows: [workflow({ botId: "1", label: "Good" })] }));
     // Missing `status` — the required run-state field.
-    registry.register(new FakeConnector({ id: "bad", bots: [{ botId: "2", label: "Bad", assignee: "Y" }] }));
+    registry.register(new FakeConnector({ id: "bad", workflows: [{ botId: "2", label: "Bad", assignee: "Y" }] }));
 
-    const { items, errors } = await new BotService(registry, logger).list();
+    const { items, errors } = await new WorkflowService(registry, logger).list();
 
-    // The good connector's bot is present and fully populated.
+    // The good connector's workflow is present and fully populated.
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({
       id: "good:1",

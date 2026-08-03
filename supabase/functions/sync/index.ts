@@ -1,9 +1,9 @@
-// sync — pull bots from every enabled A360 instance, normalise, and upsert into the
-// `bots` cache table. Invoked by pg_cron on a schedule and on demand by admins.
+// sync — pull workflows from every enabled A360 instance, normalise, and upsert into the
+// `workflows` cache table. Invoked by pg_cron on a schedule and on demand by admins.
 //
 // Credentials are resolved from Vault inside each connector's connect(), server-side; no
 // secret is logged or returned. The response carries counts and per-connector errors only.
-import { BotService } from "@conduit/connector-sdk";
+import { WorkflowService } from "@conduit/connector-sdk";
 import { serviceClient } from "../_shared/supabase.ts";
 import { buildRegistry, secretStore } from "../_shared/registry.ts";
 import { requireAdminOrService } from "../_shared/auth.ts";
@@ -19,9 +19,9 @@ Deno.serve(async (req: Request) => {
   const secrets = secretStore(supabase);
   const { registry, skipped, invalid } = await buildRegistry(supabase, secrets);
 
-  // BotService health-gates each connector and never throws; a failing Control Room
+  // WorkflowService health-gates each connector and never throws; a failing Control Room
   // becomes an error entry, not a crash.
-  const result = await new BotService(registry).list();
+  const result = await new WorkflowService(registry).list();
 
   if (result.items.length > 0) {
     const rows = result.items.map((b) => ({
@@ -34,11 +34,11 @@ Deno.serve(async (req: Request) => {
       owner: b.owner,
       synced_at: new Date().toISOString(),
     }));
-    const { error } = await supabase.from("bots").upsert(rows, { onConflict: "id" });
-    if (error) return json(500, { error: `bots upsert failed: ${error.message}` });
+    const { error } = await supabase.from("workflows").upsert(rows, { onConflict: "id" });
+    if (error) return json(500, { error: `workflows upsert failed: ${error.message}` });
   }
 
-  // TODO(supabase): prune bots that disappeared from a successfully-synced connector.
+  // TODO(supabase): prune workflows that disappeared from a successfully-synced connector.
   // Deferred deliberately so a partial/failed sync can never delete good rows; add a
   // per-connector "delete rows not in this run's id set" once the sync is proven.
 

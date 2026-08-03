@@ -5,7 +5,7 @@
  * adapter, so no vendor type appears in any signature here or above it.
  */
 import { Capability } from "@conduit/domain";
-import type { Bot } from "@conduit/domain";
+import type { Workflow } from "@conduit/domain";
 
 /** Result of a health probe against the vendor system. */
 export type HealthStatus = {
@@ -38,19 +38,19 @@ export interface Connector {
 /* ------------------------------------------------------- capability providers */
 /* A connector implements exactly the providers for the capabilities it declares. */
 
-export interface BotProvider {
-  listBots(): Promise<Bot[]>;
+export interface WorkflowProvider {
+  listWorkflows(): Promise<Workflow[]>;
 }
 
 // Further providers (ScheduleProvider, DeviceProvider, …) are added as each
-// capability service is built. Only `bots` is wired end to end at this stage.
+// capability service is built. Only `workflows` is wired end to end at this stage.
 
 /* --------------------------------------------------------------- type guards */
 
-/** True when a connector declares `bots` *and* actually implements `listBots`. */
-export function isBotProvider(c: Connector): c is Connector & BotProvider {
+/** True when a connector declares `workflows` *and* actually implements `listWorkflows`. */
+export function isWorkflowProvider(c: Connector): c is Connector & WorkflowProvider {
   return (
-    c.capabilities.includes(Capability.Bots) &&
-    typeof (c as Partial<BotProvider>).listBots === "function"
+    c.capabilities.includes(Capability.Workflows) &&
+    typeof (c as Partial<WorkflowProvider>).listWorkflows === "function"
   );
 }

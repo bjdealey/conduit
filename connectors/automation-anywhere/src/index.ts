@@ -9,7 +9,7 @@ import { A360Connector, type A360ConnectorDeps } from "./connector.ts";
 export { A360Connector, type A360ConnectorDeps } from "./connector.ts";
 export { A360_TYPE, A360_CAPABILITIES, type A360Config } from "./config.ts";
 export { A360AuthError } from "./session.ts";
-export { normalizeStatus, mapA360Bot } from "./map.ts";
+export { normalizeStatus, mapA360Workflow } from "./map.ts";
 export type { HttpTransport, HttpRequest, HttpResponse } from "./http.ts";
 
 /**

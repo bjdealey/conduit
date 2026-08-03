@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { agoLabel, durationSeconds, minutesAgo, num } from "../format";
-import { runs } from "../../data/automations";
+import { runs } from "../../data/workflows";
 
 describe("relative-time parsing (seed labels → numbers for the Activity timeline)", () => {
   it("reads the relative labels the run seed data uses", () => {

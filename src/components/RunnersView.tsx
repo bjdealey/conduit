@@ -18,10 +18,10 @@ import { Chip } from "./Chip";
    Runners — the execution pool
    -----------------------------------------------------------------------------
    The screen that replaces a device list. A device list answers "which machine
-   does this automation live on"; this answers "what capacity exists right now",
+   does this workflow live on"; this answers "what capacity exists right now",
    which is the only question worth asking once nobody assigns work by hand.
 
-   So there is no assign control here, and no per-automation column. A runner
+   So there is no assign control here, and no per-workflow column. A runner
    advertises a class and the auth models it can present; the distributor does the
    rest, per run. What the page shows instead is the pool changing — starting,
    draining, going offline — because that movement is the elasticity the model is
@@ -228,7 +228,7 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-/** The runner's facts. Note what isn't here: no assigned automations, no install
+/** The runner's facts. Note what isn't here: no assigned workflows, no install
  *  history, no patch level. An ephemeral runner has an image and nothing else to
  *  drift, which is exactly why this pane is short. */
 function RunnerContext({ runner }: { runner: Runner }) {
@@ -305,7 +305,7 @@ function RunnerMain({ runner }: { runner: Runner }) {
             <h3 className="text-body-base font-medium text-primary-foreground">Assignment</h3>
             <p className="text-body-sm text-tertiary-foreground">
               Nothing is assigned to this runner. Work is placed here per run, by matching an
-              automation's declared requirements against the pool — so there is no configuration to
+              workflow's declared requirements against the pool — so there is no configuration to
               drift and no machine to reserve.
             </p>
           </section>

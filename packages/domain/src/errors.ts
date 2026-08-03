@@ -11,7 +11,7 @@ export type MapContext = {
   connectorId: string;
   /** Connector type / platform, e.g. "automation-anywhere". */
   platform: string;
-  /** Capability being mapped, e.g. "bots". */
+  /** Capability being mapped, e.g. "workflows". */
   capability: string;
   /** Raw vendor id, once known. */
   sourceId?: string;

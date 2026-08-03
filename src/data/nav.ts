@@ -22,7 +22,7 @@ export const navItems: NavItemDef[] = [
   { id: "home", label: "Home" },
   { id: "activity", label: "Activity" },
   { id: "inbox", label: "Inbox" },
-  { id: "automations", label: "Automations", capability: "bots" as Capability },
+  { id: "workflows", label: "Workflows", capability: "workflows" as Capability },
   { id: "manage", label: "Manage" },
   { id: "users", label: "Users" },
   { id: "administration", label: "Administration", roles: ["admin", "developer"] },

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  automationId,
+  workflowId,
   blankDraft,
   commitDraft,
   draftProblems,
@@ -13,14 +13,14 @@ import { paletteGroups } from "../builder";
 import { EMPTY_WORKSPACE, type WorkspaceState } from "../workspace";
 import { ACTIONS, actionById, packagesForSteps, requirementsForSteps } from "../../data/actions";
 import { runnerFits } from "@conduit/domain";
-import { automations, runs } from "../../data/automations";
+import { workflows, runs } from "../../data/workflows";
 import { runners } from "../../data/runners";
 import { workspaceControls } from "../../data/workspaceControls";
-import type { AutomationDraft } from "../../data/types";
+import type { WorkflowDraft } from "../../data/types";
 
 const controls = (patch: Partial<WorkspaceState> = {}): WorkspaceState => ({ ...EMPTY_WORKSPACE, ...patch });
 
-const draftWith = (patch: Partial<AutomationDraft> = {}): AutomationDraft => ({
+const draftWith = (patch: Partial<WorkflowDraft> = {}): WorkflowDraft => ({
   ...blankDraft("ls", "prv-drafts"),
   name: "Nightly export",
   steps: [newStep("records.query", []), newStep("pdf.render", [])],
@@ -36,7 +36,7 @@ describe("starting a draft", () => {
 
   it("asks for a name and at least one step before it can be saved", () => {
     expect(draftProblems(blankDraft("ls", "prv-drafts"))).toHaveLength(2);
-    expect(draftProblems(draftWith({ name: "  " }))).toEqual(["Give the automation a name."]);
+    expect(draftProblems(draftWith({ name: "  " }))).toEqual(["Give the workflow a name."]);
     expect(draftProblems(draftWith({ steps: [] }))).toEqual(["Add at least one step."]);
     expect(draftProblems(draftWith())).toEqual([]);
   });
@@ -79,32 +79,32 @@ describe("editing the flow", () => {
 });
 
 describe("saving a draft", () => {
-  it("appends a new automation with a readable id and derived packages", () => {
-    const { automations: next, id } = commitDraft(automations, draftWith());
-    expect(id).toBe("aut_nightly_export");
-    expect(next).toHaveLength(automations.length + 1);
+  it("appends a new workflow with a readable id and derived packages", () => {
+    const { workflows: next, id } = commitDraft(workflows, draftWith());
+    expect(id).toBe("wf_nightly_export");
+    expect(next).toHaveLength(workflows.length + 1);
     const saved = next.find((a) => a.id === id)!;
     expect(saved.packages).toEqual(["billing-api", "pdf"]);
     expect(saved.updatedAgo).toBe("just now");
   });
 
   it("never collides with an existing id", () => {
-    expect(automationId("Bulk invoice export", ["aut_bulk_invoice_export"])).toBe("aut_bulk_invoice_export_2");
-    expect(automationId("!!!", [])).toBe("aut_automation");
+    expect(workflowId("Bulk invoice export", ["wf_bulk_invoice_export"])).toBe("wf_bulk_invoice_export_2");
+    expect(workflowId("!!!", [])).toBe("wf_workflow");
   });
 
-  it("replaces in place when editing an existing automation", () => {
-    const existing = automations[0];
-    const edited: AutomationDraft = { ...existing, isNew: false, name: "Renamed audit" };
-    const { automations: next, id } = commitDraft(automations, edited);
+  it("replaces in place when editing an existing workflow", () => {
+    const existing = workflows[0];
+    const edited: WorkflowDraft = { ...existing, isNew: false, name: "Renamed audit" };
+    const { workflows: next, id } = commitDraft(workflows, edited);
     expect(id).toBe(existing.id);
-    expect(next).toHaveLength(automations.length);
+    expect(next).toHaveLength(workflows.length);
     expect(next.find((a) => a.id === id)?.name).toBe("Renamed audit");
   });
 
   it("falls back to a title rather than saving an empty name", () => {
-    const { automations: next, id } = commitDraft(automations, draftWith({ name: "   " }));
-    expect(next.find((a) => a.id === id)?.name).toBe("Untitled automation");
+    const { workflows: next, id } = commitDraft(workflows, draftWith({ name: "   " }));
+    expect(next.find((a) => a.id === id)?.name).toBe("Untitled workflow");
   });
 });
 
@@ -115,18 +115,18 @@ describe("test runs", () => {
   });
 
   it("starts in flight, manually triggered, with a log that walks the flow", () => {
-    const automation = automations[0];
-    const run = testRun(automation, "Keith Kennedy", runs, runners);
+    const workflow = workflows[0];
+    const run = testRun(workflow, "Keith Kennedy", runs, runners);
     expect(run).toMatchObject({ state: "Running", trigger: "Manual", startedBy: "Keith Kennedy", startedAt: "just now" });
-    expect(run.automationId).toBe(automation.id);
+    expect(run.workflowId).toBe(workflow.id);
     // One log line per step, after the "started" and placement lines.
-    expect(run.activity).toHaveLength(automation.steps.length + 2);
-    expect(run.activity[2].title).toBe(`1. ${actionById(automation.steps[0].actionId)?.label}`);
+    expect(run.activity).toHaveLength(workflow.steps.length + 2);
+    expect(run.activity[2].title).toBe(`1. ${actionById(workflow.steps[0].actionId)?.label}`);
   });
 
   it("places the run through the distributor and records why", () => {
-    const automation = automations[0];
-    const run = testRun(automation, "Keith Kennedy", runs, runners);
+    const workflow = workflows[0];
+    const run = testRun(workflow, "Keith Kennedy", runs, runners);
     const placed = runners.find((r) => r.id === run.runnerId);
     expect(placed).toBeDefined();
     // The reason is on the log, not just the placement — a choice nobody can read
@@ -135,7 +135,7 @@ describe("test runs", () => {
   });
 
   it("queues rather than inventing a runner when the pool can't take the work", () => {
-    const headedOnly = { ...automations[0], requirements: { auth: "none", ui: "headed", platform: "windows" } as const };
+    const headedOnly = { ...workflows[0], requirements: { auth: "none", ui: "headed", platform: "windows" } as const };
     const run = testRun(headedOnly, "Keith Kennedy", runs, []);
     expect(run.state).toBe("Queued");
     expect(run.runnerId).toBeUndefined();
@@ -143,7 +143,7 @@ describe("test runs", () => {
 });
 
 describe("the action palette", () => {
-  it("gives every action a package that a seeded automation could depend on", () => {
+  it("gives every action a package that a seeded workflow could depend on", () => {
     for (const action of ACTIONS) {
       expect(action.package, action.id).toMatch(/^[a-z0-9-]+$/);
       expect(action.fields.length, action.id).toBeGreaterThan(0);
@@ -151,31 +151,31 @@ describe("the action palette", () => {
   });
 
   it("resolves every step in the seed library to a real action", () => {
-    // Only natively-authored flows have steps to resolve. A mirrored automation's
+    // Only natively-authored flows have steps to resolve. A mirrored workflow's
     // flow lives on its own platform, and inventing steps for it here would be the
     // one lie that makes the whole estate view untrustworthy.
-    for (const automation of automations.filter((a) => a.platform === "conduit")) {
-      expect(automation.steps.length, automation.id).toBeGreaterThan(0);
-      for (const step of automation.steps) expect(actionById(step.actionId), `${automation.id}/${step.id}`).toBeDefined();
+    for (const workflow of workflows.filter((a) => a.platform === "conduit")) {
+      expect(workflow.steps.length, workflow.id).toBeGreaterThan(0);
+      for (const step of workflow.steps) expect(actionById(step.actionId), `${workflow.id}/${step.id}`).toBeDefined();
       // The declared dependencies match what the flow actually uses.
-      expect(automation.packages, automation.id).toEqual(packagesForSteps(automation.steps));
+      expect(workflow.packages, workflow.id).toEqual(packagesForSteps(workflow.steps));
     }
   });
 
-  it("keeps mirrored automations empty — they are reflections, not authored flows", () => {
-    for (const automation of automations.filter((a) => a.platform !== "conduit")) {
-      expect(automation.steps, automation.id).toEqual([]);
-      expect(automation.packages, automation.id).toEqual([]);
+  it("keeps mirrored workflows empty — they are reflections, not authored flows", () => {
+    for (const workflow of workflows.filter((a) => a.platform !== "conduit")) {
+      expect(workflow.steps, workflow.id).toEqual([]);
+      expect(workflow.packages, workflow.id).toEqual([]);
     }
   });
 
   it("declares requirements no weaker than its steps demand", () => {
     // The floor is derived, so an author can ask for more than the flow needs but
     // never for less — otherwise a headed step lands on a runner with no session.
-    for (const automation of automations) {
-      const derived = requirementsForSteps(automation.steps);
-      if (derived.ui === "headed") expect(automation.requirements.ui, automation.id).toBe("headed");
-      if (derived.platform === "windows") expect(automation.requirements.platform, automation.id).toBe("windows");
+    for (const workflow of workflows) {
+      const derived = requirementsForSteps(workflow.steps);
+      if (derived.ui === "headed") expect(workflow.requirements.ui, workflow.id).toBe("headed");
+      if (derived.platform === "windows") expect(workflow.requirements.platform, workflow.id).toBe("windows");
     }
   });
 
@@ -184,14 +184,14 @@ describe("the action palette", () => {
       if (!run.runnerId) continue;
       const runner = runners.find((r) => r.id === run.runnerId);
       expect(runner, run.id).toBeDefined();
-      const automation = automations.find((a) => a.id === run.automationId)!;
-      expect(runnerFits(runner!, automation.requirements), `${run.id} on ${run.runnerId}`).toBe(true);
+      const workflow = workflows.find((a) => a.id === run.workflowId)!;
+      expect(runnerFits(runner!, workflow.requirements), `${run.id} on ${run.runnerId}`).toBe(true);
     }
   });
 
   it("uses field ids that the seeded configs actually set", () => {
-    for (const automation of automations) {
-      for (const step of automation.steps) {
+    for (const workflow of workflows) {
+      for (const step of workflow.steps) {
         const fields = new Set(actionById(step.actionId)!.fields.map((f) => f.id));
         for (const key of Object.keys(step.config)) expect(fields, `${step.actionId}.${key}`).toContain(key);
       }

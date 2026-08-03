@@ -11,10 +11,10 @@ import { Board } from "./components/Board";
 import { IssueDetail } from "./components/IssueDetail";
 import { SplitView, DetailPane, EmptyDetail } from "./components/layout/SplitView";
 import { WorkspaceHeader } from "./components/WorkspaceHeader";
-import { AutomationBuilder } from "./components/AutomationBuilder";
+import { WorkflowBuilder } from "./components/WorkflowBuilder";
 import { visibleIssues } from "./lib/select";
 import { ActivityView } from "./components/ActivityView";
-import { AutomationsView } from "./components/AutomationsView";
+import { WorkflowsView } from "./components/WorkflowsView";
 import { ManageView } from "./components/ManageView";
 import { AdministrationView } from "./components/AdministrationView";
 import { UsersView } from "./components/UsersView";
@@ -55,13 +55,13 @@ function Body() {
       {view === "home" && <HomeView />}
       {view === "activity" && <ActivityView />}
       {view === "inbox" && <InboxView />}
-      {view === "automations" && <AutomationsView />}
+      {view === "workflows" && <WorkflowsView />}
       {view === "manage" && <ManageView />}
       {view === "administration" && <AdministrationView />}
       {view === "users" && <UsersView />}
       {view === "surfaces" && <SurfacesView />}
       {view === "runners" && <RunnersView />}
-      {view === "builder" && <AutomationBuilder />}
+      {view === "builder" && <WorkflowBuilder />}
       {view === "settings" && <SettingsContent />}
     </div>
   );

@@ -1,17 +1,17 @@
 /**
- * The Automation Anywhere A360 connector. Declares only the `bots` capability this
+ * The Automation Anywhere A360 connector. Declares only the `workflows` capability this
  * stage. The backend is the only caller of the A360 API: credentials are resolved
  * from the SecretStore inside `connect()`, held only in the in-process session, and
  * never returned from any method or serialised onto the instance.
  */
 import { Capability } from "@conduit/domain";
-import type { Bot, MapContext } from "@conduit/domain";
-import type { BotProvider, Connector, HealthStatus, SyncResult, SecretStore } from "@conduit/connector-sdk";
+import type { Workflow, MapContext } from "@conduit/domain";
+import type { WorkflowProvider, Connector, HealthStatus, SyncResult, SecretStore } from "@conduit/connector-sdk";
 import { A360_CAPABILITIES, A360_TYPE, assertA360Config, type A360Config, type A360Credentials } from "./config.ts";
 import { fetchTransport, joinUrl, type HttpTransport } from "./http.ts";
 import { A360Session } from "./session.ts";
-import { AUTH_HEADER, BOT_LIST_PATH, botListRequestBody } from "./endpoints.ts";
-import { extractBotRecords, mapA360Bot } from "./map.ts";
+import { AUTH_HEADER, WORKFLOW_LIST_PATH, workflowListRequestBody } from "./endpoints.ts";
+import { extractBotRecords, mapA360Workflow } from "./map.ts";
 
 export type A360ConnectorDeps = {
   /** HTTP transport; defaults to `fetch`. Tests inject a fake Control Room here. */
@@ -22,7 +22,7 @@ export type A360ConnectorDeps = {
   logCall?: (event: string, meta: { connectorId: string }) => void;
 };
 
-export class A360Connector implements Connector, BotProvider {
+export class A360Connector implements Connector, WorkflowProvider {
   readonly id: string;
   readonly type = A360_TYPE;
   readonly capabilities = [...A360_CAPABILITIES];
@@ -72,17 +72,17 @@ export class A360Connector implements Connector, BotProvider {
   }
 
   async sync(): Promise<SyncResult> {
-    const bots = await this.listBots();
-    return { synced: { [Capability.Bots]: bots.length } };
+    const workflows = await this.listWorkflows();
+    return { synced: { [Capability.Workflows]: workflows.length } };
   }
 
-  async listBots(): Promise<Bot[]> {
+  async listWorkflows(): Promise<Workflow[]> {
     const session = await this.ensureSession();
     const token = await session.token(); // refresh-on-expiry happens transparently here
-    this.logCall("bots.list", { connectorId: this.id });
+    this.logCall("workflows.list", { connectorId: this.id });
 
     const res = await this.transport.request({
-      url: joinUrl(this.config.controlRoomUrl, BOT_LIST_PATH),
+      url: joinUrl(this.config.controlRoomUrl, WORKFLOW_LIST_PATH),
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -90,13 +90,13 @@ export class A360Connector implements Connector, BotProvider {
         // TODO(a360): confirm header; sending Bearer too until verified (see endpoints.ts).
         authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify(botListRequestBody()),
+      body: JSON.stringify(workflowListRequestBody()),
     });
-    if (!res.ok) throw new Error(`A360 bot list failed (status ${res.status})`);
+    if (!res.ok) throw new Error(`A360 workflow list failed (status ${res.status})`);
 
-    const ctx: MapContext = { connectorId: this.id, platform: this.type, capability: "bots" };
+    const ctx: MapContext = { connectorId: this.id, platform: this.type, capability: "workflows" };
     const records = extractBotRecords(await res.json(), ctx);
-    return records.map((record) => mapA360Bot(record, ctx));
+    return records.map((record) => mapA360Workflow(record, ctx));
   }
 
   private async ensureSession(): Promise<A360Session> {

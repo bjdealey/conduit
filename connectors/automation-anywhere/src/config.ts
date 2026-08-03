@@ -11,7 +11,7 @@ import { Capability } from "@conduit/domain";
 export const A360_TYPE = "automation-anywhere";
 
 /** Capabilities implemented this stage. Declare only what is actually wired. */
-export const A360_CAPABILITIES: Capability[] = [Capability.Bots];
+export const A360_CAPABILITIES: Capability[] = [Capability.Workflows];
 
 export type A360AuthMode = "apiKey" | "oauth";
 

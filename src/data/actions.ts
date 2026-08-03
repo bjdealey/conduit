@@ -1,8 +1,8 @@
 /**
- * The action palette the automation builder composes flows from.
+ * The action palette the workflow builder composes flows from.
  *
  * Each action belongs to a package — the same package names that appear in
- * `Automation.packages` and in Manage → Packages — so a flow's dependencies are
+ * `Workflow.packages` and in Manage → Packages — so a flow's dependencies are
  * derived from its steps rather than typed by hand (see `packagesForSteps`).
  * Fields describe the per-step form the builder renders; they're deliberately
  * shallow (text / number / choice), because this is a prototype of the authoring
@@ -31,7 +31,7 @@ export type ActionField = {
 export type StepAction = {
   id: string;
   label: string;
-  /** Providing package — matches `Automation.packages` and Manage → Packages. */
+  /** Providing package — matches `Workflow.packages` and Manage → Packages. */
   package: string;
   /** One line explaining what the step does, shown under the palette entry. */
   summary: string;
@@ -220,7 +220,7 @@ export function defaultConfig(action: StepAction): Record<string, string> {
 }
 
 /** The packages a flow depends on, derived from its steps (deduped, in step
- *  order). This is what keeps an automation's Dependencies tab honest. */
+ *  order). This is what keeps an workflow's Dependencies tab honest. */
 export function packagesForSteps(steps: { actionId: string }[]): string[] {
   const seen: string[] = [];
   for (const step of steps) {

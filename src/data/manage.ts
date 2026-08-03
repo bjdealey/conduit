@@ -1,24 +1,24 @@
 /**
- * Operational objects for the Manage section: how automations are executed
+ * Operational objects for the Manage section: how workflows are executed
  * (Scheduled, Event triggers) and the config runs consume (Credentials, Packages,
- * Global values). References into `automations.ts` are by automation id, and the
- * cadences/events line up with the run seed data (e.g. aut_reset_audit every 15m).
+ * Global values). References into `workflows.ts` are by workflow id, and the
+ * cadences/events line up with the run seed data (e.g. wf_reset_audit every 15m).
  * In-memory prototype data — edit freely.
  */
 
 /* ------------------------------------------------------------------- schedules */
 
 /**
- * A cadence that starts an automation.
+ * A cadence that starts an workflow.
  *
  * A schedule says *when*, never *where*. There is deliberately no target field: the
- * distributor places each run on a runner that fits the automation's requirements at
+ * distributor places each run on a runner that fits the workflow's requirements at
  * the moment it fires. Pinning work to a named machine here is the habit the platform
  * exists to remove.
  */
 export type Schedule = {
   id: string;
-  automationId: string;
+  workflowId: string;
   /** Human cadence, e.g. "Every 15 minutes". */
   cadence: string;
   nextRun: string;
@@ -27,18 +27,18 @@ export type Schedule = {
 };
 
 export const schedules: Schedule[] = [
-  { id: "sch_01", automationId: "aut_synthetic_login", cadence: "Every 5 minutes", nextRun: "in 2 min", lastRun: "4 minutes ago", enabled: true },
-  { id: "sch_02", automationId: "aut_reset_audit", cadence: "Every 15 minutes", nextRun: "in 9 min", lastRun: "36 minutes ago", enabled: true },
-  { id: "sch_03", automationId: "aut_payment_recon", cadence: "Hourly", nextRun: "in 24 min", lastRun: "an hour ago", enabled: true },
-  { id: "sch_04", automationId: "aut_invoice_export", cadence: "Daily at 02:00 UTC", nextRun: "in 6 h", lastRun: "yesterday", enabled: false },
+  { id: "sch_01", workflowId: "wf_synthetic_login", cadence: "Every 5 minutes", nextRun: "in 2 min", lastRun: "4 minutes ago", enabled: true },
+  { id: "sch_02", workflowId: "wf_reset_audit", cadence: "Every 15 minutes", nextRun: "in 9 min", lastRun: "36 minutes ago", enabled: true },
+  { id: "sch_03", workflowId: "wf_payment_recon", cadence: "Hourly", nextRun: "in 24 min", lastRun: "an hour ago", enabled: true },
+  { id: "sch_04", workflowId: "wf_invoice_export", cadence: "Daily at 02:00 UTC", nextRun: "in 6 h", lastRun: "yesterday", enabled: false },
 ];
 
 /* -------------------------------------------------------------- event triggers */
 
 export type EventTrigger = {
   id: string;
-  automationId: string;
-  /** Event key that fires the automation, e.g. "user.signup". */
+  workflowId: string;
+  /** Event key that fires the workflow, e.g. "user.signup". */
   event: string;
   /** Optional filter expression. */
   condition: string;
@@ -48,10 +48,10 @@ export type EventTrigger = {
 };
 
 export const eventTriggers: EventTrigger[] = [
-  { id: "evt_01", automationId: "aut_welcome_email", event: "user.signup", condition: "always", lastFired: "6 minutes ago", fireCount: 8874, enabled: true },
-  { id: "evt_02", automationId: "aut_reset_audit", event: "deploy.completed", condition: "surface = auth", lastFired: "38 minutes ago", fireCount: 412, enabled: true },
-  { id: "evt_03", automationId: "aut_payment_recon", event: "payment.failed", condition: "region = BR", lastFired: "40 minutes ago", fireCount: 96, enabled: true },
-  { id: "evt_04", automationId: "aut_index_rebuild", event: "catalog.updated", condition: "items > 500", lastFired: "3 hours ago", fireCount: 4, enabled: false },
+  { id: "evt_01", workflowId: "wf_welcome_email", event: "user.signup", condition: "always", lastFired: "6 minutes ago", fireCount: 8874, enabled: true },
+  { id: "evt_02", workflowId: "wf_reset_audit", event: "deploy.completed", condition: "surface = auth", lastFired: "38 minutes ago", fireCount: 412, enabled: true },
+  { id: "evt_03", workflowId: "wf_payment_recon", event: "payment.failed", condition: "region = BR", lastFired: "40 minutes ago", fireCount: 96, enabled: true },
+  { id: "evt_04", workflowId: "wf_index_rebuild", event: "catalog.updated", condition: "items > 500", lastFired: "3 hours ago", fireCount: 4, enabled: false },
 ];
 
 /* ----------------------------------------------------------------- credentials */
@@ -81,7 +81,7 @@ export type Package = {
   name: string;
   version: string;
   publisher: string;
-  /** Number of automations depending on this package. */
+  /** Number of workflows depending on this package. */
   usedBy: number;
   updatedAgo: string;
 };

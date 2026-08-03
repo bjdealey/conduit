@@ -15,14 +15,14 @@ supabase/
   config.toml                 # project + per-function config (verify_jwt, import map)
   migrations/
     0001_connector_instances.sql   # instance registry (+ RLS, updated_at trigger)
-    0002_bots.sql                  # bots domain cache (+ RLS: authenticated read)
+    0002_bots.sql                  # workflows domain cache (+ RLS: authenticated read)
     0003_vault.sql                 # Vault + service-role-only RPCs (read/write/metadata/delete)
     0004_cron_sync.sql             # pg_cron → sync every 15 min (reads URL+token from Vault)
   functions/
     import_map.json             # maps @conduit/* to the workspace TS + npm:@supabase/supabase-js
     _shared/                    # service client, Vault client, registry loader, auth guard
     connectors/                 # admin CRUD + write-only credential path
-    sync/                       # pull → normalise → upsert bots (cron + on-demand)
+    sync/                       # pull → normalise → upsert workflows (cron + on-demand)
     capabilities/               # union of enabled connectors' declared capabilities
     health/                     # per-instance health probes
 ```
@@ -82,11 +82,11 @@ curl -X POST https://<ref>.supabase.co/functions/v1/connectors \
       }'
 ```
 
-Then trigger a sync (or wait for cron), and read normalised bots via PostgREST:
+Then trigger a sync (or wait for cron), and read normalised workflows via PostgREST:
 
 ```bash
 curl -X POST https://<ref>.supabase.co/functions/v1/sync -H "Authorization: Bearer <service-role-key>"
-curl "https://<ref>.supabase.co/rest/v1/bots?select=*" -H "Authorization: Bearer <anon-or-user-jwt>" -H "apikey: <anon-key>"
+curl "https://<ref>.supabase.co/rest/v1/workflows?select=*" -H "Authorization: Bearer <anon-or-user-jwt>" -H "apikey: <anon-key>"
 ```
 
 `GET /functions/v1/connectors` lists instances with **secret presence + field names only** —
@@ -98,10 +98,10 @@ Point the frontend at the project and confirm the API answers. Use the **anon** 
 
 ```bash
 REF=<your-project-ref>; ANON=<anon-key>
-# capabilities: empty [] until a bots-capable connector is enabled
+# capabilities: empty [] until a workflows-capable connector is enabled
 curl -s "https://$REF.supabase.co/functions/v1/capabilities" -H "Authorization: Bearer $ANON" -H "apikey: $ANON"
-# bots: [] until a connector has synced
-curl -s "https://$REF.supabase.co/functions/v1/bots" -H "Authorization: Bearer $ANON" -H "apikey: $ANON"
+# workflows: [] until a connector has synced
+curl -s "https://$REF.supabase.co/functions/v1/workflows" -H "Authorization: Bearer $ANON" -H "apikey: $ANON"
 ```
 
 Then wire the frontend (`.env`, git-ignored) and run it:
@@ -126,21 +126,21 @@ one), so create a throwaway Vault secret for it:
 -- throwaway credential bundle so the connector validates (never actually used here)
 select vault.create_secret('{"username":"demo","apiKey":"demo"}', 'connector/demo-eu', 'conduit demo');
 
--- register the connector (enabled, declares bots)
+-- register the connector (enabled, declares workflows)
 insert into public.connector_instances (id, type, name, enabled, config, secret_ref)
 values ('demo-eu', 'automation-anywhere', 'Demo EU', true,
         '{"controlRoomUrl":"https://demo"}', 'connector/demo-eu');
 
--- seed the bots cache directly (stands in for a real sync)
-insert into public.bots (id, source_id, platform, connector_id, title, state, owner) values
-  ('demo-eu:1','1','automation-anywhere','demo-eu','Invoice Bot','Running','Brad'),
+-- seed the workflows cache directly (stands in for a real sync)
+insert into public.workflows (id, source_id, platform, connector_id, title, state, owner) values
+  ('demo-eu:1','1','automation-anywhere','demo-eu','Invoice Workflow','Running','Brad'),
   ('demo-eu:2','2','automation-anywhere','demo-eu','Payment Recon','Idle','Dana');
 ```
 
-`capabilities` now returns `["bots"]` (a valid bots-capable connector is enabled) and
-`bots` returns the two rows. To go real, register an A360 instance with live credentials
+`capabilities` now returns `["workflows"]` (a valid workflows-capable connector is enabled) and
+`workflows` returns the two rows. To go real, register an A360 instance with live credentials
 via the write-only `POST /functions/v1/connectors` path above and run `sync` (which will
-replace these demo rows with real bots).
+replace these demo rows with real workflows).
 
 ## Local development
 
@@ -157,7 +157,7 @@ supabase functions serve --env-file supabase/.env   # .env is gitignored; never 
   the sandbox); they are validated by `supabase db push` / `supabase functions deploy` and
   `deno check supabase/functions/**/*.ts` on your machine.
 - **TODO(supabase)** flags in-tree: `pg_net` availability + Edge Function URL shape for cron
-  (`0004_cron_sync.sql`); the admin role claim source (`_shared/auth.ts`); stale-bot pruning
+  (`0004_cron_sync.sql`); the admin role claim source (`_shared/auth.ts`); stale-workflow pruning
   in `sync`; and the production import-map bundling assumption (the deploy bundler must
   include the workspace TS the import map points to — verify with a first `functions deploy`).
 - **TODO(a360)** flags remain from the connector stage (endpoints/field shapes unverified

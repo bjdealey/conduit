@@ -7,7 +7,7 @@ import { SegmentedControl, type Segment } from "./SegmentedControl";
  * pushed to the trailing edge.
  *
  * Every tabbed surface in the app uses it — the two full-page tables (Manage,
- * Administration) and the six detail panes (Activity, Automations, Environments,
+ * Administration) and the six detail panes (Activity, Workflows, Environments,
  * Issue, Surfaces, Users). It exists because those eight had been carrying a
  * byte-identical copy of the container's class string; identical today, but
  * eight places to miss the next time the strip changes.

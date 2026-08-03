@@ -6,7 +6,7 @@ import { Switch } from "./Switch";
 import { DataTable, type Column } from "./DataTable";
 import { Button } from "./Button";
 import { SETTINGS_PAGES, DEFAULT_SETTINGS_PAGE } from "../data/settings";
-import type { Bot } from "@conduit/domain";
+import type { Workflow } from "@conduit/domain";
 
 /* ---------------------------------------------------------------------------
    Shared form primitives
@@ -334,10 +334,10 @@ const BOT_STATE_ACCENT: Record<string, string> = {
   Unknown: "var(--color-tertiary-foreground)",
 };
 
-/** The bots cache, rendered with the same table the Manage and Administration
+/** The connectedWorkflows cache, rendered with the same table the Manage and Administration
  *  pages use — so a record list reads identically wherever it appears, and the
  *  rows carry real table semantics instead of being a grid of divs. */
-const BOT_COLUMNS: Column<Bot>[] = [
+const WORKFLOW_COLUMNS: Column<Workflow>[] = [
   {
     key: "title",
     header: "Title",
@@ -372,7 +372,7 @@ const BOT_COLUMNS: Column<Bot>[] = [
 ];
 
 function IntegrationsPage() {
-  const { bots, capabilities, dataSource, integrationError } = useStore();
+  const { connectedWorkflows, capabilities, dataSource, integrationError } = useStore();
   const live = dataSource === "live";
 
   return (
@@ -424,8 +424,8 @@ function IntegrationsPage() {
 
       <Divider />
       <div className="flex flex-col gap-2 py-4">
-        <span className="text-body-sm font-medium text-primary-foreground">Bots ({bots.length})</span>
-        <DataTable columns={BOT_COLUMNS} rows={bots} empty="No bots reported by any connector." />
+        <span className="text-body-sm font-medium text-primary-foreground">Bots ({connectedWorkflows.length})</span>
+        <DataTable columns={WORKFLOW_COLUMNS} rows={connectedWorkflows} empty="No connectedWorkflows reported by any connector." />
         <span className="text-body-sm text-tertiary-foreground">
           Namespaced by connector instance ({dataSource === "live" ? "live connectors" : "the local seed connector"}).
         </span>

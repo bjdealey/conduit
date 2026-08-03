@@ -3,7 +3,7 @@ import type { Role } from "./types";
 /**
  * Administration data — the platform-user / governance surface, distinct from the
  * end-user monitoring in `users.ts`. Platform users tie to `members` (the team who
- * own automations and are incident assignees) and carry a role that gates the UI.
+ * own workflows and are incident assignees) and carry a role that gates the UI.
  * In-memory prototype data — edit freely.
  */
 
@@ -30,15 +30,15 @@ export type RoleDef = { id: Role; name: string; description: string; permissions
 
 export const roleDefs: RoleDef[] = [
   { id: "admin", name: "Admin", description: "Full access: manage users, roles, policies and billing.", permissions: "All permissions" },
-  { id: "developer", name: "Developer", description: "Build and run automations; read-only administration.", permissions: "Automations · Runs · Manage" },
-  { id: "user", name: "User", description: "View incidents and automation activity.", permissions: "Read incidents & activity" },
+  { id: "developer", name: "Developer", description: "Build and run workflows; read-only administration.", permissions: "Workflows · Runs · Manage" },
+  { id: "user", name: "User", description: "View incidents and workflow activity.", permissions: "Read incidents & activity" },
 ];
 
 export type License = { id: string; name: string; plan: string; seatsUsed: number; seatsTotal: number; renews: string };
 
 export const licenses: License[] = [
   { id: "lic_seats", name: "Platform seats", plan: "Enterprise", seatsUsed: 4, seatsTotal: 10, renews: "in 3 months" },
-  { id: "lic_runners", name: "Automation runners", plan: "Enterprise", seatsUsed: 3, seatsTotal: 5, renews: "in 3 months" },
+  { id: "lic_runners", name: "Workflow runners", plan: "Enterprise", seatsUsed: 3, seatsTotal: 5, renews: "in 3 months" },
   { id: "lic_api", name: "API access", plan: "Add-on", seatsUsed: 2, seatsTotal: 5, renews: "in 3 months" },
 ];
 
@@ -46,7 +46,7 @@ export type Policy = { id: string; name: string; description: string; scope: str
 
 export const policies: Policy[] = [
   { id: "pol_mfa", name: "Require MFA", description: "All members must sign in with two-factor authentication.", scope: "Workspace", enabled: true },
-  { id: "pol_public", name: "Restrict public automations", description: "Only admins can publish automations to Public.", scope: "Automations", enabled: true },
+  { id: "pol_public", name: "Restrict public workflows", description: "Only admins can publish workflows to Public.", scope: "Workflows", enabled: true },
   { id: "pol_secret", name: "Secret rotation", description: "Rotate credentials every 90 days.", scope: "Credentials", enabled: false },
   { id: "pol_approval", name: "Production run approval", description: "Runs against production require a second approver.", scope: "Execution", enabled: false },
 ];

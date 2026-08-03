@@ -544,7 +544,7 @@ function Chip({
 /** What a direction means in words. Names read alphabetically; everything else is
  *  a magnitude or a moment, where "most" and "newest" say more than "descending". */
 function directionLabel(sortId: string, dir: SortDir): string {
-  if (sortId === "name" || sortId === "automation" || sortId === "package")
+  if (sortId === "name" || sortId === "workflow" || sortId === "package")
     return dir === "asc" ? "A–Z" : "Z–A";
   if (sortId === "recent" || sortId === "id") return dir === "asc" ? "oldest" : "newest";
   return dir === "asc" ? "lowest" : "highest";

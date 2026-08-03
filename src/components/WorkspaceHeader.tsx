@@ -62,7 +62,7 @@ export function WorkspaceHeader() {
     clearControls,
     sectionTab,
     setView,
-    newAutomation,
+    newWorkflow,
   } = useStore();
 
   const definition = workspaceControls(view, sectionTab(view));
@@ -85,7 +85,7 @@ export function WorkspaceHeader() {
   // are wired here, so the descriptor stays presentation-only.
   const runAction = (id: string) => {
     if (id === "all-problems") setView("inbox");
-    if (id === "new-automation") newAutomation();
+    if (id === "new-workflow") newWorkflow();
   };
 
   const allowed = actions.filter((a) => !a.roles || a.roles.includes(role));

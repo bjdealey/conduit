@@ -65,7 +65,7 @@ export function CommandPalette() {
     const navDefs: [View, string][] = [
       ["activity", "Go to Activity"],
       ["inbox", "Go to Inbox"],
-      ["automations", "Go to Automations"],
+      ["workflows", "Go to Workflows"],
       ["manage", "Go to Manage"],
       ["users", "Go to Users"],
       // Administration is permission-gated: hidden from the palette for `user`.
