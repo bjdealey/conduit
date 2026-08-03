@@ -19,6 +19,7 @@ import { Switch } from "./Switch";
 import { num } from "../lib/format";
 import { isNarrowed, matchesQuery, passesFilter } from "../lib/workspace";
 import { TabStrip } from "./TabStrip";
+import { Chip } from "./Chip";
 
 const TABS = ["Users", "Roles", "Licenses", "Policies"] as const;
 type Tab = (typeof TABS)[number];
@@ -27,31 +28,17 @@ const ROLE_ACCENT: Record<Role, string> = { admin: "violet", developer: "blue", 
 const ROLES: Role[] = ["admin", "developer", "user"];
 
 function RoleChip({ role }: { role: Role }) {
-  const accent = ROLE_ACCENT[role];
   return (
-    <span
-      className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[0.72rem] font-medium capitalize"
-      style={{ background: `var(--${accent}-a3)`, color: `var(--${accent}-a11)` }}
-    >
-      <span className="size-1.5 shrink-0 rounded-full" style={{ background: `var(--${accent}-9)` }} />
+    <Chip tone={ROLE_ACCENT[role]} className="capitalize">
       {role}
-    </span>
+    </Chip>
   );
 }
 
 const STATUS_ACCENT: Record<PlatformUserStatus, string> = { Active: "grass", Invited: "amber", Suspended: "tomato" };
 
 function StatusChip({ status }: { status: PlatformUserStatus }) {
-  const accent = STATUS_ACCENT[status];
-  return (
-    <span
-      className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[0.72rem] font-medium"
-      style={{ background: `var(--${accent}-a3)`, color: `var(--${accent}-a11)` }}
-    >
-      <span className="size-1.5 shrink-0 rounded-full" style={{ background: `var(--${accent}-9)` }} />
-      {status}
-    </span>
-  );
+  return <Chip tone={STATUS_ACCENT[status]}>{status}</Chip>;
 }
 
 /** Inline role editor: an overlaid native <select> (admin only). */

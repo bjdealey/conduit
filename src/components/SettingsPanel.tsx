@@ -3,7 +3,10 @@ import { Building2, ChevronDown, Globe, Plus } from "lucide-react";
 import { useStore } from "../store";
 import { currentUser } from "../data/user";
 import { Switch } from "./Switch";
+import { DataTable, type Column } from "./DataTable";
+import { Button } from "./Button";
 import { SETTINGS_PAGES, DEFAULT_SETTINGS_PAGE } from "../data/settings";
+import type { Bot } from "@conduit/domain";
 
 /* ---------------------------------------------------------------------------
    Shared form primitives
@@ -53,14 +56,7 @@ function SecondaryButton({ children, icon }: { children: ReactNode; icon?: React
 }
 
 function GhostButton({ children }: { children: ReactNode }) {
-  return (
-    <button
-      type="button"
-      className="pressable focusable rounded-lg px-3 py-1.5 text-body-sm font-medium text-secondary-foreground transition-colors hover:bg-transparent-hover hover:text-primary-foreground"
-    >
-      {children}
-    </button>
-  );
+  return <Button variant="ghost">{children}</Button>;
 }
 
 /** Centred page column. */
@@ -338,6 +334,43 @@ const BOT_STATE_ACCENT: Record<string, string> = {
   Unknown: "var(--color-tertiary-foreground)",
 };
 
+/** The bots cache, rendered with the same table the Manage and Administration
+ *  pages use — so a record list reads identically wherever it appears, and the
+ *  rows carry real table semantics instead of being a grid of divs. */
+const BOT_COLUMNS: Column<Bot>[] = [
+  {
+    key: "title",
+    header: "Title",
+    render: (b) => <span className="truncate text-primary-foreground">{b.title}</span>,
+  },
+  {
+    key: "state",
+    header: "State",
+    width: "8rem",
+    render: (b) => (
+      <span className="flex items-center gap-1.5 text-secondary-foreground">
+        <span
+          className="size-1.5 shrink-0 rounded-full"
+          style={{ background: BOT_STATE_ACCENT[b.state] ?? BOT_STATE_ACCENT.Unknown }}
+        />
+        {b.state}
+      </span>
+    ),
+  },
+  {
+    key: "platform",
+    header: "Platform",
+    width: "12rem",
+    render: (b) => <span className="truncate font-departure-mono text-tertiary-foreground">{b.platform}</span>,
+  },
+  {
+    key: "owner",
+    header: "Owner",
+    width: "10rem",
+    render: (b) => <span className="truncate text-secondary-foreground">{b.owner}</span>,
+  },
+];
+
 function IntegrationsPage() {
   const { bots, capabilities, dataSource, integrationError } = useStore();
   const live = dataSource === "live";
@@ -392,32 +425,7 @@ function IntegrationsPage() {
       <Divider />
       <div className="flex flex-col gap-2 py-4">
         <span className="text-body-sm font-medium text-primary-foreground">Bots ({bots.length})</span>
-        <div className="flex flex-col overflow-hidden rounded-lg border" style={{ borderColor: "var(--color-border-default)" }}>
-          <div
-            className="grid gap-3 bg-component px-3 py-2 text-body-sm text-tertiary-foreground"
-            style={{ gridTemplateColumns: "2fr 1fr 1.5fr 1fr" }}
-          >
-            <span>Title</span>
-            <span>State</span>
-            <span>Platform</span>
-            <span>Owner</span>
-          </div>
-          {bots.map((b) => (
-            <div
-              key={b.id}
-              className="grid items-center gap-3 px-3 py-2 text-body-sm"
-              style={{ gridTemplateColumns: "2fr 1fr 1.5fr 1fr" }}
-            >
-              <span className="truncate text-primary-foreground">{b.title}</span>
-              <span className="flex items-center gap-1.5 text-secondary-foreground">
-                <span className="size-1.5 rounded-full" style={{ background: BOT_STATE_ACCENT[b.state] ?? BOT_STATE_ACCENT.Unknown }} />
-                {b.state}
-              </span>
-              <span className="truncate font-departure-mono text-tertiary-foreground">{b.platform}</span>
-              <span className="truncate text-secondary-foreground">{b.owner}</span>
-            </div>
-          ))}
-        </div>
+        <DataTable columns={BOT_COLUMNS} rows={bots} empty="No bots reported by any connector." />
         <span className="text-body-sm text-tertiary-foreground">
           Namespaced by connector instance ({dataSource === "live" ? "live connectors" : "the local seed connector"}).
         </span>

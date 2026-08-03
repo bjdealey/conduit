@@ -22,6 +22,7 @@ import { SplitView, Pane, DetailPane, ContextPane, EmptyDetail, PANE_WIDTH } fro
 import { isNarrowed, matchesQuery, ordered, passesFilter, resolveSort, type WorkspaceState } from "../lib/workspace";
 import { workspaceControls } from "../data/workspaceControls";
 import { TabStrip } from "./TabStrip";
+import { Button } from "./Button";
 
 /* ------------------------------------------------------------------ shared bits */
 
@@ -409,23 +410,19 @@ function AutomationDetail({ automation, onSelectAutomation }: { automation: Auto
               <p className="text-body-base text-secondary-foreground">{automation.description}</p>
             </div>
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                className="pressable focusable inline-flex w-fit items-center gap-1.5 rounded-lg px-3 py-1.5 text-body-sm font-medium"
-                style={{ background: "var(--color-brand-solid)", color: "#fff" }}
-              >
+              <Button variant="solid" className="w-fit">
                 <Play size={14} strokeWidth={2} />
                 Run now
-              </button>
+              </Button>
               {role !== "user" && (
-                <button
-                  type="button"
+                <Button
+                  variant="outlined"
                   onClick={() => editAutomation(automation.id)}
-                  className="pressable focusable inline-flex w-fit items-center gap-1.5 rounded-lg border-border-default border-[0.5px] px-3 py-1.5 text-body-sm text-secondary-foreground transition-colors hover:bg-transparent-hover hover:text-primary-foreground"
+                  className="w-fit"
                 >
                   <Pencil size={14} strokeWidth={1.8} />
                   Edit flow
-                </button>
+                </Button>
               )}
             </div>
           </div>
