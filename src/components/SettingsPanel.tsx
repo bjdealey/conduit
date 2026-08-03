@@ -4,6 +4,7 @@ import { useStore } from "../store";
 import { currentUser } from "../data/user";
 import { Switch } from "./Switch";
 import { DataTable, type Column } from "./DataTable";
+import { Button } from "./Button";
 import { SETTINGS_PAGES, DEFAULT_SETTINGS_PAGE } from "../data/settings";
 import type { Bot } from "@conduit/domain";
 
@@ -55,14 +56,7 @@ function SecondaryButton({ children, icon }: { children: ReactNode; icon?: React
 }
 
 function GhostButton({ children }: { children: ReactNode }) {
-  return (
-    <button
-      type="button"
-      className="pressable focusable rounded-lg px-3 py-1.5 text-body-sm font-medium text-secondary-foreground transition-colors hover:bg-transparent-hover hover:text-primary-foreground"
-    >
-      {children}
-    </button>
-  );
+  return <Button variant="ghost">{children}</Button>;
 }
 
 /** Centred page column. */

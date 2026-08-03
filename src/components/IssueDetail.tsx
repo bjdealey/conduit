@@ -8,6 +8,7 @@ import { ActivityFeed } from "./ActivityFeed";
 import { ImpactChart } from "./ImpactChart";
 import { DetailPane, ContextPane } from "./layout/SplitView";
 import { TabStrip } from "./TabStrip";
+import { Button } from "./Button";
 
 const TABS = ["Activity", "Sessions", "Evidence"] as const;
 type Tab = (typeof TABS)[number];
@@ -46,15 +47,14 @@ function Composer({ onSend }: { onSend: (text: string) => void }) {
           className="w-full bg-transparent text-body-sm text-primary-foreground outline-none placeholder:text-tertiary-foreground"
         />
         <div className="flex justify-end">
-          <button
-            type="button"
+          <Button
+            variant="solid"
             onClick={send}
             disabled={!draft.trim()}
-            className="pressable focusable rounded-lg px-3 py-1 text-body-sm font-medium transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
-            style={{ background: "var(--color-brand-solid)", color: "#fff" }}
+            className="transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
           >
             Send
-          </button>
+          </Button>
         </div>
       </div>
     </div>
