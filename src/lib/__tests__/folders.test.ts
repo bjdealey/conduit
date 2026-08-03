@@ -21,8 +21,20 @@ describe("folder tree helpers", () => {
   it("lists one visibility tree's roots when asked for the top level", () => {
     expect(childFolders(folders, null, "public").map((f) => f.id)).toEqual(["pub-root"]);
     expect(childFolders(folders, null, "private").map((f) => f.id)).toEqual(["prv-root"]);
-    // Without a visibility, the top level is every root, both trees.
-    expect(childFolders(folders, null).map((f) => f.id)).toEqual(["pub-root", "prv-root"]);
+    // Without a visibility, the top level is every root, both trees — by name, so
+    // "My workflows" precedes "Shared" whatever order the seed happens to list.
+    expect(childFolders(folders, null).map((f) => f.name)).toEqual(["My workflows", "Shared"]);
+  });
+
+  it("sorts siblings by name rather than by insertion order", () => {
+    const added = [...folders, { id: "fld_1", name: "Alerts", parentId: "pub-root", visibility: "public" as const }];
+    expect(childFolders(added, "pub-root").map((f) => f.name)).toEqual([
+      "Alerts",
+      "Automation Anywhere",
+      "Billing",
+      "Monitoring",
+      "Onboarding",
+    ]);
   });
 
   it("walks ancestry outermost-first, and renders it as a path", () => {

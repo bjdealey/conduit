@@ -88,6 +88,18 @@ const mirrorRefusal = (workflow: Workflow) =>
     `"${workflow.name}" is mirrored from another platform. It is authored there, and the next sync would overwrite anything changed here.`,
   );
 
+/**
+ * Why a node can't be edited, or null when it can.
+ *
+ * One gate for every surface that needs to ask — the row menu's explain panel,
+ * whether a row is draggable, whether a keyboard shortcut fires. Asking the same
+ * question three ways is how a menu ends up offering an action the rules refuse.
+ */
+export function readOnlyReason(tree: LibraryTree, node: LibraryNode): string | null {
+  const mirror = mirroredWorkflow(tree, node);
+  return mirror ? mirrorRefusal(mirror).reason : null;
+}
+
 /** Everything sitting directly in a destination, whatever its kind — one flat
  *  namespace, because two rows with one name in one folder is a tree nobody can
  *  read out loud. */
@@ -188,6 +200,9 @@ export function renameNode(tree: LibraryTree, node: LibraryNode, raw: string): E
  *  the node is a folder. This is what the move menu is built from, so a
  *  destination the rules would refuse is never offered in the first place. */
 export function moveTargets(tree: LibraryTree, node: LibraryNode): MoveTarget[] {
+  // A node that can't be edited has nowhere to go, and saying so here means the
+  // menu and the drag both learn it from the same call.
+  if (readOnlyReason(tree, node)) return [];
   const here = locationOf(tree, node);
   const forbidden = node.kind === "folder" ? new Set(subtreeIds(tree.folders, node.id)) : new Set<string>();
   const folders: MoveTarget[] = tree.folders

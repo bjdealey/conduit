@@ -11,11 +11,15 @@ import type { Folder, Visibility, Workflow } from "../data/types";
    ============================================================================= */
 
 /** Direct children of a folder — or the roots of one visibility tree, when
- *  `parentId` is null and a `visibility` is given. */
+ *  `parentId` is null and a `visibility` is given.
+ *
+ *  Sorted by name, because the alternative is insertion order: a folder created
+ *  today lands at the bottom of its siblings rather than where its name says it
+ *  belongs, and the same list is what the move menu is built from. */
 export function childFolders(folders: Folder[], parentId: string | null, visibility?: Visibility): Folder[] {
-  return folders.filter(
-    (f) => f.parentId === parentId && (visibility === undefined || f.visibility === visibility),
-  );
+  return folders
+    .filter((f) => f.parentId === parentId && (visibility === undefined || f.visibility === visibility))
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /** A folder and its ancestors, outermost first. Empty when the id is unknown. */

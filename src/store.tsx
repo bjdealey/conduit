@@ -100,8 +100,10 @@ type Store = {
   /** The workflow open in the builder, or null when it isn't showing. The
    *  builder is a full-screen mode over the workspace, not a nav destination. */
   draft: WorkflowDraft | null;
-  /** Open the builder on a blank workflow. */
-  newWorkflow: () => void;
+  /** Open the builder on a blank workflow, filed in `folderId` — the folder the
+   *  library has open, so creating lands where you are rather than always in
+   *  Drafts. Omitted, it falls back to Drafts. */
+  newWorkflow: (folderId?: string) => void;
   /** Open the builder on an existing workflow. */
   editWorkflow: (id: string) => void;
   updateDraft: (patch: Partial<WorkflowDraft>) => void;
@@ -174,6 +176,19 @@ type Store = {
   /** What deleting a node would take with it — the folder's whole subtree, not
    *  just the row. */
   countUnder: (node: LibraryNode) => { folders: number; workflows: number; files: number };
+  /** Which branches are open. Persisted, because a tree that re-expands itself on
+   *  every reload is a tree you re-collapse on every reload. Keyed by folder id,
+   *  plus `vis:public` / `vis:private` for the two section headers. */
+  isExpanded: (id: string) => boolean;
+  toggleExpanded: (id: string) => void;
+  /** Open a branch without closing it if it already is — what selecting or
+   *  creating inside it needs. */
+  expand: (id: string) => void;
+  /** The last library edit, if it can still be taken back. One level: the tree is
+   *  small enough that a deep history is a feature nobody asked for, and a delete
+   *  you can't reverse is the actual problem. */
+  undoable: { label: string } | null;
+  undo: () => void;
   selectedRunnerId: string | null;
   selectRunner: (id: string | null) => void;
   /** Run opened from the Activity timeline. Null = the timeline itself is showing
@@ -272,6 +287,31 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(seedWorkflows[0]?.id ?? null);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
+  // Which branches are open. Nothing stored yet means everything open — the shape
+  // of the library is the first thing worth seeing.
+  const [expanded, setExpandedState] = useState<Set<string>>(() => {
+    const stored = read("tree-expanded", "");
+    if (stored === "") return new Set(["vis:public", "vis:private", ...seedFolders.map((f) => f.id)]);
+    try {
+      return new Set<string>(JSON.parse(stored));
+    } catch {
+      return new Set(["vis:public", "vis:private", ...seedFolders.map((f) => f.id)]);
+    }
+  });
+  const persistExpanded = (next: Set<string>) => {
+    setExpandedState(next);
+    write("tree-expanded", JSON.stringify([...next]));
+  };
+  // One step of history: the tree as it was, plus what was open in it, so undoing
+  // a delete puts back the thing you were looking at and not just the row.
+  const [undoStack, setUndoStack] = useState<
+    | {
+        label: string;
+        tree: LibraryTree;
+        selection: { workflow: string | null; folder: string | null; file: string | null };
+      }
+    | null
+  >(null);
   const [selectedRunnerId, setSelectedRunnerId] = useState<string | null>(runners[0]?.id ?? null);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [controlState, setControlState] = useState<Partial<Record<View, WorkspaceState>>>({});
@@ -422,6 +462,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     record: { category: AuditCategory; action: string; target: string; detail?: string },
   ): string | null => {
     if (!result.ok) return result.reason;
+    // Snapshot before writing. The edits are pure and return a *new* tree, so the
+    // one they were handed is still intact and is the whole of what undo needs.
+    setUndoStack({
+      label: `${record.action.charAt(0).toUpperCase()}${record.action.slice(1)} ${record.target}`,
+      tree,
+      selection: { workflow: selectedWorkflowId, folder: selectedFolderId, file: selectedFileId },
+    });
     setFolders(result.tree.folders);
     setWorkflows(result.tree.workflows);
     setFiles(result.tree.files);
@@ -457,6 +504,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const create = (made: CreateResult, record: { action: string; target: string }): { id: string } | { reason: string } => {
     if (!made.ok) return { reason: made.reason };
+    setUndoStack({
+      label: `Created ${record.target}`,
+      tree,
+      selection: { workflow: selectedWorkflowId, folder: selectedFolderId, file: selectedFileId },
+    });
     setFolders(made.tree.folders);
     setWorkflows(made.tree.workflows);
     setFiles(made.tree.files);
@@ -478,8 +530,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // New work lands in the private Drafts folder. The signed-in demo account
     // isn't one of the team members, so ownership defaults to the first and is
     // editable in the builder.
-    newWorkflow: () => {
-      setDraft(blankDraft(members[0]?.id ?? "", "prv-drafts"));
+    newWorkflow: (folderId) => {
+      // Somewhere that still exists, else Drafts — a folder id from a stale
+      // selection would file the draft nowhere the tree can show it.
+      const home = folderId && folders.some((f) => f.id === folderId) ? folderId : "prv-drafts";
+      setDraft(blankDraft(members[0]?.id ?? "", home));
       if (view !== "builder") setSettingsReturn(view);
       setViewRaw("builder");
     },
@@ -668,6 +723,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       });
     },
     countUnder: (node) => countUnderNode(tree, node),
+    isExpanded: (id) => expanded.has(id),
+    toggleExpanded: (id) => {
+      const next = new Set(expanded);
+      next.has(id) ? next.delete(id) : next.add(id);
+      persistExpanded(next);
+    },
+    expand: (id) => {
+      if (expanded.has(id)) return;
+      persistExpanded(new Set(expanded).add(id));
+    },
+    undoable: undoStack ? { label: undoStack.label } : null,
+    undo: () => {
+      if (!undoStack) return;
+      setFolders(undoStack.tree.folders);
+      setWorkflows(undoStack.tree.workflows);
+      setFiles(undoStack.tree.files);
+      setSelectedWorkflowId(undoStack.selection.workflow);
+      setSelectedFolderId(undoStack.selection.folder);
+      setSelectedFileId(undoStack.selection.file);
+      // The trail is append-only: taking an edit back is a new entry, never the
+      // removal of the one it reverses.
+      appendAudit({ category: "lifecycle", action: "undid", target: undoStack.label.toLowerCase() });
+      setUndoStack(null);
+    },
     selectedRunnerId,
     selectRunner: setSelectedRunnerId,
     selectedRunId,
