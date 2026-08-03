@@ -12,11 +12,18 @@ import {
   Workflow as WorkflowIcon,
 } from "lucide-react";
 import { useStore } from "../store";
-import { WORKFLOW_STATUSES, availableTransitions, explainRequirements } from "@conduit/domain";
+import {
+  WORKFLOW_STATUSES,
+  availableTransitions,
+  explainRequirements,
+  hasUnpublishedChanges,
+  publishedVersion,
+} from "@conduit/domain";
 import { PLATFORM_LABEL } from "../data/types";
 import type { Workflow, WorkflowStatus, Visibility } from "../data/types";
 import { folders as allFolders } from "../data/workflows";
 import { Avatar } from "./Avatar";
+import { Chip } from "./Chip";
 import { WORKFLOW_STATUS_ACCENT, WorkflowStatusChip } from "./Badges";
 import { RunRow } from "./RunRow";
 import { minutesAgo, num } from "../lib/format";
@@ -308,7 +315,7 @@ function WorkflowLibrary({
 
 /* ---------------------------------------------------------------------- detail */
 
-const DETAIL_TABS = ["History", "Dependencies"] as const;
+const DETAIL_TABS = ["History", "Versions", "Dependencies"] as const;
 type DetailTab = (typeof DETAIL_TABS)[number];
 
 function MetaRow({ label, children }: { label: string; children: ReactNode }) {
@@ -332,7 +339,11 @@ function WorkflowDetail({ workflow, onSelectWorkflow }: { workflow: Workflow; on
       <DetailPane>
         <TabStrip
           ariaLabel="Workflow detail"
-          segments={DETAIL_TABS.map((t) => ({ id: t, label: t, badge: t === "History" ? runs.length : undefined }))}
+          segments={DETAIL_TABS.map((t) => ({
+          id: t,
+          label: t,
+          badge: t === "History" ? runs.length : t === "Versions" ? workflow.versions.length : undefined,
+        }))}
           value={tab}
           onChange={(id) => setTab(id as DetailTab)}
         />
@@ -344,6 +355,38 @@ function WorkflowDetail({ workflow, onSelectWorkflow }: { workflow: Workflow; on
             ) : (
               runs.map((r) => <RunRow key={r.id} run={r} />)
             )}
+          </div>
+        ) : tab === "Versions" ? (
+          <div key="versions" className="animate-in fade-in-0 duration-200 ease-out scrollbar-none flex-1 overflow-y-auto px-6 py-6">
+            <div className="mx-auto flex max-w-xl flex-col gap-4">
+              {hasUnpublishedChanges(workflow.versions) && publishedVersion(workflow.versions) && (
+                <p className="rounded-xl px-3 py-2 text-body-sm" style={{ background: "var(--amber-a3)", color: "var(--amber-a11)" }}>
+                  Edited since it was last published. v{publishedVersion(workflow.versions)!.version} is what
+                  runs; the newer version carries no approval yet.
+                </p>
+              )}
+              <ol className="flex flex-col rounded-xl border-border-default border-[0.5px] bg-page px-4 shadow-default">
+                {[...workflow.versions].reverse().map((v, i, all) => (
+                  <li
+                    key={v.version}
+                    className={"flex items-center gap-3 py-3 border-border-default " + (i < all.length - 1 ? "border-b-[0.5px]" : "")}
+                  >
+                    <span className="w-8 shrink-0 font-departure-mono text-[0.7rem] text-tertiary-foreground">
+                      v{v.version}
+                    </span>
+                    <div className="flex min-w-0 flex-1 flex-col leading-tight">
+                      <span className="truncate text-body-sm text-primary-foreground">{v.summary}</span>
+                      <span className="truncate text-[0.72rem] text-tertiary-foreground">
+                        {v.authoredBy} · {v.authoredAt}
+                        {v.approvedBy ? ` · approved by ${v.approvedBy}` : ""}
+                      </span>
+                    </div>
+                    {v.publishedAt && <Chip tone="grass" mono>published</Chip>}
+                    {!v.publishedAt && v.approvedBy && <Chip tone="cyan" mono>approved</Chip>}
+                  </li>
+                ))}
+              </ol>
+            </div>
           </div>
         ) : (
           <div key="deps" className="animate-in fade-in-0 duration-200 ease-out scrollbar-none flex-1 overflow-y-auto px-6 py-6">

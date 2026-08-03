@@ -1,5 +1,12 @@
 import { ACTIONS, actionById, actionsByPackage, defaultConfig, effectiveRequirements, packagesForSteps, type StepAction } from "../data/actions";
-import { DEFAULT_REQUIREMENTS, pickRunner, type Runner } from "@conduit/domain";
+import {
+  CURRENT_SCHEMA_VERSION,
+  DEFAULT_REQUIREMENTS,
+  nextVersion,
+  pickRunner,
+  type Runner,
+  type WorkflowVersion,
+} from "@conduit/domain";
 import type { Workflow, WorkflowDraft, WorkflowStep, Run } from "../data/types";
 import { workspaceControls } from "../data/workspaceControls";
 import { matchesQuery, ordered, passesFilter, resolveSort, type WorkspaceState } from "./workspace";
@@ -54,6 +61,8 @@ export function blankDraft(ownerId: string, folderId: string): WorkflowDraft {
     platform: "conduit",
     migration: "Migrated",
     requirements: { ...DEFAULT_REQUIREMENTS },
+    schemaVersion: CURRENT_SCHEMA_VERSION,
+    versions: [],
     trigger: { kind: "Manual", detail: "Owner and admins" },
     steps: [],
     runCount: 0,
@@ -117,9 +126,36 @@ export function draftProblems(draft: WorkflowDraft): string[] {
  * `requirements` is raised to the floor its steps impose, so a flow can never be
  * placed on a runner that can't actually carry it.
  */
+/** A one-line summary of what this version is, for the history list. */
+function summarise(draft: WorkflowDraft): string {
+  const steps = `${draft.steps.length} step${draft.steps.length === 1 ? "" : "s"}`;
+  return draft.versions.length === 0 ? `First version — ${steps}` : `Edited — ${steps}`;
+}
+
+/**
+ * Append a new version to the history.
+ *
+ * Every save cuts one. That looks noisy until the alternative is considered: if
+ * saving mutates the approved version in place, an approval silently comes to cover
+ * text nobody read, which is precisely what the review lifecycle exists to prevent.
+ */
+export function cutVersion(history: WorkflowVersion[], authoredBy: string, summary: string): WorkflowVersion[] {
+  return [
+    ...history,
+    {
+      version: nextVersion(history),
+      authoredBy,
+      authoredAt: "just now",
+      summary,
+      schemaVersion: CURRENT_SCHEMA_VERSION,
+    },
+  ];
+}
+
 export function commitDraft(
   workflows: Workflow[],
   draft: WorkflowDraft,
+  author: string,
 ): { workflows: Workflow[]; id: string } {
   const { isNew, ...rest } = draft;
   const id = isNew ? workflowId(draft.name, workflows.map((a) => a.id)) : draft.id;
@@ -129,6 +165,8 @@ export function commitDraft(
     name: draft.name.trim() || "Untitled workflow",
     packages: packagesForSteps(draft.steps),
     requirements: effectiveRequirements(draft.requirements, draft.steps),
+    schemaVersion: CURRENT_SCHEMA_VERSION,
+    versions: cutVersion(draft.versions, author, summarise(draft)),
     updatedAgo: "just now",
   };
   return {

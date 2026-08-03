@@ -50,3 +50,13 @@ export {
   permissionsOf,
   transitionsFrom,
 } from "./review.ts";
+export type { StoredWorkflow, WorkflowVersion } from "./version.ts";
+export {
+  CURRENT_SCHEMA_VERSION,
+  hasUnpublishedChanges,
+  latestVersion,
+  migrateWorkflow,
+  needsMigration,
+  nextVersion,
+  publishedVersion,
+} from "./version.ts";

@@ -1,6 +1,6 @@
 /** Domain model for the Conduit platform prototype. */
 
-import type { Role, WorkflowRequirements, WorkflowStatus } from "@conduit/domain";
+import type { Role, WorkflowRequirements, WorkflowStatus, WorkflowVersion } from "@conduit/domain";
 
 export type { Role, WorkflowStatus };
 
@@ -178,6 +178,12 @@ export type Workflow = {
    *  Declared here and raised on save to at least what its steps require, so a flow
    *  can't quietly need more than it admits to. */
   requirements: WorkflowRequirements;
+  /** The schema this flow is stored in. Read through `migrateWorkflow` before use,
+   *  so a flow written by an older build still opens. */
+  schemaVersion: number;
+  /** Editorial history, oldest first. A review approves a *version*, and a publish
+   *  publishes one — without this, an approval attaches to a moving target. */
+  versions: WorkflowVersion[];
   /** Who submitted it for review, and when. Absent until it is first submitted. */
   submittedBy?: string;
   submittedAt?: string;

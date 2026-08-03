@@ -1,5 +1,5 @@
 import type { ActivityEvent, Workflow, WorkflowTrigger, Folder, MigrationState, Run } from "./types";
-import type { WorkflowRequirements } from "@conduit/domain";
+import { CURRENT_SCHEMA_VERSION, type WorkflowRequirements, type WorkflowVersion } from "@conduit/domain";
 
 /**
  * Seed data for the workflow library — the first-class entity. Workflows live
@@ -349,6 +349,50 @@ export const runs: Run[] = [
 
 /* ------------------------------------------------------------------- workflows */
 
+/** A seed row before its version history is derived. */
+type Authored = Omit<Workflow, "schemaVersion" | "versions">;
+
+/**
+ * The editorial history a row of this status would plausibly have.
+ *
+ * Derived rather than hand-written into eighteen literals: a published workflow has
+ * an approved, published v1; one in review has a v1 awaiting a verdict; one that came
+ * back for changes has a v2 the author cut in response. Keeping the derivation here
+ * means the seed can't drift into a state the lifecycle would never produce — a
+ * published workflow with no approval, say.
+ */
+function historyFor(w: Authored): WorkflowVersion[] {
+  const base: WorkflowVersion = {
+    version: 1,
+    authoredBy: w.ownerId,
+    authoredAt: w.updatedAgo,
+    summary: `First version — ${w.steps.length} step${w.steps.length === 1 ? "" : "s"}`,
+    schemaVersion: CURRENT_SCHEMA_VERSION,
+  };
+  switch (w.status) {
+    case "Published":
+    case "Paused":
+      return [{ ...base, approvedBy: w.reviewedBy ?? "ls", approvedAt: w.reviewedAt ?? w.updatedAgo, publishedAt: w.lastRunAt }];
+    case "Approved":
+      return [{ ...base, approvedBy: w.reviewedBy, approvedAt: w.reviewedAt }];
+    case "Changes requested":
+      // The author cut v2 in response to the review; v1 keeps the verdict it got.
+      return [
+        base,
+        {
+          version: 2,
+          authoredBy: w.ownerId,
+          authoredAt: w.updatedAgo,
+          summary: `Reworked after review — ${w.steps.length} steps`,
+          schemaVersion: CURRENT_SCHEMA_VERSION,
+        },
+      ];
+    default:
+      return [base];
+  }
+}
+
+
 /**
  * An workflow mirrored from a connected platform by its connector.
  *
@@ -366,7 +410,7 @@ function mirrored(
   requirements: WorkflowRequirements,
   migration: MigrationState,
   stats: { runCount: number; successRate: number; lastRunAt: string; trigger: WorkflowTrigger },
-): Workflow {
+): Authored {
   return {
     id,
     name,
@@ -394,7 +438,7 @@ const headed: WorkflowRequirements = { auth: "none", ui: "headed", platform: "wi
 const windowsAuth: WorkflowRequirements = { auth: "windows-integrated", ui: "none", platform: "windows" };
 const apiFirst = (auth: WorkflowRequirements["auth"]): WorkflowRequirements => ({ auth, ui: "none", platform: "any" });
 
-export const workflows: Workflow[] = [
+const library: Authored[] = [
   {
     id: "wf_reset_audit",
     name: "Password reset link audit",
@@ -623,3 +667,10 @@ export const workflows: Workflow[] = [
   mirrored("wf_aa_asset_register", "Asset register sync", "Syncs the internal asset register, currently behind Windows-integrated auth.", "jk", windowsAuth, "Not started", { runCount: 970, successRate: 0.95, lastRunAt: "an hour ago", trigger: schedule("Every 4 hours") }),
   mirrored("wf_aa_fx_rates", "FX rate refresh", "Pulls daily FX rates from a vendor API. Already API-shaped — ready to move.", "ps", apiFirst("api-key"), "Not started", { runCount: 730, successRate: 0.99, lastRunAt: "5 hours ago", trigger: schedule("Daily at 05:00") }),
 ];
+
+/** The seed library, each row carrying the version history its status implies. */
+export const workflows: Workflow[] = library.map((w) => ({
+  ...w,
+  schemaVersion: CURRENT_SCHEMA_VERSION,
+  versions: historyFor(w),
+}));

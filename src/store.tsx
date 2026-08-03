@@ -17,6 +17,7 @@ import {
   Capability,
   can,
   canTransition,
+  latestVersion,
   transitionsFrom,
   type Permission,
   type ReviewAction,
@@ -354,7 +355,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     updateDraft: (patch) => setDraft((prev) => (prev ? { ...prev, ...patch } : prev)),
     saveDraft: () => {
       if (!draft) return null;
-      const { workflows: next, id } = commitDraft(workflows, draft);
+      const { workflows: next, id } = commitDraft(workflows, draft, currentUser.name);
       setWorkflows(next);
       setSelectedWorkflowId(id);
       setDraft(null);
@@ -363,7 +364,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     },
     testRunDraft: () => {
       if (!draft) return;
-      const { workflows: next, id } = commitDraft(workflows, draft);
+      const { workflows: next, id } = commitDraft(workflows, draft, currentUser.name);
       const saved = next.find((a) => a.id === id)!;
       setWorkflows(next.map((a) => (a.id === id ? { ...a, runCount: a.runCount + 1, lastRunAt: "just now" } : a)));
       setRuns((prev) => [testRun(saved, currentUser.name, prev, runners), ...prev]);
@@ -410,7 +411,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               : action === "withdraw"
                 ? {}
                 : { reviewedBy: who, reviewedAt: "just now", reviewNote: note ?? w.reviewNote };
-          return { ...w, status: to, updatedAgo: "just now", ...stamped };
+          // An approval or a publish attaches to the version it read, not to the
+          // workflow — otherwise a later edit inherits a decision nobody made about it.
+          const target = latestVersion(w.versions)?.version;
+          const versions =
+            target === undefined
+              ? w.versions
+              : w.versions.map((v) =>
+                  v.version !== target
+                    ? v
+                    : action === "approve"
+                      ? { ...v, approvedBy: who, approvedAt: "just now" }
+                      : action === "publish"
+                        ? { ...v, publishedAt: "just now" }
+                        : v,
+                );
+          return { ...w, status: to, updatedAgo: "just now", versions, ...stamped };
         }),
       );
     },
