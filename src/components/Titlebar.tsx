@@ -18,7 +18,8 @@ import { Avatar } from "./Avatar";
  *  Switching to a non-list mode clears the open item so the board/grid shows (the
  *  detail returns only when you click into an item), matching the inbox. */
 function ViewModeSwitcher({ view }: { view: View }) {
-  const { layout, setLayout, select, selectUser, selectWorkflow, selectFolder, selectRunner, selectRun } = useStore();
+  const { layout, setLayout, select, selectUser, selectWorkflow, selectFolder, selectFile, selectRunner, selectRun } =
+    useStore();
   const modes = VIEW_MODES[view];
   if (!modes || modes.length < 2) return null;
   // Switching to the alternate layout clears every page's open item, so each page
@@ -28,6 +29,7 @@ function ViewModeSwitcher({ view }: { view: View }) {
     selectUser(null);
     selectWorkflow(null);
     selectFolder(null);
+    selectFile(null);
     selectRunner(null);
     selectRun(null);
   };
@@ -102,7 +104,10 @@ export function Titlebar() {
     selectWorkflow,
     selectedFolderId,
     selectFolder,
+    selectedFileId,
+    selectFile,
     folders,
+    files,
     selectedRunnerId,
     selectRunner,
     selectedRunId,
@@ -123,8 +128,10 @@ export function Titlebar() {
     : null;
   const openRunner = selectedRunnerId ? runners.find((r) => r.id === selectedRunnerId) ?? null : null;
   // A folder's trail is its ancestry, so the breadcrumb walks back up the library
-  // tree the same way the tree walks down it.
-  const folderCrumbs = selectedFolderId ? folderTrail(folders, selectedFolderId) : [];
+  // tree the same way the tree walks down it. An open file gets the same trail,
+  // with the file itself as the last (inert) crumb.
+  const openFile = selectedFileId ? files.find((f) => f.id === selectedFileId) ?? null : null;
+  const folderCrumbs = folderTrail(folders, selectedFolderId ?? openFile?.folderId ?? "");
   // Only the Activity timeline opens a run full-pane; the list layout expands runs
   // in place, so a stale selection never leaks into its breadcrumb.
   const openRun =
@@ -147,17 +154,17 @@ export function Titlebar() {
       ? [{ label: "Users", onClick: () => selectUser(null) }, { label: openUser.name }]
       : [{ label: "Users" }];
   } else if (view === "workflows") {
-    hasContext = !!openWorkflow || folderCrumbs.length > 0;
+    hasContext = !!openWorkflow || !!openFile || folderCrumbs.length > 0;
+    // Every ancestor is a crumb you can climb to; the Breadcrumb renders the last
+    // one inert, so whatever is open is the only dead label.
+    const trail = folderCrumbs.map((f) => ({ label: f.name, onClick: () => selectFolder(f.id) }));
     items = openWorkflow
       ? [{ label: "Workflows", onClick: () => selectWorkflow(null) }, { label: openWorkflow.name }]
-      : folderCrumbs.length > 0
-        ? [
-            { label: "Workflows", onClick: () => selectFolder(null) },
-            // Every ancestor is a crumb you can climb to; the Breadcrumb renders
-            // the last one inert, so the open folder is the only dead label.
-            ...folderCrumbs.map((f) => ({ label: f.name, onClick: () => selectFolder(f.id) })),
-          ]
-        : [{ label: "Workflows" }];
+      : openFile
+        ? [{ label: "Workflows", onClick: () => selectFile(null) }, ...trail, { label: openFile.name }]
+        : trail.length > 0
+          ? [{ label: "Workflows", onClick: () => selectFolder(null) }, ...trail]
+          : [{ label: "Workflows" }];
   } else if (view === "settings") {
     const pageId = subview ?? DEFAULT_SETTINGS_PAGE;
     const page = SETTINGS_PAGES.find((p) => p.id === pageId);

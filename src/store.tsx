@@ -11,13 +11,30 @@ import { palettes, type Palette } from "./data/palettes";
 import { VIEW_MODES } from "./data/viewLayout";
 import { applyBrand } from "./lib/palette";
 import { isDark, setTheme } from "./lib/theme";
-import type { Workflow, WorkflowDraft, Folder, Issue, Member, Priority, Role, Run, Status } from "./data/types";
+import { files as seedFiles } from "./data/files";
+import type { Workflow, WorkflowDraft, Folder, Issue, LibraryFile, Member, Priority, Role, Run, Status } from "./data/types";
+import {
+  countUnder as countUnderNode,
+  createFile,
+  createFolder,
+  deleteNode as deleteInTree,
+  freeName,
+  moveNode as moveInTree,
+  renameNode as renameInTree,
+  type CreateResult,
+  type EditResult,
+  type LibraryNode,
+  type LibraryTree,
+  type MoveTarget,
+} from "./lib/library";
 import { blankDraft, commitDraft, testRun } from "./lib/builder";
+import { subtreeIds } from "./lib/folders";
 import { ACTIONS, type StepAction } from "./data/actions";
 import {
   CAPABILITIES,
   Capability,
   REVIEW_ACTION_VERB,
+  type AuditCategory,
   can,
   canTransition,
   categoryOfReviewAction,
@@ -74,6 +91,9 @@ type Store = {
   /** Workflow library (first-class entity), its folder tree, and run history. */
   workflows: Workflow[];
   folders: Folder[];
+  /** The artefacts filed beside the workflows — connector configs, runbooks. Same
+   *  tree, same folders; they are simply not runnable. */
+  files: LibraryFile[];
   runs: Run[];
   workflowById: (id: string) => Workflow | undefined;
   runById: (id: string) => Run | undefined;
@@ -136,6 +156,24 @@ type Store = {
    *  and vice versa. */
   selectedFolderId: string | null;
   selectFolder: (id: string | null) => void;
+  /** File opened from the library tree. One of workflow / folder / file is open
+   *  at a time; selecting any of them closes the other two. */
+  selectedFileId: string | null;
+  selectFile: (id: string | null) => void;
+  /* ---- editing the library tree ----------------------------------------
+     Each returns null when the edit went through, or the reason it was refused —
+     the same words the UI puts on screen. The rules themselves live in
+     `src/lib/library.ts`; the store only applies the result and records it. */
+  renameNode: (node: LibraryNode, name: string) => string | null;
+  moveNode: (node: LibraryNode, target: MoveTarget) => string | null;
+  deleteNode: (node: LibraryNode) => string | null;
+  /** Create a folder / a file, and hand back its id so the caller can open it and
+   *  drop straight into renaming it. */
+  newFolder: (target: MoveTarget) => { id: string } | { reason: string };
+  newFile: (folderId: string, extension: string) => { id: string } | { reason: string };
+  /** What deleting a node would take with it — the folder's whole subtree, not
+   *  just the row. */
+  countUnder: (node: LibraryNode) => { folders: number; workflows: number; files: number };
   selectedRunnerId: string | null;
   selectRunner: (id: string | null) => void;
   /** Run opened from the Activity timeline. Null = the timeline itself is showing
@@ -223,12 +261,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // The library and its run history are editable in the prototype: the builder
   // writes workflows, and a test run appends to the stream.
   const [workflows, setWorkflows] = useState<Workflow[]>(seedWorkflows);
+  // The tree itself is editable now, so its folders and files are state rather
+  // than the seed constants they start from.
+  const [folders, setFolders] = useState<Folder[]>(seedFolders);
+  const [files, setFiles] = useState<LibraryFile[]>(seedFiles);
   const [runs, setRuns] = useState<Run[]>(seedRuns);
   const [draft, setDraft] = useState<WorkflowDraft | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(seedIssues[0]?.id ?? null);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(endUsers[0]?.id ?? null);
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(seedWorkflows[0]?.id ?? null);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
+  const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
   const [selectedRunnerId, setSelectedRunnerId] = useState<string | null>(runners[0]?.id ?? null);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [controlState, setControlState] = useState<Partial<Record<View, WorkspaceState>>>({});
@@ -348,11 +391,85 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  /* --------------------------------------------------------- the library tree */
+
+  // Append one entry to the trail. Append-only by construction — there is no
+  // update or delete here, and there should never be one.
+  const appendAudit = (entry: { category: AuditCategory; action: string; target: string; detail?: string }) =>
+    setAudit((prev) => {
+      const seq = `aud_${String(prev.length + 1).padStart(4, "0")}`;
+      return [
+        ...prev,
+        {
+          id: seq,
+          sourceId: seq,
+          platform: "conduit" as const,
+          connectorId: "seed",
+          actor: currentUser.name,
+          at: "just now",
+          ...entry,
+        },
+      ];
+    });
+
+  const tree: LibraryTree = { folders, workflows, files };
+
+  /** Apply an edit's result to the three collections, or hand back its refusal.
+   *  Nothing is written when an edit is refused, so a rejected rename can't leave
+   *  half a move behind. */
+  const applyEdit = (
+    result: EditResult,
+    record: { category: AuditCategory; action: string; target: string; detail?: string },
+  ): string | null => {
+    if (!result.ok) return result.reason;
+    setFolders(result.tree.folders);
+    setWorkflows(result.tree.workflows);
+    setFiles(result.tree.files);
+    appendAudit(record);
+    return null;
+  };
+
+  /** The label a node is known by in the trail — read before the edit, since a
+   *  rename is precisely the case where the old name is the informative one. */
+  const labelOf = (node: LibraryNode): string => {
+    if (node.kind === "folder") return folders.find((f) => f.id === node.id)?.name ?? node.id;
+    if (node.kind === "workflow") return workflows.find((w) => w.id === node.id)?.name ?? node.id;
+    return files.find((f) => f.id === node.id)?.name ?? node.id;
+  };
+
+  /** Drop a selection pointing at something that no longer exists. */
+  const forgetNode = (node: LibraryNode) => {
+    if (node.kind === "workflow" && selectedWorkflowId === node.id) setSelectedWorkflowId(null);
+    if (node.kind === "file" && selectedFileId === node.id) setSelectedFileId(null);
+    if (node.kind === "folder") {
+      // A cascade takes the open workflow or file with it, not just the folder.
+      if (selectedFolderId === node.id) setSelectedFolderId(null);
+      setSelectedWorkflowId((current) => (current && !workflowSurvives(node, current) ? null : current));
+      setSelectedFileId((current) => (current && !fileSurvives(node, current) ? null : current));
+    }
+  };
+  const doomedFolders = (node: LibraryNode) =>
+    node.kind === "folder" ? new Set(subtreeIds(folders, node.id)) : new Set<string>();
+  const workflowSurvives = (node: LibraryNode, id: string) =>
+    !doomedFolders(node).has(workflows.find((w) => w.id === id)?.folderId ?? "");
+  const fileSurvives = (node: LibraryNode, id: string) =>
+    !doomedFolders(node).has(files.find((f) => f.id === id)?.folderId ?? "");
+
+  const create = (made: CreateResult, record: { action: string; target: string }): { id: string } | { reason: string } => {
+    if (!made.ok) return { reason: made.reason };
+    setFolders(made.tree.folders);
+    setWorkflows(made.tree.workflows);
+    setFiles(made.tree.files);
+    appendAudit({ category: "lifecycle", ...record });
+    return { id: made.id };
+  };
+
   const value: Store = {
     issues,
     members,
     workflows,
-    folders: seedFolders,
+    folders,
+    files,
     runs,
     workflowById: (id) => workflows.find((a) => a.id === id),
     runById: (id) => runs.find((r) => r.id === id),
@@ -382,6 +499,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setWorkflows(next);
       setSelectedWorkflowId(id);
       setSelectedFolderId(null);
+      setSelectedFileId(null);
       setDraft(null);
       setViewRaw("workflows");
       return id;
@@ -394,6 +512,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setRuns((prev) => [testRun(saved, currentUser.name, prev, runners), ...prev]);
       setSelectedWorkflowId(id);
       setSelectedFolderId(null);
+      setSelectedFileId(null);
       setDraft(null);
       setViewRaw("activity");
     },
@@ -461,23 +580,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const moved = workflows.find((w) => w.id === id);
       if (moved && canTransition(role, moved.status, action)) {
         const version = latestVersion(moved.versions)?.version;
-        setAudit((prev) => {
-          const seq = `aud_${String(prev.length + 1).padStart(4, "0")}`;
-          return [
-            ...prev,
-            {
-              id: seq,
-              sourceId: seq,
-              platform: "conduit",
-              connectorId: "seed",
-              category: categoryOfReviewAction(action),
-              actor: currentUser.name,
-              action: REVIEW_ACTION_VERB[action],
-              target: version ? `${moved.name} v${version}` : moved.name,
-              at: "just now",
-              detail: note,
-            },
-          ];
+        appendAudit({
+          category: categoryOfReviewAction(action),
+          action: REVIEW_ACTION_VERB[action],
+          target: version ? `${moved.name} v${version}` : moved.name,
+          detail: note,
         });
       }
     },
@@ -491,13 +598,76 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // (the breadcrumb, a layout switch) leaves the other alone.
     selectWorkflow: (id) => {
       setSelectedWorkflowId(id);
-      if (id !== null) setSelectedFolderId(null);
+      if (id !== null) {
+        setSelectedFolderId(null);
+        setSelectedFileId(null);
+      }
     },
     selectedFolderId,
     selectFolder: (id) => {
       setSelectedFolderId(id);
-      if (id !== null) setSelectedWorkflowId(null);
+      if (id !== null) {
+        setSelectedWorkflowId(null);
+        setSelectedFileId(null);
+      }
     },
+    selectedFileId,
+    selectFile: (id) => {
+      setSelectedFileId(id);
+      if (id !== null) {
+        setSelectedWorkflowId(null);
+        setSelectedFolderId(null);
+      }
+    },
+    renameNode: (node, name) => {
+      const was = labelOf(node);
+      return applyEdit(renameInTree(tree, node, name), {
+        category: "lifecycle",
+        action: "renamed",
+        target: was,
+        detail: `to "${name.trim()}"`,
+      });
+    },
+    moveNode: (node, target) =>
+      applyEdit(moveInTree(tree, node, target), {
+        category: "lifecycle",
+        action: "moved",
+        target: labelOf(node),
+        detail:
+          target.kind === "root"
+            ? `to the top of ${target.visibility === "public" ? "Public" : "Private"}`
+            : `into ${folders.find((f) => f.id === target.id)?.name ?? target.id}`,
+      }),
+    deleteNode: (node) => {
+      const label = labelOf(node);
+      const under = countUnderNode(tree, node);
+      const refusal = applyEdit(deleteInTree(tree, node), {
+        // A deletion is the one library edit nobody can undo, so it files as
+        // governance rather than as routine tidying.
+        category: "governance",
+        action: "deleted",
+        target: label,
+        detail:
+          node.kind === "folder"
+            ? `${under.folders} folder${under.folders === 1 ? "" : "s"}, ${under.workflows} workflow${under.workflows === 1 ? "" : "s"}, ${under.files} file${under.files === 1 ? "" : "s"}`
+            : undefined,
+      });
+      if (refusal === null) forgetNode(node);
+      return refusal;
+    },
+    newFolder: (target) => {
+      const name = freeName(tree, target, "New folder");
+      return create(createFolder(tree, target, name), { action: "created folder", target: name });
+    },
+    newFile: (folderId, extension) => {
+      const target: MoveTarget = { kind: "folder", id: folderId };
+      const name = freeName(tree, target, "untitled", extension);
+      return create(createFile(tree, folderId, name, members[0]?.id ?? ""), {
+        action: "created file",
+        target: name,
+      });
+    },
+    countUnder: (node) => countUnderNode(tree, node),
     selectedRunnerId,
     selectRunner: setSelectedRunnerId,
     selectedRunId,

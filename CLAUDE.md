@@ -453,3 +453,49 @@ than stored — a stored flag goes stale the moment demand changes.
 
 **Not yet built after stage 8** (do not assume these exist): any real execution runtime — that is a
 separate artefact by design (see the framing at the top). Conduit dispatches and observes.
+
+## Implemented so far — stage 9: the library is a real tree
+
+Folders became destinations, then the tree became editable and mixed. Verified in a real browser
+(Chromium): rename / move / delete / create all drive end to end, 225 tests pass, no page errors.
+
+**Folders open.** A folder row carries two actions: the chevron expands it, the label opens it.
+Only the second is a selection, so expanding never changes the detail pane. `FolderDetail` counts
+the whole subtree but lists direct contents — a folder of subfolders still holds work, and "0" over
+five nested workflows would be a lie. The breadcrumb walks the ancestry back up, every crumb
+clickable. One thing is open at a time (workflow · folder · file), enforced in the store.
+
+**Files.** `LibraryFile` (`src/data/files.ts`) — XML configs and markdown documents filed in the
+same folders as the workflows, so the tree is genuinely mixed. **A file's kind is read from its
+extension, never stored** (`kindOfFile`), so a rename re-types it and the icon can't disagree with
+the label. Row icons say what a row *is*; the workflow status dot moved to the trailing cluster.
+`FileDetail` shows source, not a rendered preview — a second markdown implementation to keep honest
+is a cost the prototype gets nothing for.
+
+**Editing** (`src/lib/library.ts`, 28 tests). Rename / move / delete / create as pure functions over
+`{folders, workflows, files}`, returning a new tree or a refusal in the words the UI shows. Rules
+worth not re-deciding:
+- **Mirrored workflows are read-only.** They're authored on their platform and the next sync would
+  overwrite anything changed here, so the edit is refused rather than silently lost — and a folder
+  holding one can't be deleted either, or the cascade becomes a way round the rule. Their row menu
+  explains instead of offering items that always fail.
+- **A folder can't move into its own subtree.** That detaches the branch from every screen.
+  `moveTargets` is what the move menu is built from, so a destination the rules would refuse is
+  never offered — a test asserts every offered target is one `moveNode` accepts.
+- **A move inherits the destination's visibility, cascading through the subtree.** A private folder
+  holding public children lies about who can see what.
+- **Sibling names are unique per folder, case-insensitively, across all three kinds.** Two rows with
+  one name in one folder is a tree nobody can read out loud.
+- Ids come from `nextId` (derived from what's there), not a clock — the same tree yields the same id.
+- Every edit writes an audit entry; deletion files as `governance`, the rest as `lifecycle`.
+
+**UI notes.** `ActionMenu` swaps its own panel for "Move to…" and "Delete" rather than opening a
+submenu or a modal (`keepOpen` marks the items that swap rather than act). Renaming is inline in the
+tree — Enter commits, Escape abandons, and the field keeps focus when a name is refused. The row
+menu takes the metadata's slot on hover instead of a reserved column, which would cost every name
+~30px of a 20rem pane. The tree is a `<nav aria-label="Library tree">`, because the breadcrumb names
+the same folders and "Onboarding" would otherwise mean two different controls.
+
+**Still seed-backed.** Edits live in React state: they survive navigation, not a reload. The
+persistence path is the same one the library's reads will take (PostgREST/Edge Functions), and the
+rules in `src/lib/library.ts` are the ones a server would have to enforce too.
