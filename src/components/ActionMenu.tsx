@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 /* =============================================================================
    Row action menu
@@ -9,7 +10,20 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
    have a way back. A submenu that opens sideways out of a 15rem tree pane has
    nowhere to go on a narrow window, and a confirm dialog for a rename in a file
    tree is heavier than the act it guards.
+
+   The panel is **portalled to the body and positioned fixed**, not absolutely
+   inside the row. A tree row sits inside a scrolling pane and inside a <Reveal>'s
+   `overflow: hidden` — five clipping ancestors deep in places — and an absolutely
+   positioned panel is clipped by every one of them, which is how "Delete" ended
+   up sliced off the bottom of a menu. z-index cannot fix that: overflow clips
+   regardless of stacking. Leaving the box is the only fix.
    ============================================================================= */
+
+/** Gap between the trigger and the panel, and the minimum margin the panel keeps
+ *  from a viewport edge. */
+const GAP = 4;
+/** Roughly the tallest a panel gets — decides whether it opens up or down. */
+const PANEL_MAX = 280;
 
 /** One row in a menu panel. */
 export type ActionItem = {
@@ -79,7 +93,7 @@ function Item({ item, onDone }: { item: ActionItem; onDone: () => void }) {
  */
 export function ActionMenu({
   label,
-  trigger,
+  trigger: triggerContent,
   panel,
   align = "left",
   open,
@@ -87,6 +101,7 @@ export function ActionMenu({
 }: {
   /** Accessible name for the trigger. */
   label: string;
+  /** What the trigger button renders — usually the "…" glyph. */
   trigger: ReactNode;
   /** Build the panel showing now. `go` swaps panels without closing. */
   panel: (id: string, go: (next: string) => void) => MenuPanel;
@@ -98,7 +113,15 @@ export function ActionMenu({
   const [uncontrolled, setUncontrolled] = useState(false);
   const isOpen = open ?? uncontrolled;
   const [panelId, setPanelId] = useState("root");
-  const box = useRef<HTMLSpanElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const panelBox = useRef<HTMLSpanElement>(null);
+  const [placement, setPlacement] = useState<{
+    top?: number;
+    bottom?: number;
+    left?: number;
+    right?: number;
+    origin: string;
+  } | null>(null);
 
   const setOpen = (next: boolean) => {
     if (open === undefined) setUncontrolled(next);
@@ -108,6 +131,25 @@ export function ActionMenu({
     if (!next) setPanelId("root");
   };
 
+  // Measured off the trigger before paint, and again when the panel swaps, since
+  // a destination list is a different height from the root menu and may need to
+  // open the other way.
+  useLayoutEffect(() => {
+    if (!isOpen) return setPlacement(null);
+    const el = trigger.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const below = window.innerHeight - r.bottom;
+    const flip = below < PANEL_MAX && r.top > below;
+    setPlacement({
+      ...(flip ? { bottom: window.innerHeight - r.top + GAP } : { top: r.bottom + GAP }),
+      // Pinning an edge rather than computing a left from a width we don't know
+      // yet keeps the panel aligned whatever it ends up containing.
+      ...(align === "right" ? { right: Math.max(GAP, window.innerWidth - r.right) } : { left: Math.max(GAP, r.left) }),
+      origin: `${flip ? "bottom" : "top"} ${align}`,
+    });
+  }, [isOpen, align, panelId]);
+
   useEffect(() => {
     if (!isOpen) return;
     const onKey = (e: KeyboardEvent) => {
@@ -115,15 +157,29 @@ export function ActionMenu({
       e.stopPropagation();
       setOpen(false);
     };
+    // A fixed panel doesn't travel with its row, so scrolling the tree away from
+    // it would leave it floating over unrelated UI. Scrolling *inside* the panel
+    // (a long destination list) is not that, and must not close it.
+    const onScroll = (e: Event) => {
+      if (panelBox.current?.contains(e.target as Node)) return;
+      setOpen(false);
+    };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", onScroll);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", onScroll);
+    };
   }, [isOpen]);
 
   const current = panel(panelId, setPanelId);
 
   return (
-    <span ref={box} className="relative inline-flex shrink-0 items-center">
+    <span className="relative inline-flex shrink-0 items-center">
       <button
+        ref={trigger}
         type="button"
         aria-label={label}
         aria-haspopup="menu"
@@ -134,24 +190,29 @@ export function ActionMenu({
         }}
         className="focusable flex size-6 items-center justify-center rounded-md text-tertiary-foreground transition-colors hover:bg-transparent-hover hover:text-primary-foreground"
       >
-        {trigger}
+        {triggerContent}
       </button>
 
-      {isOpen && (
+      {isOpen &&
+        placement &&
+        createPortal(
         <>
           <span className="fixed inset-0" style={{ zIndex: 40 }} onClick={() => setOpen(false)} />
           <span
+            ref={panelBox}
             role="menu"
             aria-label={label}
             onClick={(e) => e.stopPropagation()}
-            className="pop-in absolute flex flex-col rounded-xl border-border-default border-[0.5px] bg-page p-1.5"
+            className="pop-in fixed flex flex-col rounded-xl border-border-default border-[0.5px] bg-page p-1.5"
             style={{
               zIndex: 50,
-              top: "calc(100% + 4px)",
-              ...(align === "right" ? { right: 0 } : { left: 0 }),
+              top: placement.top,
+              bottom: placement.bottom,
+              left: placement.left,
+              right: placement.right,
               minWidth: 208,
               maxWidth: 288,
-              transformOrigin: align === "right" ? "top right" : "top left",
+              transformOrigin: placement.origin,
               boxShadow: "var(--s-popover)",
             }}
           >
@@ -188,8 +249,9 @@ export function ActionMenu({
               )}
             </span>
           </span>
-        </>
-      )}
+        </>,
+          document.body,
+        )}
     </span>
   );
 }
