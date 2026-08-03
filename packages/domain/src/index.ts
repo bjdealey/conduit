@@ -1,7 +1,7 @@
 /** Canonical domain models, the capability enum, and adapter-boundary mapping. */
 export { Capability, CAPABILITIES } from "./capability.ts";
-export type { SourceStamped, Bot, BotState } from "./models.ts";
-export { BOT_STATES } from "./models.ts";
+export type { SourceStamped, Workflow, WorkflowRunState } from "./models.ts";
+export { WORKFLOW_RUN_STATES } from "./models.ts";
 export { MappingError } from "./errors.ts";
 export type { MapContext } from "./errors.ts";
 export { asRecord, requireString, requireEnum, stampId } from "./mapping.ts";
@@ -34,3 +34,19 @@ export {
 } from "./runner.ts";
 export type { RunnerAssignment } from "./distributor.ts";
 export { explainRequirements, pickRunner, poolByClass, readinessMix, runnerFits } from "./distributor.ts";
+export type { Permission, ReviewAction, Role, Transition, WorkflowStatus } from "./review.ts";
+export {
+  AWAITING_REVIEW,
+  PERMISSIONS,
+  REVIEW_ACTIONS,
+  ROLES,
+  ROLE_BLURB,
+  ROLE_LABEL,
+  WORKFLOW_STATUSES,
+  availableTransitions,
+  can,
+  canTransition,
+  isRunnable,
+  permissionsOf,
+  transitionsFrom,
+} from "./review.ts";

@@ -5,15 +5,15 @@
  * dropped rather than trusted (the loud-failure guarantee lives server-side, at the
  * adapter; here we just don't render junk).
  */
-import { BOT_STATES, CAPABILITIES, Capability, type Bot, type BotState } from "@conduit/domain";
+import { WORKFLOW_RUN_STATES, CAPABILITIES, Capability, type Workflow, type WorkflowRunState } from "@conduit/domain";
 import { supabase } from "./supabase";
 
 function nonEmptyString(v: unknown): string | null {
   return typeof v === "string" && v.length > 0 ? v : null;
 }
 
-/** Coerce an untrusted API object into a domain `Bot`, or null if it isn't one. */
-export function coerceBot(raw: unknown): Bot | null {
+/** Coerce an untrusted API object into a domain `Workflow`, or null if it isn't one. */
+export function coerceWorkflow(raw: unknown): Workflow | null {
   if (typeof raw !== "object" || raw === null) return null;
   const r = raw as Record<string, unknown>;
   const id = nonEmptyString(r.id);
@@ -23,15 +23,15 @@ export function coerceBot(raw: unknown): Bot | null {
   const title = nonEmptyString(r.title);
   const owner = nonEmptyString(r.owner);
   if (!id || !sourceId || !platform || !connectorId || !title || !owner) return null;
-  const state: BotState =
-    typeof r.state === "string" && (BOT_STATES as readonly string[]).includes(r.state)
-      ? (r.state as BotState)
+  const state: WorkflowRunState =
+    typeof r.state === "string" && (WORKFLOW_RUN_STATES as readonly string[]).includes(r.state)
+      ? (r.state as WorkflowRunState)
       : "Unknown";
   return { id, sourceId, platform, connectorId, title, state, owner };
 }
 
-export function coerceBots(list: unknown): Bot[] {
-  return Array.isArray(list) ? list.map(coerceBot).filter((b): b is Bot => b !== null) : [];
+export function coerceWorkflows(list: unknown): Workflow[] {
+  return Array.isArray(list) ? list.map(coerceWorkflow).filter((b): b is Workflow => b !== null) : [];
 }
 
 /** Keep only recognised capability ids from an untrusted list. */
@@ -53,9 +53,9 @@ export async function getCapabilities(): Promise<Capability[]> {
  * (service-role read over the cache table) so it works before Supabase Auth is wired;
  * once it is, this can move to a direct PostgREST read.
  */
-export async function getBots(): Promise<Bot[]> {
+export async function getWorkflows(): Promise<Workflow[]> {
   if (!supabase) throw new Error("Supabase is not configured");
-  const { data, error } = await supabase.functions.invoke("bots", { method: "GET" });
+  const { data, error } = await supabase.functions.invoke("workflows", { method: "GET" });
   if (error) throw error;
-  return coerceBots((data as { bots?: unknown } | null)?.bots);
+  return coerceWorkflows((data as { bots?: unknown } | null)?.bots);
 }

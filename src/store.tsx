@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { issues as seedIssues, members } from "./data/issues";
-import { automations as seedAutomations, folders as seedFolders, runs as seedRuns } from "./data/automations";
+import { workflows as seedWorkflows, folders as seedFolders, runs as seedRuns } from "./data/workflows";
 import { endUsers } from "./data/users";
 import { runners } from "./data/runners";
 import { currentUser } from "./data/user";
@@ -10,13 +10,22 @@ import { palettes, type Palette } from "./data/palettes";
 import { VIEW_MODES } from "./data/viewLayout";
 import { applyBrand } from "./lib/palette";
 import { isDark, setTheme } from "./lib/theme";
-import type { Automation, AutomationDraft, Folder, Issue, Member, Priority, Role, Run, Status } from "./data/types";
+import type { Workflow, WorkflowDraft, Folder, Issue, Member, Priority, Role, Run, Status } from "./data/types";
 import { blankDraft, commitDraft, testRun } from "./lib/builder";
-import { CAPABILITIES, Capability, type Bot } from "@conduit/domain";
+import {
+  CAPABILITIES,
+  Capability,
+  can,
+  canTransition,
+  transitionsFrom,
+  type Permission,
+  type ReviewAction,
+  type Workflow as DomainWorkflow,
+} from "@conduit/domain";
 import { EMPTY_WORKSPACE, type FilterOp, type SortDir, type WorkspaceState } from "./lib/workspace";
 import { isSupabaseConfigured } from "./lib/supabase";
-import { getBots, getCapabilities } from "./lib/api";
-import { seedBots } from "./data/toDomain";
+import { getWorkflows, getCapabilities } from "./lib/api";
+import { seedConnectedWorkflows } from "./data/toDomain";
 
 const read = (key: string, fallback: string): string => {
   try {
@@ -34,7 +43,7 @@ const write = (key: string, value: string): void => {
 };
 
 /** Top-level navigation destinations (the sidebar rail), plus the two full-screen
- *  modes that aren't destinations: Settings and the automation builder. They're
+ *  modes that aren't destinations: Settings and the workflow builder. They're
  *  views so they inherit the shared chrome — the workspace header's search and
  *  filters, the layout switcher, and the info-pane toggle — rather than each
  *  reinventing it. */
@@ -42,7 +51,8 @@ export type View =
   | "home"
   | "activity"
   | "inbox"
-  | "automations"
+  | "workflows"
+  | "review"
   | "manage"
   | "users"
   | "administration"
@@ -54,29 +64,32 @@ export type View =
 type Store = {
   issues: Issue[];
   members: Member[];
-  /** Automation library (first-class entity), its folder tree, and run history. */
-  automations: Automation[];
+  /** Workflow library (first-class entity), its folder tree, and run history. */
+  workflows: Workflow[];
   folders: Folder[];
   runs: Run[];
-  automationById: (id: string) => Automation | undefined;
+  workflowById: (id: string) => Workflow | undefined;
   runById: (id: string) => Run | undefined;
-  /** The automation open in the builder, or null when it isn't showing. The
+  /** The workflow open in the builder, or null when it isn't showing. The
    *  builder is a full-screen mode over the workspace, not a nav destination. */
-  draft: AutomationDraft | null;
-  /** Open the builder on a blank automation. */
-  newAutomation: () => void;
-  /** Open the builder on an existing automation. */
-  editAutomation: (id: string) => void;
-  updateDraft: (patch: Partial<AutomationDraft>) => void;
+  draft: WorkflowDraft | null;
+  /** Open the builder on a blank workflow. */
+  newWorkflow: () => void;
+  /** Open the builder on an existing workflow. */
+  editWorkflow: (id: string) => void;
+  updateDraft: (patch: Partial<WorkflowDraft>) => void;
   /** Commit the draft to the library and open it. Returns its id. */
   saveDraft: () => string | null;
   /** Save the draft, then start a manual run of it and jump to Activity. */
   testRunDraft: () => void;
   closeBuilder: () => void;
-  /** Runs for one automation, newest first (seed order). */
-  runsForAutomation: (automationId: string) => Run[];
+  /** Runs for one workflow, newest first (seed order). */
+  runsForWorkflow: (workflowId: string) => Run[];
   /** Canonical domain bots from our API (live) or the seed fallback. */
-  bots: Bot[];
+  /** The estate as our API reports it — every enabled connector's workflows,
+   *  normalised. The same entity as `workflows` above, at the fidelity that crosses
+   *  the API boundary; the two converge once the library reads from the API. */
+  connectedWorkflows: DomainWorkflow[];
   /** Capability ids the enabled connectors declare — the UI enables features from
    *  this union, never from a connector's vendor identity. */
   capabilities: Capability[];
@@ -86,19 +99,25 @@ type Store = {
   dataSource: "live" | "seed";
   /** Set when a live load failed and the app fell back to seed data. */
   integrationError: string | null;
-  /** The signed-in user's role — gates permission-scoped UI. Switchable in
-   *  Settings so the gating is demonstrable in the prototype. */
+  /** The signed-in user's tier — gates permission-scoped UI. Switchable in Settings
+   *  so the three-tier model is demonstrable in the prototype. */
   role: Role;
   setRole: (r: Role) => void;
+  /** Whether the current tier holds a permission. Every gate reads this rather than
+   *  comparing role strings, so a new tier never means hunting for `role === …`. */
+  allowed: (permission: Permission) => boolean;
+  /** Move a workflow through the review lifecycle. Refuses any move the current tier
+   *  isn't permitted to make, so the store enforces the same rule the UI renders. */
+  reviewWorkflow: (id: string, action: ReviewAction, note?: string) => void;
   selectedId: number | null;
   selected: Issue | null;
-  /** Selected end-user (Users view) and automation (Automations view). Lifted here
+  /** Selected end-user (Users view) and workflow (Workflows view). Lifted here
    *  so the titlebar breadcrumb can show them and so board/grid modes can swap the
    *  collection for the item's detail, like the inbox does. Null = nothing opened. */
   selectedUserId: string | null;
   selectUser: (id: string | null) => void;
-  selectedAutomationId: string | null;
-  selectAutomation: (id: string | null) => void;
+  selectedWorkflowId: string | null;
+  selectWorkflow: (id: string | null) => void;
   selectedRunnerId: string | null;
   selectRunner: (id: string | null) => void;
   /** Run opened from the Activity timeline. Null = the timeline itself is showing
@@ -184,13 +203,13 @@ const StoreContext = createContext<Store | null>(null);
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [issues, setIssues] = useState<Issue[]>(seedIssues);
   // The library and its run history are editable in the prototype: the builder
-  // writes automations, and a test run appends to the stream.
-  const [automations, setAutomations] = useState<Automation[]>(seedAutomations);
+  // writes workflows, and a test run appends to the stream.
+  const [workflows, setWorkflows] = useState<Workflow[]>(seedWorkflows);
   const [runs, setRuns] = useState<Run[]>(seedRuns);
-  const [draft, setDraft] = useState<AutomationDraft | null>(null);
+  const [draft, setDraft] = useState<WorkflowDraft | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(seedIssues[0]?.id ?? null);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(endUsers[0]?.id ?? null);
-  const [selectedAutomationId, setSelectedAutomationId] = useState<string | null>(seedAutomations[0]?.id ?? null);
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(seedWorkflows[0]?.id ?? null);
   const [selectedRunnerId, setSelectedRunnerId] = useState<string | null>(runners[0]?.id ?? null);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [controlState, setControlState] = useState<Partial<Record<View, WorkspaceState>>>({});
@@ -211,7 +230,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   // Integration data plane. Defaults to the seed-derived domain view (so the prototype
   // runs with no backend); if Supabase is configured, live data replaces it on mount.
-  const [bots, setBots] = useState<Bot[]>(() => seedBots());
+  const [connectedWorkflows, setConnectedWorkflows] = useState<DomainWorkflow[]>(() => seedConnectedWorkflows());
   const [capabilitySet, setCapabilitySet] = useState<Set<Capability>>(() => new Set(CAPABILITIES));
   const [dataSource, setDataSource] = useState<"live" | "seed">("seed");
   const [integrationError, setIntegrationError] = useState<string | null>(null);
@@ -221,10 +240,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     (async () => {
       try {
-        const [caps, liveBots] = await Promise.all([getCapabilities(), getBots()]);
+        const [caps, live] = await Promise.all([getCapabilities(), getWorkflows()]);
         if (cancelled) return;
         setCapabilitySet(new Set(caps));
-        setBots(liveBots);
+        setConnectedWorkflows(live);
         setDataSource("live");
         setIntegrationError(null);
       } catch (e) {
@@ -308,55 +327,55 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const value: Store = {
     issues,
     members,
-    automations,
+    workflows,
     folders: seedFolders,
     runs,
-    automationById: (id) => automations.find((a) => a.id === id),
+    workflowById: (id) => workflows.find((a) => a.id === id),
     runById: (id) => runs.find((r) => r.id === id),
-    runsForAutomation: (id) => runs.filter((r) => r.automationId === id),
+    runsForWorkflow: (id) => runs.filter((r) => r.workflowId === id),
     draft,
     // New work lands in the private Drafts folder. The signed-in demo account
     // isn't one of the team members, so ownership defaults to the first and is
     // editable in the builder.
-    newAutomation: () => {
+    newWorkflow: () => {
       setDraft(blankDraft(members[0]?.id ?? "", "prv-drafts"));
       if (view !== "builder") setSettingsReturn(view);
       setViewRaw("builder");
     },
-    editAutomation: (id) => {
-      const automation = automations.find((a) => a.id === id);
-      // A mirrored automation is a reflection of another platform's flow. We can
+    editWorkflow: (id) => {
+      const workflow = workflows.find((a) => a.id === id);
+      // A mirrored workflow is a reflection of another platform's flow. We can
       // observe it and plan its move; we cannot author it here.
-      if (!automation || automation.platform !== "conduit") return;
-      setDraft({ ...automation, isNew: false });
+      if (!workflow || workflow.platform !== "conduit") return;
+      setDraft({ ...workflow, isNew: false });
       if (view !== "builder") setSettingsReturn(view);
       setViewRaw("builder");
     },
     updateDraft: (patch) => setDraft((prev) => (prev ? { ...prev, ...patch } : prev)),
     saveDraft: () => {
       if (!draft) return null;
-      const { automations: next, id } = commitDraft(automations, draft);
-      setAutomations(next);
-      setSelectedAutomationId(id);
+      const { workflows: next, id } = commitDraft(workflows, draft);
+      setWorkflows(next);
+      setSelectedWorkflowId(id);
       setDraft(null);
-      setViewRaw("automations");
+      setViewRaw("workflows");
       return id;
     },
     testRunDraft: () => {
       if (!draft) return;
-      const { automations: next, id } = commitDraft(automations, draft);
+      const { workflows: next, id } = commitDraft(workflows, draft);
       const saved = next.find((a) => a.id === id)!;
-      setAutomations(next.map((a) => (a.id === id ? { ...a, runCount: a.runCount + 1, lastRunAt: "just now" } : a)));
+      setWorkflows(next.map((a) => (a.id === id ? { ...a, runCount: a.runCount + 1, lastRunAt: "just now" } : a)));
       setRuns((prev) => [testRun(saved, currentUser.name, prev, runners), ...prev]);
-      setSelectedAutomationId(id);
+      setSelectedWorkflowId(id);
       setDraft(null);
       setViewRaw("activity");
     },
     closeBuilder: () => {
       setDraft(null);
-      setViewRaw(settingsReturn === "builder" ? "automations" : settingsReturn);
+      setViewRaw(settingsReturn === "builder" ? "workflows" : settingsReturn);
     },
-    bots,
+    connectedWorkflows,
     capabilities: [...capabilitySet],
     hasCapability: (capability) => capabilitySet.has(capability),
     dataSource,
@@ -365,18 +384,42 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setRole: (r) => {
       setRoleState(r);
       write("role", r);
-      // A demoted viewer loses the Administration surface they may be looking at.
-      if (r === "user" && view === "administration") {
-        setViewRaw("inbox");
+      // A demoted viewer loses any surface their new tier can't reach.
+      if (!can(r, "administer") && view === "administration") {
+        setViewRaw("home");
         setSubview(null);
       }
+      if (!can(r, "review") && view === "review") {
+        setViewRaw("home");
+        setSubview(null);
+      }
+    },
+    allowed: (permission) => can(role, permission),
+    reviewWorkflow: (id, action, note) => {
+      setWorkflows((prev) =>
+        prev.map((w) => {
+          if (w.id !== id) return w;
+          // The same check the buttons are built from — a move the tier can't make is
+          // refused here too, so the rule survives anyone reaching past the UI.
+          if (!canTransition(role, w.status, action)) return w;
+          const to = transitionsFrom(w.status).find((t) => t.action === action)!.to;
+          const who = currentUser.name;
+          const stamped =
+            action === "submit"
+              ? { submittedBy: who, submittedAt: "just now" }
+              : action === "withdraw"
+                ? {}
+                : { reviewedBy: who, reviewedAt: "just now", reviewNote: note ?? w.reviewNote };
+          return { ...w, status: to, updatedAgo: "just now", ...stamped };
+        }),
+      );
     },
     selectedId,
     selected: issues.find((i) => i.id === selectedId) ?? null,
     selectedUserId,
     selectUser: setSelectedUserId,
-    selectedAutomationId,
-    selectAutomation: setSelectedAutomationId,
+    selectedWorkflowId,
+    selectWorkflow: setSelectedWorkflowId,
     selectedRunnerId,
     selectRunner: setSelectedRunnerId,
     selectedRunId,

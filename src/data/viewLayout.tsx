@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { ChartGantt, Columns3, LayoutGrid, List, Workflow } from "lucide-react";
+import { ChartGantt, Columns3, LayoutGrid, List, Workflow as WorkflowIcon } from "lucide-react";
 import type { View } from "../store";
 
 /* =============================================================================
@@ -21,7 +21,7 @@ const icon = { size: 14, strokeWidth: 1.8 } as const;
 export const VIEW_MODES: Partial<Record<View, ViewMode[]>> = {
   builder: [
     { id: "steps", label: "Steps", icon: <List {...icon} /> },
-    { id: "diagram", label: "Diagram", icon: <Workflow {...icon} /> },
+    { id: "diagram", label: "Diagram", icon: <WorkflowIcon {...icon} /> },
   ],
   activity: [
     { id: "list", label: "List", icon: <List {...icon} /> },
@@ -35,7 +35,7 @@ export const VIEW_MODES: Partial<Record<View, ViewMode[]>> = {
     { id: "list", label: "List", icon: <List {...icon} /> },
     { id: "grid", label: "Grid", icon: <LayoutGrid {...icon} /> },
   ],
-  automations: [
+  workflows: [
     { id: "list", label: "List", icon: <List {...icon} /> },
     { id: "board", label: "Board", icon: <Columns3 {...icon} /> },
   ],
@@ -55,7 +55,7 @@ export function defaultViewMode(view: View): string {
 export const CONTEXT_LABEL: Partial<Record<View, string>> = {
   inbox: "Details",
   users: "Profile",
-  automations: "Summary",
+  workflows: "Summary",
   surfaces: "Overview",
   activity: "Incidents",
   runners: "Details",

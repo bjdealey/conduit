@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { ArrowUpRight, Layers, Workflow } from "lucide-react";
+import { ArrowUpRight, Layers, Workflow as WorkflowIcon } from "lucide-react";
 import { useStore } from "../store";
-import { RUN_STATES, type Automation, type Issue, type Run, type RunState } from "../data/types";
+import { RUN_STATES, type Workflow, type Issue, type Run, type RunState } from "../data/types";
 import { RUN_STATE_ACCENT, RunStateChip } from "./Badges";
 import { runnerById } from "../data/runners";
 import { RunRow } from "./RunRow";
@@ -22,11 +22,11 @@ const HISTORICAL: RunState[] = ["Completed", "Failed"];
 /* ------------------------------------------------------------ filter + grouping */
 
 /** A run passes the workspace header's search and filters. The search spans the
- *  fields an operator scans a run stream by — the run's own id, the automation it
+ *  fields an operator scans a run stream by — the run's own id, the workflow it
  *  belongs to, who or what started it, and the machine it ran on. */
-function runPasses(run: Run, automationName: string, state: WorkspaceState): boolean {
+function runPasses(run: Run, workflowName: string, state: WorkspaceState): boolean {
   return (
-    matchesQuery(state.query, [run.id, automationName, run.startedBy, run.state, run.trigger, runnerNameOf(run)]) &&
+    matchesQuery(state.query, [run.id, workflowName, run.startedBy, run.state, run.trigger, runnerNameOf(run)]) &&
     passesFilter(state, "state", run.state) &&
     passesFilter(state, "trigger", run.trigger)
   );
@@ -40,7 +40,7 @@ function sortRuns(runs: Run[], state: WorkspaceState, tab: string, nameOf: (id: 
     // Oldest first, so the descending default reads newest-first.
     recent: (a, b) => -byRecency(a, b),
     duration: (a, b) => (durationSeconds(a.duration) ?? 0) - (durationSeconds(b.duration) ?? 0),
-    automation: (a, b) => nameOf(a.automationId).localeCompare(nameOf(b.automationId)) || byRecency(a, b),
+    workflow: (a, b) => nameOf(a.workflowId).localeCompare(nameOf(b.workflowId)) || byRecency(a, b),
   };
   return ordered(runs, dir, compare[id] ?? compare.recent);
 }
@@ -55,10 +55,10 @@ const isLive = (run: Run) => run.state === "Running" || run.state === "Queued";
  *  Empty while a run is still queued, because nothing has been placed yet. */
 const runnerNameOf = (run: Run): string => (run.runnerId ? runnerById(run.runnerId)?.name ?? run.runnerId : "");
 
-/** One automation's slice of the run stream. Both the sources pane and the
+/** One workflow's slice of the run stream. Both the sources pane and the
  *  timeline's lanes are built from these, so the two read the same way. */
 type RunGroup = {
-  automation: Automation;
+  workflow: Workflow;
   /** The group's runs, newest first. */
   runs: Run[];
   failed: number;
@@ -67,22 +67,22 @@ type RunGroup = {
   latest: number | null;
 };
 
-/** Runs bucketed per automation, most recently active first. */
-function groupRuns(runs: Run[], automationById: (id: string) => Automation | undefined): RunGroup[] {
+/** Runs bucketed per workflow, most recently active first. */
+function groupRuns(runs: Run[], workflowById: (id: string) => Workflow | undefined): RunGroup[] {
   const by = new Map<string, Run[]>();
   for (const run of runs) {
-    const arr = by.get(run.automationId) ?? [];
+    const arr = by.get(run.workflowId) ?? [];
     arr.push(run);
-    by.set(run.automationId, arr);
+    by.set(run.workflowId, arr);
   }
 
   const groups: RunGroup[] = [];
-  for (const [automationId, items] of by) {
-    const automation = automationById(automationId);
-    if (!automation) continue;
+  for (const [workflowId, items] of by) {
+    const workflow = workflowById(workflowId);
+    if (!workflow) continue;
     const started = items.map((r) => minutesAgo(r.startedAt)).filter((m): m is number => m !== null);
     groups.push({
-      automation,
+      workflow,
       runs: [...items].sort(byRecency),
       failed: items.filter((r) => r.state === "Failed").length,
       live: items.filter(isLive).length,
@@ -94,7 +94,7 @@ function groupRuns(runs: Run[], automationById: (id: string) => Automation | und
 
 /* ------------------------------------------------------------------ sources pane */
 
-/** One automation in the sources list: its latest state, how much it has run, and
+/** One workflow in the sources list: its latest state, how much it has run, and
  *  a failure count when it has one. */
 function SourceRow({ group, active, onSelect }: { group: RunGroup; active: boolean; onSelect: () => void }) {
   const latestState = group.runs[0]?.state ?? "Queued";
@@ -109,7 +109,7 @@ function SourceRow({ group, active, onSelect }: { group: RunGroup; active: boole
     >
       <span className="size-2 shrink-0 rounded-full" style={{ background: `var(--${accent}-9)` }} />
       <div className="flex min-w-0 flex-1 flex-col leading-tight">
-        <span className="truncate text-body-sm text-primary-foreground">{group.automation.name}</span>
+        <span className="truncate text-body-sm text-primary-foreground">{group.workflow.name}</span>
         <span className="truncate font-departure-mono text-[0.65rem] text-tertiary-foreground">
           {group.runs.length} {group.runs.length === 1 ? "run" : "runs"} ·{" "}
           {group.latest === null ? "queued" : agoLabel(group.latest)}
@@ -128,8 +128,8 @@ function SourceRow({ group, active, onSelect }: { group: RunGroup; active: boole
 }
 
 /**
- * Left column: where the activity is coming from. Picking an automation scopes
- * the screen to that automation's runs; picking it again — or "All activity" —
+ * Left column: where the activity is coming from. Picking an workflow scopes
+ * the screen to that workflow's runs; picking it again — or "All activity" —
  * clears the scope. This is navigation, so it stays with the pane; the search and
  * filters that narrow the whole page live in the workspace header.
  */
@@ -172,7 +172,7 @@ function ActivitySources({
         </button>
 
         <header className="flex items-center gap-2 px-3 py-2 pt-3">
-          <span className="font-sans font-medium text-body-sm text-secondary-foreground">Automations</span>
+          <span className="font-sans font-medium text-body-sm text-secondary-foreground">Workflows</span>
           <span className="font-departure-mono text-[0.65rem] text-tertiary-foreground">{groups.length}</span>
         </header>
 
@@ -184,10 +184,10 @@ function ActivitySources({
           <div className="flex flex-col gap-0.5">
             {groups.map((group) => (
               <SourceRow
-                key={group.automation.id}
+                key={group.workflow.id}
                 group={group}
-                active={group.automation.id === scopeId}
-                onSelect={() => onScope(group.automation.id === scopeId ? null : group.automation.id)}
+                active={group.workflow.id === scopeId}
+                onSelect={() => onScope(group.workflow.id === scopeId ? null : group.workflow.id)}
               />
             ))}
           </div>
@@ -200,7 +200,7 @@ function ActivitySources({
 /* ------------------------------------------------------------------ runs list */
 
 /** Nothing in this tab. When the runs are simply in the other stream tab — a
- *  scoped automation with history but nothing in flight — offer the way over. */
+ *  scoped workflow with history but nothing in flight — offer the way over. */
 function NoRuns({
   hint,
   other,
@@ -248,7 +248,7 @@ function RunsList({ runs }: { runs: Run[] }) {
           </header>
           <div className="flex flex-col">
             {group.items.map((r) => (
-              <RunRow key={r.id} run={r} showAutomation />
+              <RunRow key={r.id} run={r} showWorkflow />
             ))}
           </div>
         </section>
@@ -314,7 +314,7 @@ function LaneGrid() {
   );
 }
 
-/** One automation's lane: its runs placed on the shared time axis. */
+/** One workflow's lane: its runs placed on the shared time axis. */
 function TimelineLane({
   group,
   windowMinutes,
@@ -327,7 +327,7 @@ function TimelineLane({
   return (
     <div className="flex items-center gap-3">
       <div className="flex w-52 shrink-0 items-center gap-2">
-        <span className="min-w-0 flex-1 truncate text-body-sm text-primary-foreground">{group.automation.name}</span>
+        <span className="min-w-0 flex-1 truncate text-body-sm text-primary-foreground">{group.workflow.name}</span>
         <span className="shrink-0 font-departure-mono text-[0.65rem] text-tertiary-foreground">
           {group.runs.length}
         </span>
@@ -361,7 +361,7 @@ function TimelineLane({
 }
 
 /**
- * Timeline layout: one lane per automation, runs placed on a shared time axis by
+ * Timeline layout: one lane per workflow, runs placed on a shared time axis by
  * when they started and how long they ran. It shows what the grouped list can't —
  * cadence, overlap, and the gaps between runs — and clicking a run opens it, the
  * way the board and grid layouts open an item elsewhere in the app.
@@ -383,7 +383,7 @@ function RunTimeline({ groups, onOpen }: { groups: RunGroup[]; onOpen: (id: stri
       <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2">
         <span className="text-body-sm text-secondary-foreground">Last {agoLabel(windowMinutes)}</span>
         <span className="font-departure-mono text-[0.65rem] text-tertiary-foreground">
-          {total} {total === 1 ? "run" : "runs"} · {groups.length} automations
+          {total} {total === 1 ? "run" : "runs"} · {groups.length} workflows
         </span>
         <div className="ml-auto flex flex-wrap gap-x-4 gap-y-1">
           {states.map((s) => (
@@ -417,7 +417,7 @@ function RunTimeline({ groups, onOpen }: { groups: RunGroup[]; onOpen: (id: stri
 
         <div className="flex flex-col">
           {groups.map((group) => (
-            <TimelineLane key={group.automation.id} group={group} windowMinutes={windowMinutes} onOpen={onOpen} />
+            <TimelineLane key={group.workflow.id} group={group} windowMinutes={windowMinutes} onOpen={onOpen} />
           ))}
         </div>
       </div>
@@ -439,8 +439,8 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
 /** A run opened from the timeline: its facts, then the run log. (The list layout
  *  expands runs in place instead — see <RunRow>.) */
 function RunDetail({ run }: { run: Run }) {
-  const { automationById, selectAutomation, select, setView } = useStore();
-  const automation = automationById(run.automationId);
+  const { workflowById, selectWorkflow, select, setView } = useStore();
+  const workflow = workflowById(run.workflowId);
 
   return (
     <DetailPane>
@@ -454,14 +454,14 @@ function RunDetail({ run }: { run: Run }) {
             <button
               type="button"
               onClick={() => {
-                selectAutomation(run.automationId);
-                setView("automations");
+                selectWorkflow(run.workflowId);
+                setView("workflows");
               }}
               className="focusable inline-flex w-fit items-center gap-2 rounded-lg px-1 text-left transition-colors hover:bg-transparent-hover"
             >
-              <Workflow size={16} strokeWidth={1.8} className="shrink-0 text-tertiary-foreground" />
+              <WorkflowIcon size={16} strokeWidth={1.8} className="shrink-0 text-tertiary-foreground" />
               <span className="font-sans font-medium text-heading-4 text-primary-foreground">
-                {automation?.name ?? run.automationId}
+                {workflow?.name ?? run.workflowId}
               </span>
               <ArrowUpRight size={15} strokeWidth={1.8} className="shrink-0 text-tertiary-foreground" />
             </button>
@@ -503,13 +503,13 @@ function RunDetail({ run }: { run: Run }) {
 
 /* -------------------------------------------------------------- incidents rail */
 
-/** The merged incident feed alongside the automation runs. Incidents spun off an
- *  automation surface that automation; all are click-through to the Inbox. */
+/** The merged incident feed alongside the workflow runs. Incidents spun off an
+ *  workflow surface that workflow; all are click-through to the Inbox. */
 function IncidentsRail({ issues }: { issues: Issue[] }) {
-  const { select, setView, automationById } = useStore();
-  // Automation-linked incidents first (the run→incident story), then the rest.
+  const { select, setView, workflowById } = useStore();
+  // Workflow-linked incidents first (the run→incident story), then the rest.
   const ordered = useMemo(
-    () => [...issues].sort((a, b) => Number(Boolean(b.automationId)) - Number(Boolean(a.automationId))),
+    () => [...issues].sort((a, b) => Number(Boolean(b.workflowId)) - Number(Boolean(a.workflowId))),
     [issues],
   );
 
@@ -527,12 +527,12 @@ function IncidentsRail({ issues }: { issues: Issue[] }) {
       <div className="scrollbar-none flex-1 overflow-y-auto px-2 py-2">
         {ordered.length === 0 ? (
           <p className="px-3 py-6 text-center text-body-sm text-tertiary-foreground">
-            No incidents for this automation.
+            No incidents for this workflow.
           </p>
         ) : (
           <div className="flex flex-col gap-0.5">
             {ordered.map((issue) => {
-              const automation = issue.automationId ? automationById(issue.automationId) : undefined;
+              const workflow = issue.workflowId ? workflowById(issue.workflowId) : undefined;
               const accent = issue.status === "Resolved" ? "grass" : "tomato";
               return (
                 <button
@@ -546,10 +546,10 @@ function IncidentsRail({ issues }: { issues: Issue[] }) {
                     <span className="font-departure-mono text-[0.65rem] text-tertiary-foreground">#{issue.id}</span>
                     <span className="min-w-0 flex-1 truncate text-body-sm text-primary-foreground">{issue.title}</span>
                   </span>
-                  {automation && (
+                  {workflow && (
                     <span className="flex items-center gap-1.5 pl-4 text-[0.72rem] text-tertiary-foreground">
-                      <Workflow size={12} strokeWidth={1.8} />
-                      <span className="truncate">{automation.name}</span>
+                      <WorkflowIcon size={12} strokeWidth={1.8} />
+                      <span className="truncate">{workflow.name}</span>
                     </span>
                   )}
                 </button>
@@ -574,7 +574,7 @@ function StatTile({ label, value, sub }: { label: string; value: string; sub?: s
   );
 }
 
-function Insights({ runs, automations, activeIncidents }: { runs: Run[]; automations: Automation[]; activeIncidents: number }) {
+function Insights({ runs, workflows, activeIncidents }: { runs: Run[]; workflows: Workflow[]; activeIncidents: number }) {
   const counts = useMemo(() => {
     const c = { Queued: 0, Running: 0, Completed: 0, Failed: 0 } as Record<RunState, number>;
     for (const r of runs) c[r.state] += 1;
@@ -583,7 +583,7 @@ function Insights({ runs, automations, activeIncidents }: { runs: Run[]; automat
 
   const finished = counts.Completed + counts.Failed;
   const successRate = finished > 0 ? Math.round((counts.Completed / finished) * 100) : 0;
-  const busiest = useMemo(() => [...automations].sort((a, b) => b.runCount - a.runCount).slice(0, 5), [automations]);
+  const busiest = useMemo(() => [...workflows].sort((a, b) => b.runCount - a.runCount).slice(0, 5), [workflows]);
   const maxRuns = busiest[0]?.runCount ?? 1;
 
   // Run-outcome breakdown: a status-palette stacked bar (reserved colors, always
@@ -633,9 +633,9 @@ function Insights({ runs, automations, activeIncidents }: { runs: Run[]; automat
           <SurfaceChart seed={runs.length + 7} />
         </section>
 
-        {/* Busiest automations — magnitude, sequential single (brand) hue */}
+        {/* Busiest workflows — magnitude, sequential single (brand) hue */}
         <section className="flex flex-col gap-3">
-          <h3 className="text-body-base font-medium text-primary-foreground">Busiest automations</h3>
+          <h3 className="text-body-base font-medium text-primary-foreground">Busiest workflows</h3>
           <div className="flex flex-col gap-2.5">
             {busiest.map((a) => (
               <div key={a.id} className="flex items-center gap-3">
@@ -663,20 +663,20 @@ function Insights({ runs, automations, activeIncidents }: { runs: Run[]; automat
 /* ------------------------------------------------------------------------ view */
 
 /**
- * Activity — automation runtime. The run stream (In progress / Historical) with an
+ * Activity — workflow runtime. The run stream (In progress / Historical) with an
  * Insights reporting tab, sourced from a searchable left pane and shadowed by the
  * merged incident feed, so failures and the incidents they spawn read together.
  *
  * Two layouts, driven by the global switcher (`VIEW_MODES.activity`):
  *  - **List** — the sources pane scopes a stream grouped by run state.
- *  - **Timeline** — a lane per automation on a shared time axis; opening a run
+ *  - **Timeline** — a lane per workflow on a shared time axis; opening a run
  *    replaces it with the run's detail, like the board/grid layouts elsewhere.
  */
 export function ActivityView() {
   const {
     runs,
     issues,
-    automationById,
+    workflowById,
     viewMode,
     selectedRunId,
     selectRun,
@@ -694,20 +694,20 @@ export function ActivityView() {
   const state = controls("activity");
   const timeline = viewMode("activity") === "timeline";
   // The scope belongs to the sources pane, which only the list layout shows. The
-  // timeline's lanes already separate the automations, so it plots all of them —
+  // timeline's lanes already separate the workflows, so it plots all of them —
   // and the scope is still there when you switch back.
   const scope = timeline ? null : scopeId;
-  const nameOf = (id: string) => automationById(id)?.name ?? "";
+  const nameOf = (id: string) => workflowById(id)?.name ?? "";
 
-  // The header narrows the whole screen; the scope then narrows it to one automation.
+  // The header narrows the whole screen; the scope then narrows it to one workflow.
   const matched = useMemo(
-    () => sortRuns(runs.filter((r) => runPasses(r, nameOf(r.automationId), state)), state, tab, nameOf),
+    () => sortRuns(runs.filter((r) => runPasses(r, nameOf(r.workflowId), state)), state, tab, nameOf),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [runs, state, automationById],
+    [runs, state, workflowById],
   );
-  const sources = useMemo(() => groupRuns(matched, automationById), [matched, automationById]);
+  const sources = useMemo(() => groupRuns(matched, workflowById), [matched, workflowById]);
   const visible = useMemo(
-    () => (scope ? matched.filter((r) => r.automationId === scope) : matched),
+    () => (scope ? matched.filter((r) => r.workflowId === scope) : matched),
     [matched, scope],
   );
 
@@ -720,7 +720,7 @@ export function ActivityView() {
   /** The other stream tab — offered when this one is empty but that one isn't. */
   const otherTab: Tab = tab === "Historical" ? "In progress" : "Historical";
 
-  const scopedIssues = scope ? issues.filter((i) => i.automationId === scope) : issues;
+  const scopedIssues = scope ? issues.filter((i) => i.workflowId === scope) : issues;
   const activeIncidents = scopedIssues.filter((i) => i.status !== "Resolved").length;
   const openRun = timeline && selectedRunId ? runById(selectedRunId) ?? null : null;
 
@@ -766,7 +766,7 @@ export function ActivityView() {
           {tab === "Insights" ? (
             <Insights
               runs={visible}
-              automations={sources.map((s) => s.automation)}
+              workflows={sources.map((s) => s.workflow)}
               activeIncidents={activeIncidents}
             />
           ) : tabRuns.length === 0 ? (
@@ -779,7 +779,7 @@ export function ActivityView() {
               other={{ label: otherTab, count: tabCount[otherTab] ?? 0, onSelect: () => setTab(otherTab) }}
             />
           ) : timeline ? (
-            <RunTimeline groups={groupRuns(tabRuns, automationById)} onOpen={selectRun} />
+            <RunTimeline groups={groupRuns(tabRuns, workflowById)} onOpen={selectRun} />
           ) : (
             <RunsList runs={tabRuns} />
           )}

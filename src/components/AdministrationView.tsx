@@ -20,16 +20,21 @@ import { num } from "../lib/format";
 import { isNarrowed, matchesQuery, passesFilter } from "../lib/workspace";
 import { TabStrip } from "./TabStrip";
 import { Chip } from "./Chip";
+import { ROLES, ROLE_LABEL } from "@conduit/domain";
 
 const TABS = ["Users", "Roles", "Licenses", "Policies"] as const;
 type Tab = (typeof TABS)[number];
 
-const ROLE_ACCENT: Record<Role, string> = { admin: "violet", developer: "blue", user: "gray" };
-const ROLES: Role[] = ["admin", "developer", "user"];
+const ROLE_ACCENT: Record<Role, string> = {
+  admin: "violet",
+  professional: "blue",
+  builder: "cyan",
+  consumer: "gray",
+};
 
 function RoleChip({ role }: { role: Role }) {
   return (
-    <Chip tone={ROLE_ACCENT[role]} className="capitalize">
+    <Chip tone={ROLE_ACCENT[role]}>
       {role}
     </Chip>
   );
@@ -54,7 +59,7 @@ function RoleEditor({ value, onChange }: { value: Role; onChange: (r: Role) => v
       >
         {ROLES.map((r) => (
           <option key={r} value={r}>
-            {r}
+            {ROLE_LABEL[r]}
           </option>
         ))}
       </select>
@@ -80,9 +85,9 @@ function AccessDenied() {
 
 /** Administration — the role-gated platform-user & governance surface (distinct
  *  from end-user monitoring in Users). Admins can edit roles and toggle policies;
- *  developers get a read-only view; users don't reach it (nav-gated). */
+ *  professionals get a read-only view; the tiers below don't reach it (nav-gated). */
 export function AdministrationView() {
-  const { memberById, role, controls, sectionTab, setSectionTab } = useStore();
+  const { memberById, allowed, controls, sectionTab, setSectionTab } = useStore();
   // Shared with the workspace header, so its search and filters follow the tab.
   const tab = (sectionTab("administration") || "Users") as Tab;
   const setTab = (next: Tab) => setSectionTab("administration", next);
@@ -91,14 +96,14 @@ export function AdministrationView() {
   const [users, setUsers] = useState<PlatformUser[]>(seedUsers);
   const [policies, setPolicies] = useState<Policy[]>(seedPolicies);
 
-  const canEdit = role === "admin";
+  const canEdit = allowed("administer");
 
-  // Defensive: developers reach this read-only; users are nav-gated out, but guard
-  // the direct-render case too.
-  if (role === "user") return <AccessDenied />;
+  // Defensive: professionals reach this read-only; the tiers below it are nav-gated
+  // out, but guard the direct-render case too.
+  if (!allowed("review")) return <AccessDenied />;
 
   const roleCounts = useMemo(() => {
-    const c: Record<Role, number> = { admin: 0, developer: 0, user: 0 };
+    const c: Record<Role, number> = { admin: 0, professional: 0, builder: 0, consumer: 0 };
     for (const u of users) c[u.role] += 1;
     return c;
   }, [users]);

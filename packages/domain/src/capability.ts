@@ -4,7 +4,7 @@
  * vendor identity. One capability maps to exactly one capability service.
  */
 export enum Capability {
-  Bots = "bots",
+  Workflows = "workflows",
   Schedules = "schedules",
   Devices = "devices",
   Credentials = "credentials",

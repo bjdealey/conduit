@@ -8,7 +8,7 @@ import { useStore } from "../../store";
 
      <SplitView>
        [NavPane]   optional leading navigation column (e.g. a folder tree)
-       [ListPane]  optional collection column (issues, users, automations…)
+       [ListPane]  optional collection column (issues, users, workflows…)
        <DetailPane>  the primary content column (always present)
        [ContextPane] optional right-hand "more info" column (collapsible)
      </SplitView>
@@ -24,7 +24,7 @@ const BORDER = "0.5px solid var(--color-border-default)";
 export const PANE_WIDTH = {
   /** Leading navigation rail (folder trees, section nav). */
   nav: "15rem",
-  /** Primary collection list (issues, users, automations, incidents). */
+  /** Primary collection list (issues, users, workflows, incidents). */
   list: "20rem",
   /** Right-hand context / summary pane. */
   context: "24rem",

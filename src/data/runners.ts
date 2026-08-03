@@ -1,7 +1,7 @@
 /**
  * The runner pool — the execution capacity Conduit places work on.
  *
- * There is no "assign this automation to that machine" anywhere in this file, and
+ * There is no "assign this workflow to that machine" anywhere in this file, and
  * that absence is the point: a runner advertises a class, an OS, and the auth models
  * it can present, and the distributor (`pickRunner`, `@conduit/domain`) matches work
  * to it per run. Nobody names a machine.

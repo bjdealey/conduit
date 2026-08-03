@@ -6,6 +6,8 @@ import { runners } from "../data/runners";
 import { VIEW_MODES, CONTEXT_LABEL } from "../data/viewLayout";
 import { SETTINGS_PAGES, DEFAULT_SETTINGS_PAGE } from "../data/settings";
 import { Breadcrumb, type Crumb } from "./Breadcrumb";
+import { Chip } from "./Chip";
+import { READINESS_META, readinessOfView } from "../data/readiness";
 import { SidebarToggle } from "./SidebarToggle";
 import { SegmentedControl } from "./SegmentedControl";
 import { Avatar } from "./Avatar";
@@ -15,7 +17,7 @@ import { Avatar } from "./Avatar";
  *  Switching to a non-list mode clears the open item so the board/grid shows (the
  *  detail returns only when you click into an item), matching the inbox. */
 function ViewModeSwitcher({ view }: { view: View }) {
-  const { layout, setLayout, select, selectUser, selectAutomation, selectRunner, selectRun } = useStore();
+  const { layout, setLayout, select, selectUser, selectWorkflow, selectRunner, selectRun } = useStore();
   const modes = VIEW_MODES[view];
   if (!modes || modes.length < 2) return null;
   // Switching to the alternate layout clears every page's open item, so each page
@@ -23,7 +25,7 @@ function ViewModeSwitcher({ view }: { view: View }) {
   const clearAllSelections = () => {
     select(null);
     selectUser(null);
-    selectAutomation(null);
+    selectWorkflow(null);
     selectRunner(null);
     selectRun(null);
   };
@@ -69,9 +71,10 @@ function InfoPaneToggle({ label }: { label: string }) {
 
 const VIEW_LABEL: Record<Exclude<View, "inbox">, string> = {
   home: "Home",
-  builder: "Automation builder",
+  review: "Review",
+  builder: "Workflow builder",
   activity: "Activity",
-  automations: "Automations",
+  workflows: "Workflows",
   manage: "Manage",
   users: "Users",
   administration: "Administration",
@@ -87,12 +90,13 @@ export function Titlebar() {
   const {
     view,
     subview,
+    dataSource,
     selected,
     select,
     selectedUserId,
     selectUser,
-    selectedAutomationId,
-    selectAutomation,
+    selectedWorkflowId,
+    selectWorkflow,
     selectedRunnerId,
     selectRunner,
     selectedRunId,
@@ -101,15 +105,15 @@ export function Titlebar() {
     draft,
     closeBuilder,
     viewMode,
-    automations,
+    workflows,
     setView,
     openSubview,
     members,
   } = useStore();
 
   const openUser = selectedUserId ? endUsers.find((u) => u.id === selectedUserId) ?? null : null;
-  const openAutomation = selectedAutomationId
-    ? automations.find((a) => a.id === selectedAutomationId) ?? null
+  const openWorkflow = selectedWorkflowId
+    ? workflows.find((a) => a.id === selectedWorkflowId) ?? null
     : null;
   const openRunner = selectedRunnerId ? runners.find((r) => r.id === selectedRunnerId) ?? null : null;
   // Only the Activity timeline opens a run full-pane; the list layout expands runs
@@ -133,11 +137,11 @@ export function Titlebar() {
     items = openUser
       ? [{ label: "Users", onClick: () => selectUser(null) }, { label: openUser.name }]
       : [{ label: "Users" }];
-  } else if (view === "automations") {
-    hasContext = !!openAutomation;
-    items = openAutomation
-      ? [{ label: "Automations", onClick: () => selectAutomation(null) }, { label: openAutomation.name }]
-      : [{ label: "Automations" }];
+  } else if (view === "workflows") {
+    hasContext = !!openWorkflow;
+    items = openWorkflow
+      ? [{ label: "Workflows", onClick: () => selectWorkflow(null) }, { label: openWorkflow.name }]
+      : [{ label: "Workflows" }];
   } else if (view === "settings") {
     const pageId = subview ?? DEFAULT_SETTINGS_PAGE;
     const page = SETTINGS_PAGES.find((p) => p.id === pageId);
@@ -154,8 +158,8 @@ export function Titlebar() {
     // step configuration, so the info toggle acts on that.
     hasContext = true;
     items = [
-      { label: "Automations", onClick: closeBuilder },
-      { label: draft?.isNew ? "New automation" : draft?.name || "Untitled automation" },
+      { label: "Workflows", onClick: closeBuilder },
+      { label: draft?.isNew ? "New workflow" : draft?.name || "Untitled workflow" },
     ];
   } else if (view === "activity") {
     hasContext = true;
@@ -177,6 +181,7 @@ export function Titlebar() {
     items = [{ label: VIEW_LABEL[view] }];
   }
 
+  const readiness = readinessOfView(view, dataSource);
   const showSwitcher = (VIEW_MODES[view]?.length ?? 0) > 1;
   const showInfoToggle = hasContext && !!CONTEXT_LABEL[view];
   const showSubscribers = view === "inbox" && !!selected;
@@ -188,6 +193,17 @@ export function Titlebar() {
     >
       <SidebarToggle />
       <Breadcrumb items={items} />
+      {/* What this screen actually is. The vision names scheduling, credentials and
+          multi-user auth as roadmap, and the app draws all three convincingly — so
+          each surface says so rather than letting a complete-looking screen imply a
+          promise nobody made. */}
+      {readiness !== "prototype" && (
+        <span title={READINESS_META[readiness].blurb} className="inline-flex">
+          <Chip tone={READINESS_META[readiness].tone} dot={false}>
+            {READINESS_META[readiness].label}
+          </Chip>
+        </span>
+      )}
 
       <div className="ml-auto flex items-center gap-2">
         {showSwitcher && <ViewModeSwitcher view={view} />}

@@ -1,5 +1,5 @@
 import { type ReactNode } from "react";
-import { Bell, Box, Cpu, House, Inbox, Settings, ShieldCheck, SlidersHorizontal, Users, Workflow } from "lucide-react";
+import { Bell, Box, ClipboardCheck, Cpu, House, Inbox, Settings, ShieldCheck, SlidersHorizontal, Users, Workflow as WorkflowIcon } from "lucide-react";
 import { useStore, type View } from "../store";
 import { navItems } from "../data/nav";
 import { endUsers } from "../data/users";
@@ -17,11 +17,12 @@ const navIconProps = { size: 20, strokeWidth: 1.7 };
 // Keyed by view so the rail can't miss one; the modes that aren't nav
 // destinations (Settings' full-screen rail, the builder) never render from here.
 const icons: Record<View, ReactNode> = {
+  review: <ClipboardCheck {...navIconProps} />,
   home: <House {...navIconProps} />,
-  builder: <Workflow {...navIconProps} />,
+  builder: <WorkflowIcon {...navIconProps} />,
   activity: <Bell {...navIconProps} />,
   inbox: <Inbox {...navIconProps} />,
-  automations: <Workflow {...navIconProps} />,
+  workflows: <WorkflowIcon {...navIconProps} />,
   manage: <SlidersHorizontal {...navIconProps} />,
   users: <Users {...navIconProps} />,
   administration: <ShieldCheck {...navIconProps} />,
@@ -34,7 +35,7 @@ const icons: Record<View, ReactNode> = {
  *  lives in the main content header (SidebarToggle) and drives `sidebarExpanded`
  *  in the store, which sets this rail's width and label visibility. */
 export function Sidebar() {
-  const { sidebarExpanded: expanded, view, openIds, issues, automations, badgesEnabled, role, hasCapability } =
+  const { sidebarExpanded: expanded, view, openIds, issues, workflows, badgesEnabled, role, hasCapability } =
     useStore();
   const inSettings = view === "settings";
 
@@ -59,8 +60,8 @@ export function Sidebar() {
         return issues.filter((i) => i.status === "Under Investigation" || i.status === "Active").length;
       case "inbox":
         return issues.length;
-      case "automations":
-        return automations.length;
+      case "workflows":
+        return workflows.length;
       case "users":
         return endUsers.length;
       case "runners":

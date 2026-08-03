@@ -1,10 +1,10 @@
 import { useState, type ReactNode } from "react";
-import { ArrowDown, ArrowUp, Package, Play, Plus, Trash2, Workflow, Zap } from "lucide-react";
+import { ArrowDown, ArrowUp, Package, Play, Plus, Trash2, Workflow as WorkflowIcon, Zap } from "lucide-react";
 import { useStore } from "../store";
-import { folders as allFolders } from "../data/automations";
+import { folders as allFolders } from "../data/workflows";
 import { members } from "../data/issues";
 import { actionById, packagesForSteps, stepSummary, type ActionField } from "../data/actions";
-import { RUN_TRIGGERS, type AutomationDraft, type AutomationStep, type RunTrigger, type Visibility } from "../data/types";
+import { RUN_TRIGGERS, type WorkflowDraft, type WorkflowStep, type RunTrigger, type Visibility } from "../data/types";
 import { draftProblems, moveStep, newStep, paletteGroups, type PaletteGroup } from "../lib/builder";
 import { isNarrowed } from "../lib/workspace";
 import { SplitView, Pane, DetailPane, ContextPane, PANE_WIDTH } from "./layout/SplitView";
@@ -12,9 +12,9 @@ import { Avatar } from "./Avatar";
 import { Button } from "./Button";
 
 /* =============================================================================
-   The automation builder
+   The workflow builder
    -----------------------------------------------------------------------------
-   Where automations are actually made: a palette of actions on the left, the
+   Where workflows are actually made: a palette of actions on the left, the
    flow in the middle, and the configuration of whatever is selected on the right.
    It takes over the workspace (like Settings) rather than living in a pane,
    because authoring wants the room.
@@ -31,7 +31,7 @@ import { Button } from "./Button";
    ============================================================================= */
 
 /** What the right-hand pane is configuring. */
-type Selection = { kind: "automation" } | { kind: "trigger" } | { kind: "step"; id: string };
+type Selection = { kind: "workflow" } | { kind: "trigger" } | { kind: "step"; id: string };
 
 const TRIGGER_HINT: Record<RunTrigger, string> = {
   Manual: "Who may start it by hand",
@@ -176,7 +176,7 @@ function StepRow({
   onMove,
   onRemove,
 }: {
-  step: AutomationStep;
+  step: WorkflowStep;
   index: number;
   count: number;
   active: boolean;
@@ -249,7 +249,7 @@ function IconButton({
 /** What both flow presentations need: the draft, what's selected, and the ways to
  *  change the order or drop a step. */
 type FlowProps = {
-  draft: AutomationDraft;
+  draft: WorkflowDraft;
   selection: Selection;
   onSelect: (selection: Selection) => void;
   onMove: (id: string, direction: -1 | 1) => void;
@@ -257,7 +257,7 @@ type FlowProps = {
 };
 
 /** The trigger, as the head of the flow in either presentation. */
-function TriggerCard({ draft, active, onSelect, wide }: { draft: AutomationDraft; active: boolean; onSelect: () => void; wide: boolean }) {
+function TriggerCard({ draft, active, onSelect, wide }: { draft: WorkflowDraft; active: boolean; onSelect: () => void; wide: boolean }) {
   return (
     <button
       type="button"
@@ -290,10 +290,10 @@ function TriggerCard({ draft, active, onSelect, wide }: { draft: AutomationDraft
 function NoSteps() {
   return (
     <div className="flex flex-col items-center gap-2 rounded-xl border-border-default border-[0.5px] px-6 py-10 text-center">
-      <Workflow size={20} strokeWidth={1.6} className="text-tertiary-foreground" />
+      <WorkflowIcon size={20} strokeWidth={1.6} className="text-tertiary-foreground" />
       <span className="text-body-base font-medium text-secondary-foreground">No steps yet</span>
       <span className="max-w-xs text-body-sm text-tertiary-foreground">
-        Pick an action from the palette to start the flow. Its package is added to the automation's dependencies
+        Pick an action from the palette to start the flow. Its package is added to the workflow's dependencies
         automatically.
       </span>
     </div>
@@ -339,7 +339,7 @@ function Connector() {
 }
 
 /** Diagram mode: the same flow as connected nodes, read top to bottom — what the
- *  automation does at a glance, rather than a list to edit. */
+ *  workflow does at a glance, rather than a list to edit. */
 function FlowDiagram({ draft, selection, onSelect, onMove, onRemove }: FlowProps) {
   return (
     <div className="flex flex-col items-center">
@@ -408,9 +408,9 @@ function FlowDiagram({ draft, selection, onSelect, onMove, onRemove }: FlowProps
 
 /* ------------------------------------------------------------------- builder */
 
-export function AutomationBuilder() {
+export function WorkflowBuilder() {
   const { draft, updateDraft, saveDraft, testRunDraft, closeBuilder, memberById, controls, viewMode } = useStore();
-  const [selection, setSelection] = useState<Selection>({ kind: "automation" });
+  const [selection, setSelection] = useState<Selection>({ kind: "workflow" });
 
   if (!draft) return null;
 
@@ -434,7 +434,7 @@ export function AutomationBuilder() {
     updateDraft({ steps: draft.steps.map((s) => (s.id === id ? { ...s, config } : s)) });
   const removeStep = (id: string) => {
     updateDraft({ steps: draft.steps.filter((s) => s.id !== id) });
-    if (selection.kind === "step" && selection.id === id) setSelection({ kind: "automation" });
+    if (selection.kind === "step" && selection.id === id) setSelection({ kind: "workflow" });
   };
 
   const flow: FlowProps = {
@@ -457,9 +457,9 @@ export function AutomationBuilder() {
               <input
                 value={draft.name}
                 onChange={(e) => updateDraft({ name: e.target.value })}
-                onFocus={() => setSelection({ kind: "automation" })}
-                placeholder="Name this automation"
-                aria-label="Automation name"
+                onFocus={() => setSelection({ kind: "workflow" })}
+                placeholder="Name this workflow"
+                aria-label="Workflow name"
                 className="w-full bg-transparent font-sans text-heading-4 font-medium text-primary-foreground outline-none placeholder:text-tertiary-foreground"
               />
 
@@ -499,13 +499,13 @@ export function AutomationBuilder() {
               </div>
             ) : (
               <div className="flex flex-col gap-4">
-                <h3 className="text-body-base font-medium text-primary-foreground">Automation</h3>
+                <h3 className="text-body-base font-medium text-primary-foreground">Workflow</h3>
                 <Field label="Description">
                   <textarea
                     value={draft.description}
                     onChange={(e) => updateDraft({ description: e.target.value })}
                     rows={3}
-                    placeholder="What does this automation do?"
+                    placeholder="What does this workflow do?"
                     className={inputClass + " resize-none"}
                   />
                 </Field>
@@ -590,7 +590,7 @@ export function AutomationBuilder() {
               pointerEvents: problems.length > 0 ? "none" : "auto",
             }}
           >
-            {draft.isNew ? "Create automation" : "Save changes"}
+            {draft.isNew ? "Create workflow" : "Save changes"}
           </Button>
         </div>
       </div>
@@ -604,7 +604,7 @@ function StepConfig({
   onChange,
   onRemove,
 }: {
-  step: AutomationStep;
+  step: WorkflowStep;
   onChange: (config: Record<string, string>) => void;
   onRemove: () => void;
 }) {

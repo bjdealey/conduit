@@ -27,10 +27,10 @@ import {
   type Role,
   type RunState,
 } from "./types";
-import { RUNNER_CLASS_LABEL, RUNNER_CLASSES, RUNNER_STATES } from "@conduit/domain";
+import { RUNNER_CLASS_LABEL, RUNNER_CLASSES, RUNNER_STATES, WORKFLOW_STATUSES } from "@conduit/domain";
 import { RUNNER_STATE_ACCENT } from "../components/RunnersView";
 import { members } from "./issues";
-import { AUTOMATION_STATUS_ACCENT, PRIORITY_ACCENT, RUN_STATE_ACCENT, STATUS_ACCENT } from "../components/Badges";
+import { WORKFLOW_STATUS_ACCENT, PRIORITY_ACCENT, RUN_STATE_ACCENT, STATUS_ACCENT } from "../components/Badges";
 import { endUsers } from "./users";
 import { ACTIONS } from "./actions";
 
@@ -44,7 +44,7 @@ import { ACTIONS } from "./actions";
 
    This file declares what the bar *shows*. What a filter or sort *means* stays
    with the page that owns the data (it maps these ids onto its own rows), so the
-   header never needs to know about issues, runs, or automations.
+   header never needs to know about issues, runs, or workflows.
 
    Scope: workspace-level controls only. Controls that belong to one pane — a
    detail's content tabs, the Activity sources list — stay with that pane.
@@ -93,7 +93,7 @@ const dim = { size: 15, strokeWidth: 1.7 } as const;
 
 /** Options carrying the accent their own rows use. Each dimension passes its own
  *  palette, because a value's colour is per-vocabulary — "Active" is tomato for an
- *  incident and grass for an automation. */
+ *  incident and grass for an workflow. */
 const fromPalette =
   (palette: Record<string, string>) =>
   <T extends string>(id: T): FilterOption =>
@@ -150,19 +150,19 @@ function activity(tab: string): WorkspaceControls {
         : [
             { id: "recent", label: "Started", defaultDir: "desc" },
             { id: "duration", label: "Duration", defaultDir: "desc" },
-            { id: "automation", label: "Automation", defaultDir: "asc" },
+            { id: "workflow", label: "Workflow", defaultDir: "asc" },
           ],
   };
 }
 
-const AUTOMATIONS: WorkspaceControls = {
-  search: "Search or filter automations…",
+const WORKFLOWS: WorkspaceControls = {
+  search: "Search or filter workflows…",
   filters: [
     {
       id: "status",
       label: "Status",
       icon: <CircleDashed {...dim} />,
-      options: ["Active", "Paused", "Draft"].map(fromPalette(AUTOMATION_STATUS_ACCENT)),
+      options: [...WORKFLOW_STATUSES].map(fromPalette(WORKFLOW_STATUS_ACCENT)),
     },
     {
       id: "visibility",
@@ -194,7 +194,7 @@ const AUTOMATIONS: WorkspaceControls = {
     { id: "success", label: "Success rate", defaultDir: "desc" },
     { id: "recent", label: "Last run", defaultDir: "desc" },
   ],
-  actions: [{ id: "new-automation", label: "New automation", icon: newIcon, roles: ["admin", "developer"] }],
+  actions: [{ id: "new-workflow", label: "New workflow", icon: newIcon, roles: ["admin", "professional", "builder"] }],
 };
 
 const USERS: WorkspaceControls = {
@@ -290,7 +290,7 @@ function manage(tab: string): WorkspaceControls {
   return {
     search: `Search or filter ${tab.toLowerCase()}…`,
     filters: togglable ? [MANAGE_ENABLED] : undefined,
-    actions: [{ id: "new", label: "New", icon: newIcon, roles: ["admin", "developer"] }],
+    actions: [{ id: "new", label: "New", icon: newIcon, roles: ["admin", "professional", "builder"] }],
   };
 }
 
@@ -306,8 +306,9 @@ function administration(tab: string): WorkspaceControls {
             icon: <ShieldCheck {...dim} />,
             options: [
               { id: "admin", label: "Admin", accent: "violet" },
-              { id: "developer", label: "Developer", accent: "blue" },
-              { id: "user", label: "User", accent: "gray" },
+              { id: "professional", label: "Professional", accent: "blue" },
+              { id: "builder", label: "Citizen builder", accent: "cyan" },
+              { id: "consumer", label: "Consumer", accent: "gray" },
             ],
           },
           {
@@ -336,12 +337,14 @@ export function workspaceControls(view: View, tab: string): WorkspaceControls | 
       return INBOX;
     case "activity":
       return activity(tab || "In progress");
-    case "automations":
-      return AUTOMATIONS;
+    case "workflows":
+      return WORKFLOWS;
     case "users":
       return USERS;
     case "runners":
       return RUNNERS;
+    case "review":
+      return { search: "Search submissions…" };
     case "surfaces":
       return SURFACES;
     case "builder":

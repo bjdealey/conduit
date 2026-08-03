@@ -6,7 +6,7 @@ import type { ButtonHTMLAttributes, ReactNode } from "react";
  * own shapes elsewhere in the app).
  *
  * Two sizes, both already established in the codebase:
- *  - `md` — page and dialog actions (Create automation, Run now, Send). The
+ *  - `md` — page and dialog actions (Create workflow, Run now, Send). The
  *    default.
  *  - `sm` — the tighter inline action used in the workspace header and other
  *    toolbars, where the button sits in a 32px row.

@@ -1,5 +1,5 @@
 import { type ReactNode } from "react";
-import { Workflow } from "lucide-react";
+import { Workflow as WorkflowIcon } from "lucide-react";
 import { useStore } from "../store";
 import { schedules, eventTriggers, credentials, packages, globalValues } from "../data/manage";
 import type { Credential, EventTrigger, GlobalValue, Package, Schedule } from "../data/manage";
@@ -28,18 +28,18 @@ function Kind({ children }: { children: ReactNode }) {
 
 const mono = (s: ReactNode) => <span className="font-departure-mono text-[0.72rem] text-secondary-foreground">{s}</span>;
 
-/** A cell that names the automation an object drives and jumps to the library. */
-function AutomationCell({ automationId }: { automationId: string }) {
-  const { automationById, setView } = useStore();
-  const automation = automationById(automationId);
+/** A cell that names the workflow an object drives and jumps to the library. */
+function WorkflowCell({ workflowId }: { workflowId: string }) {
+  const { workflowById, setView } = useStore();
+  const workflow = workflowById(workflowId);
   return (
     <button
       type="button"
-      onClick={() => setView("automations")}
+      onClick={() => setView("workflows")}
       className="focusable -mx-1 inline-flex items-center gap-1.5 rounded-md px-1 py-0.5 text-left transition-colors hover:bg-transparent-hover"
     >
-      <Workflow size={13} strokeWidth={1.8} className="shrink-0 text-tertiary-foreground" />
-      <span className="truncate text-body-sm text-primary-foreground">{automation?.name ?? automationId}</span>
+      <WorkflowIcon size={13} strokeWidth={1.8} className="shrink-0 text-tertiary-foreground" />
+      <span className="truncate text-body-sm text-primary-foreground">{workflow?.name ?? workflowId}</span>
     </button>
   );
 }
@@ -47,10 +47,10 @@ function AutomationCell({ automationId }: { automationId: string }) {
 /* ------------------------------------------------------------------ view */
 
 /** Manage — operational objects behind execution: schedules and event triggers
- *  that start automations, plus the credentials, packages and global values runs
- *  consume. Each tab is a token-styled table; rows link back to the automation. */
+ *  that start workflows, plus the credentials, packages and global values runs
+ *  consume. Each tab is a token-styled table; rows link back to the workflow. */
 export function ManageView() {
-  const { memberById, automationById, controls, sectionTab, setSectionTab } = useStore();
+  const { memberById, workflowById, controls, sectionTab, setSectionTab } = useStore();
   // The active tab is shared with the workspace header, so its search placeholder
   // and filters follow the objects on screen.
   const tab = (sectionTab("manage") || "Scheduled") as Tab;
@@ -66,10 +66,10 @@ export function ManageView() {
         (enabled === undefined || passesFilter(state, "enabled", enabled(row) ? "enabled" : "paused")),
     );
 
-  const automationName = (id: string) => automationById(id)?.name ?? id;
+  const workflowName = (id: string) => workflowById(id)?.name ?? id;
 
   const scheduleCols: Column<Schedule>[] = [
-    { key: "automation", header: "Automation", render: (r) => <AutomationCell automationId={r.automationId} /> },
+    { key: "workflow", header: "Workflow", render: (r) => <WorkflowCell workflowId={r.workflowId} /> },
     { key: "cadence", header: "Cadence", render: (r) => r.cadence },
     { key: "next", header: "Next run", render: (r) => <span className="text-tertiary-foreground">{r.nextRun}</span> },
     { key: "last", header: "Last run", render: (r) => <span className="text-tertiary-foreground">{r.lastRun}</span> },
@@ -79,7 +79,7 @@ export function ManageView() {
   ];
 
   const triggerCols: Column<EventTrigger>[] = [
-    { key: "automation", header: "Automation", render: (r) => <AutomationCell automationId={r.automationId} /> },
+    { key: "workflow", header: "Workflow", render: (r) => <WorkflowCell workflowId={r.workflowId} /> },
     { key: "event", header: "Event", render: (r) => mono(r.event) },
     { key: "condition", header: "Condition", render: (r) => <span className="text-secondary-foreground">{r.condition}</span> },
     { key: "fired", header: "Fired", align: "right", width: 90, render: (r) => mono(num(r.fireCount)) },
@@ -111,7 +111,7 @@ export function ManageView() {
     { key: "name", header: "Name", render: (r) => mono(r.name) },
     { key: "version", header: "Version", width: 100, render: (r) => mono(r.version) },
     { key: "publisher", header: "Publisher", render: (r) => <span className="text-secondary-foreground">{r.publisher}</span> },
-    { key: "used", header: "Used by", align: "right", width: 90, render: (r) => `${r.usedBy} automation${r.usedBy === 1 ? "" : "s"}` },
+    { key: "used", header: "Used by", align: "right", width: 90, render: (r) => `${r.usedBy} workflow${r.usedBy === 1 ? "" : "s"}` },
     { key: "updated", header: "Updated", render: (r) => <span className="text-tertiary-foreground">{r.updatedAgo}</span> },
   ];
 
@@ -124,12 +124,12 @@ export function ManageView() {
   const rows = {
     Scheduled: narrow(
       schedules,
-      (r) => [automationName(r.automationId), r.cadence, r.nextRun, r.lastRun],
+      (r) => [workflowName(r.workflowId), r.cadence, r.nextRun, r.lastRun],
       (r) => r.enabled,
     ),
     "Event triggers": narrow(
       eventTriggers,
-      (r) => [automationName(r.automationId), r.event, r.condition, r.lastFired],
+      (r) => [workflowName(r.workflowId), r.event, r.condition, r.lastFired],
       (r) => r.enabled,
     ),
     Credentials: narrow(credentials, (r) => [r.name, r.kind, r.scope, memberById(r.ownerId)?.name]),

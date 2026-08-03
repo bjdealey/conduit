@@ -23,13 +23,13 @@ export type SourceStamped = {
   connectorId: string;
 };
 
-/** Normalised bot run-state. Vendor-specific states map onto this at the adapter. */
-export const BOT_STATES = ["Running", "Idle", "Disabled", "Unknown"] as const;
-export type BotState = (typeof BOT_STATES)[number];
+/** Normalised workflow run-state. Vendor-specific states map onto this at the adapter. */
+export const WORKFLOW_RUN_STATES = ["Running", "Idle", "Disabled", "Unknown"] as const;
+export type WorkflowRunState = (typeof WORKFLOW_RUN_STATES)[number];
 
-/** A bot / automation definition. The first capability wired end to end. */
-export type Bot = SourceStamped & {
+/** A workflow / automation definition. The first capability wired end to end. */
+export type Workflow = SourceStamped & {
   title: string;
-  state: BotState;
+  state: WorkflowRunState;
   owner: string;
 };

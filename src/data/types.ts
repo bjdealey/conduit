@@ -1,6 +1,8 @@
 /** Domain model for the Conduit platform prototype. */
 
-import type { WorkflowRequirements } from "@conduit/domain";
+import type { Role, WorkflowRequirements, WorkflowStatus } from "@conduit/domain";
+
+export type { Role, WorkflowStatus };
 
 /** Priorities, in the order they rank (highest first). */
 export const PRIORITIES = ["High", "Medium", "Low"] as const;
@@ -68,23 +70,23 @@ export type Issue = {
   findingsCount: number;
   impactedUsers: number;
   activity: ActivityEvent[];
-  /** The automation this incident concerns, if any. Optional: an issue may be
-   *  raised manually against an automation, spun off a failed run, or stand alone. */
-  automationId?: string;
+  /** The workflow this incident concerns, if any. Optional: an issue may be
+   *  raised manually against an workflow, spun off a failed run, or stand alone. */
+  workflowId?: string;
   /** The specific run whose failure spawned this incident, when applicable. */
   sourceRunId?: string;
 };
 
-/* -------------------------------------------------------------------- automation */
+/* -------------------------------------------------------------------- workflow */
 
-/** Fixed platform roles. Gates the UI (admin edits permissions; developer and
- *  user get progressively scoped views). */
-export type Role = "admin" | "developer" | "user";
+/* Roles and the workflow lifecycle live in `packages/domain/src/review.ts`, with the
+   permission table and the transition rules they gate. Keeping the vocabulary next to
+   the rules is what stops the UI offering a button the rules would refuse. */
 
-/** Whether an automation / folder is shared (Public) or owner-scoped (Private). */
+/** Whether an workflow / folder is shared (Public) or owner-scoped (Private). */
 export type Visibility = "public" | "private";
 
-/** A node in the automation library tree. `parentId: null` sits at a visibility
+/** A node in the workflow library tree. `parentId: null` sits at a visibility
  *  root (Public / Private). */
 export type Folder = {
   id: string;
@@ -93,7 +95,7 @@ export type Folder = {
   visibility: Visibility;
 };
 
-/** Automation run states, in the order the Activity view groups them. */
+/** Workflow run states, in the order the Activity view groups them. */
 export const RUN_STATES = ["Queued", "Running", "Completed", "Failed"] as const;
 export type RunState = (typeof RUN_STATES)[number];
 
@@ -101,11 +103,11 @@ export type RunState = (typeof RUN_STATES)[number];
 export const RUN_TRIGGERS = ["Manual", "Schedule", "Event"] as const;
 export type RunTrigger = (typeof RUN_TRIGGERS)[number];
 
-/** A single execution of an automation. Its `activity` reuses the incident
+/** A single execution of an workflow. Its `activity` reuses the incident
  *  timeline shape as the run log; a failed run may have spawned an incident. */
 export type Run = {
   id: string;
-  automationId: string;
+  workflowId: string;
   state: RunState;
   trigger: RunTrigger;
   /** Who/what started it — a member name or the trigger source. */
@@ -121,54 +123,53 @@ export type Run = {
   issueId?: number;
 };
 
-/** The automation lifecycle, distinct from an incident's workflow status. */
-export type AutomationStatus = "Active" | "Paused" | "Draft";
 
-/** The platform that executes an automation today. `conduit` is native — authored
+
+/** The platform that executes an workflow today. `conduit` is native — authored
  *  here, run on our runners. Anything else is a connected platform mirrored into the
  *  library by its connector: we show it and observe it, but its flow lives over there. */
 export const WORKFLOW_PLATFORMS = ["conduit", "automation-anywhere"] as const;
 export type WorkflowPlatform = (typeof WORKFLOW_PLATFORMS)[number];
 
-/** Display names for the platforms an automation can run on. */
+/** Display names for the platforms an workflow can run on. */
 export const PLATFORM_LABEL: Record<WorkflowPlatform, string> = {
   conduit: "Conduit",
   "automation-anywhere": "Automation Anywhere",
 };
 
-/** How far along the move onto Conduit an automation is. Per automation and
+/** How far along the move onto Conduit an workflow is. Per workflow and
  *  reversible: there is no cutover date, so this is a state rather than a milestone,
  *  and "Won't move" is a legitimate resting place rather than a failure. */
 export const MIGRATION_STATES = ["Not started", "Piloting", "Migrated", "Won't move"] as const;
 export type MigrationState = (typeof MIGRATION_STATES)[number];
 
-/** How an automation starts. `detail` carries the cadence for a schedule
+/** How an workflow starts. `detail` carries the cadence for a schedule
  *  ("Every 15 minutes"), the event key for an event ("user.signup"), or who may
  *  run it by hand — the same vocabulary a Run's `startedBy` reads in. */
-export type AutomationTrigger = { kind: RunTrigger; detail: string };
+export type WorkflowTrigger = { kind: RunTrigger; detail: string };
 
-/** One step in an automation's flow: an action from the palette
+/** One step in an workflow's flow: an action from the palette
  *  (`src/data/actions.ts`) plus the values filled in for that action's fields.
  *  `config` is keyed by field id; a missing key means the field is unset. */
-export type AutomationStep = {
+export type WorkflowStep = {
   id: string;
   /** Action id from the palette — resolves to its label, package, and fields. */
   actionId: string;
   config: Record<string, string>;
 };
 
-/** A first-class automation definition. Lives in a Folder; produces Runs;
+/** A first-class workflow definition. Lives in a Folder; produces Runs;
  *  its failures can spin off Issues. */
-export type Automation = {
+export type Workflow = {
   id: string;
   name: string;
   description: string;
   folderId: string;
   visibility: Visibility;
-  status: AutomationStatus;
+  status: WorkflowStatus;
   /** Owning team member id (see `members`). */
   ownerId: string;
-  /** Which platform runs it today. Mirrored automations (`platform !== "conduit"`)
+  /** Which platform runs it today. Mirrored workflows (`platform !== "conduit"`)
    *  have no `steps` — their flow is authored on their own platform. */
   platform: WorkflowPlatform;
   /** Where it sits in the move onto Conduit. */
@@ -177,23 +178,31 @@ export type Automation = {
    *  Declared here and raised on save to at least what its steps require, so a flow
    *  can't quietly need more than it admits to. */
   requirements: WorkflowRequirements;
+  /** Who submitted it for review, and when. Absent until it is first submitted. */
+  submittedBy?: string;
+  submittedAt?: string;
+  /** Who last reviewed it, when, and what they said. A published workflow always
+   *  carries an approval — there is no transition that skips one. */
+  reviewedBy?: string;
+  reviewedAt?: string;
+  reviewNote?: string;
   /** What starts it. Edited in the builder; mirrored by the runs it produces. */
-  trigger: AutomationTrigger;
+  trigger: WorkflowTrigger;
   /** The flow itself, in execution order. Authored in the builder; the
    *  `packages` list is derived from these steps' actions on save. */
-  steps: AutomationStep[];
+  steps: WorkflowStep[];
   /** Rollup stats shown in the library table and detail header. */
   runCount: number;
   /** Success rate across recent runs, 0..1. */
   successRate: number;
   lastRunAt: string;
   updatedAgo: string;
-  /** Packages this automation depends on (Dependencies tab). */
+  /** Packages this workflow depends on (Dependencies tab). */
   packages: string[];
-  /** Other automation ids this one references (Dependencies tab). */
+  /** Other workflow ids this one references (Dependencies tab). */
   references: string[];
 };
 
-/** The automation open in the builder: one loaded from the library for editing,
+/** The workflow open in the builder: one loaded from the library for editing,
  *  or a new one that isn't in it yet (`isNew`, committed on save). */
-export type AutomationDraft = Automation & { isNew: boolean };
+export type WorkflowDraft = Workflow & { isNew: boolean };

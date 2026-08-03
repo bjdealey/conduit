@@ -39,7 +39,7 @@ the brief therefore resolve to *"none yet"* — choosing them was decision #1 in
 | Existing API controllers | **None.** No server, no routes. Deploy target is **GitHub Pages** (static only). | `.github/workflows/deploy.yml` |
 | Frontend data calls | Components call `useStore()`; the store imports seed arrays from `src/data/*.ts` and serves them synchronously. No network boundary exists. | `src/store.tsx:2-8,130-176`; consumers via `useStore()` |
 | Domain models (already present) | `Automation`, `Run`, `Folder`, `Issue`, `Member` (`types.ts`); `Schedule`, `EventTrigger`, `Credential`, `Package`, `GlobalValue` (`manage.ts`); `Environment` (`environments.ts`). | `src/data/types.ts`, `src/data/manage.ts`, `src/data/environments.ts` |
-| Stack conventions | TypeScript strict + ESM; PascalCase types, camelCase values; JSDoc on every type; string ids (`aut_reset_audit`, `run_1043`, `cred_ses`); domain types in `data/types.ts`, seed data in `data/*.ts`, helpers in `lib/*.ts`. | `tsconfig.json`, `src/data/types.ts`, `src/data/automations.ts` |
+| Stack conventions | TypeScript strict + ESM; PascalCase types, camelCase values; JSDoc on every type; string ids (`wf_reset_audit`, `run_1043`, `cred_ses`); domain types in `data/types.ts`, seed data in `data/*.ts`, helpers in `lib/*.ts`. | `tsconfig.json`, `src/data/types.ts`, `src/data/automations.ts` |
 | Prior analysis | `docs/structure-map.md` already maps A360 reference surfaces onto Conduit entities and settled the entity graph (`Automation`→`Run`→`Issue`). | `docs/structure-map.md` |
 
 **Why the domain is already a head start.** The requested capabilities map almost 1:1 onto
@@ -66,7 +66,7 @@ API in front of them and (b) make an adapter *produce* them from a vendor:
    Multi-connector output is indistinguishable. **Must add `platform` + `connectorId` to every
    domain model.**
 
-2. **Global ids will collide across instances.** Ids like `aut_reset_audit` (`automations.ts`)
+2. **Global ids will collide across instances.** Ids like `wf_reset_audit` (`automations.ts`)
    are globally unique *within one seed file*. With two A360 Control Rooms the same vendor id can
    appear twice. **Domain `id` must be namespaced by connector instance** (`connectorId` + vendor
    `sourceId`), with the raw vendor id preserved separately.

@@ -1,5 +1,5 @@
 import { Chip } from "./Chip";
-import type { AutomationStatus, Priority, RunState, Status } from "../data/types";
+import type { WorkflowStatus, Priority, RunState, Status } from "../data/types";
 
 const PRIORITY_ACCENT: Record<Priority, string> = {
   High: "tomato",
@@ -33,9 +33,9 @@ export function StatusBadge({ status }: { status: Status }) {
   return <Chip tone={STATUS_ACCENT[status]}>{status}</Chip>;
 }
 
-/* ------------------------------------------------------------------ automation */
+/* ------------------------------------------------------------------ workflow */
 
-/** Automation run states use the reserved status palette (never categorical):
+/** Workflow run states use the reserved status palette (never categorical):
  *  neutral / info / good / critical, always shown with a label. */
 const RUN_STATE_ACCENT: Record<RunState, string> = {
   Queued: "gray",
@@ -49,15 +49,18 @@ export function RunStateChip({ state }: { state: RunState }) {
   return <Chip tone={RUN_STATE_ACCENT[state]} mono className="shrink-0">{state}</Chip>;
 }
 
-const AUTOMATION_STATUS_ACCENT: Record<AutomationStatus, string> = {
-  Active: "grass",
-  Paused: "amber",
+const WORKFLOW_STATUS_ACCENT: Record<WorkflowStatus, string> = {
   Draft: "gray",
+  "In review": "blue",
+  "Changes requested": "amber",
+  Approved: "cyan",
+  Published: "grass",
+  Paused: "amber",
 };
 
-/** Automation lifecycle chip (Active / Paused / Draft). */
-export function AutomationStatusChip({ status }: { status: AutomationStatus }) {
-  return <Chip tone={AUTOMATION_STATUS_ACCENT[status]}>{status}</Chip>;
+/** Workflow lifecycle chip (Draft → In review → Approved → Published). */
+export function WorkflowStatusChip({ status }: { status: WorkflowStatus }) {
+  return <Chip tone={WORKFLOW_STATUS_ACCENT[status]}>{status}</Chip>;
 }
 
-export { PRIORITY_ACCENT, STATUS_ACCENT, RUN_STATE_ACCENT, AUTOMATION_STATUS_ACCENT };
+export { PRIORITY_ACCENT, STATUS_ACCENT, RUN_STATE_ACCENT, WORKFLOW_STATUS_ACCENT };

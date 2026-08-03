@@ -23,12 +23,12 @@ export const AUTH_PATH = "/v1/authentication";
 export const OAUTH_TOKEN_PATH = "/v1/authentication/token";
 
 /**
- * Bot listing.
- * TODO(a360): confirm the bot-listing endpoint and request-body schema. Bots are
+ * Workflow listing.
+ * TODO(a360): confirm the workflow-listing endpoint and request-body schema. Workflows are
  * repository files; this is believed to be `POST /v2/repository/file/list` with a
  * TaskBot type filter, but the exact filter/sort/pagination schema is UNVERIFIED.
  */
-export const BOT_LIST_PATH = "/v2/repository/file/list";
+export const WORKFLOW_LIST_PATH = "/v2/repository/file/list";
 
 /**
  * The authenticated-request header carrying the JWT.
@@ -38,11 +38,11 @@ export const BOT_LIST_PATH = "/v2/repository/file/list";
 export const AUTH_HEADER = "x-authorization";
 
 /**
- * Best-effort request body for the bot listing.
+ * Best-effort request body for the workflow listing.
  * TODO(a360): confirm the filter schema (field name for file type, the TaskBot MIME
  * `application/vnd.aa.taskbot`, and pagination). Left as a documented placeholder.
  */
-export function botListRequestBody(): Record<string, unknown> {
+export function workflowListRequestBody(): Record<string, unknown> {
   return {
     // TODO(a360): verify this filter shape against the real endpoint.
     filter: {

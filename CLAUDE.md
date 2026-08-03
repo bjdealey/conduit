@@ -17,7 +17,7 @@ execution runtime. Three artefacts, clean boundaries:
 
 **Conduit replaces the Control Room by first wrapping it.** The A360 connector makes Conduit a
 mirror of the incumbent estate; native workloads land in the same library, distinguished only by
-`Automation.platform`. Migration is one attribute on one row, reversible, no cutover.
+`Workflow.platform`. Migration is one attribute on one row, reversible, no cutover.
 
 **Parity where the Control Room is right; deliberate inversion where it is wrong.** Three inversions
 carry the product, and none of them may be quietly un-done:
@@ -27,7 +27,8 @@ carry the product, and none of them may be quietly un-done:
 2. **No drift.** Runners are ephemeral and carry only an `image`. There is no agent-version or
    patch surface to build, by construction.
 3. **Three tiers, not one.** Consumers trigger, citizen builders submit, professionals review and
-   promote. (Model work not yet started — see `docs/vision-alignment.md` Gap 3.)
+   promote. `packages/domain/src/review.ts` holds the permission table and the transition rules;
+   gates read `allowed(permission)`, never `role === "…"`.
 
 ## What this repo is today
 
@@ -77,14 +78,14 @@ interface Connector {
 }
 ```
 
-Providers: `BotProvider`, `ScheduleProvider`, `DeviceProvider`, `CredentialProvider`,
+Providers: `WorkflowProvider`, `ScheduleProvider`, `DeviceProvider`, `CredentialProvider`,
 `ActivityProvider`, `AuditProvider`, `PackageProvider`, `QueueProvider`.
 
 ## Capabilities
 
-`bots · schedules · devices · credentials · activity · audit · packages · queues`
+`workflows · schedules · devices · credentials · activity · audit · packages · queues`
 
-One capability ↔ one capability service (`BotService`, `ScheduleService`, `DeviceService`,
+One capability ↔ one capability service (`WorkflowService`, `ScheduleService`, `DeviceService`,
 `CredentialService`, `ActivityService`, `AuditService`, `PackageService`, `QueueService`). A
 service asks the registry for enabled connectors declaring its capability, fans out, merges,
 and guards the domain boundary. Adding a connector must never require editing a service.
@@ -94,7 +95,7 @@ and guards the domain boundary. Adding a connector must never require editing a 
 Follow the canonical shape — normalised, flat, **source system always present**:
 
 ```json
-{ "id": "123", "title": "Invoice Bot", "state": "Running", "platform": "automation-anywhere", "owner": "Brad" }
+{ "id": "123", "title": "Invoice Workflow", "state": "Running", "platform": "automation-anywhere", "owner": "Brad" }
 ```
 
 Every domain model additionally carries `sourceId` (raw vendor id), `platform` (connector type),
@@ -133,10 +134,12 @@ the adapter.
 - **JSDoc on every exported type** (see `src/data/types.ts` for the house style).
 - Domain types centralised (today `src/data/types.ts`; target `packages/domain`); seed data in
   `src/data/*.ts`; helpers in `src/lib/*.ts`.
-- String ids with a type prefix: `aut_`, `run_`, `cred_`, `pkg_`, `sch_`, `evt_`.
+- String ids with a type prefix: `wf_`, `run_`, `cred_`, `pkg_`, `sch_`, `evt_`.
 - Capability ids and connector `type`/`platform` values are **lowercase-kebab** (`automation-anywhere`).
 - Postgres tables/columns are `snake_case`; the read layer maps them to the `camelCase` domain DTOs.
-- UI keeps the label "Automation"; the domain/API type is `Bot` (see plan §7, decision 4).
+- **One word for the central object: workflow.** UI label, domain type, capability id, cache
+  table and Edge Function are all `workflow(s)`. `bot` was the incumbent Control Room's word for
+  the thing Conduit replaces; it survives only inside the A360 adapter, describing *their* payloads.
 
 ## Guardrails for sessions
 
@@ -153,15 +156,15 @@ Stack-agnostic TypeScript, no Supabase/vendor/frontend code yet. Tested with **V
 (`npm test`); the packages typecheck with `npm run typecheck:packages`.
 
 **Layout**
-- `packages/domain` — `Capability` enum, `SourceStamped`/`Bot` models, `MappingError` +
+- `packages/domain` — `Capability` enum, `SourceStamped`/`Workflow` models, `MappingError` +
   `MapContext`, and the mapping primitives `asRecord` / `requireString` / `requireEnum` / `stampId`.
-- `packages/connector-sdk` — `Connector` + `BotProvider` interfaces and `isBotProvider` guard,
+- `packages/connector-sdk` — `Connector` + `WorkflowProvider` interfaces and `isWorkflowProvider` guard,
   `ConnectorRegistry` + `defineConnector`, the `ServiceResult`/`ConnectorError`/`Logger` seam,
-  and `BotService`. `packages/connector-sdk/src/testing` holds `FakeConnector` (**tests only**).
+  and `WorkflowService`. `packages/connector-sdk/src/testing` holds `FakeConnector` (**tests only**).
 
 **Contract details that concretized (authoritative for later stages)**
-- **Capability providers return domain models, not vendor payloads.** `BotProvider.listBots()`
-  returns `Bot[]`; mapping happens *inside* the adapter, at its boundary.
+- **Capability providers return domain models, not vendor payloads.** `WorkflowProvider.listWorkflows()`
+  returns `Workflow[]`; mapping happens *inside* the adapter, at its boundary.
 - **Mapping fails loudly.** A normaliser returns a complete valid model or throws `MappingError`
   (carrying `connectorId`/`platform`/`capability`/`field`/`received`). Never a partial model.
 - **Services never throw for connector failure.** A capability service returns
@@ -192,11 +195,11 @@ stage-1 interfaces. Still no Supabase/vendor-network/frontend code (tests use fa
   `queryCapability()` (structured supported/unsupported, never throws).
 - `connectors/automation-anywhere` — the A360 connector: `config` (non-secret, holds `secretRef`),
   `http` (injectable `HttpTransport`, default `fetch`), `endpoints` (paths, TODO-flagged),
-  `session` (token acquire/refresh/expiry), `map` (status normalisation + `mapA360Bot`),
+  `session` (token acquire/refresh/expiry), `map` (status normalisation + `mapA360Workflow`),
   `connector` (`A360Connector`), and `a360ConnectorFactory(secrets, deps?)`.
 
 **Contract details that concretized (authoritative for later stages)**
-- **Declare only implemented capabilities.** A360 declares `[bots]` only; asking for anything else
+- **Declare only implemented capabilities.** A360 declares `[workflows]` only; asking for anything else
   returns `queryCapability(...).supported === false`, never an exception.
 - **Secrets are write-only through the store.** `SecretStore.get()` is server-side only;
   `describe()` is the read path and returns `{ ref, present, keys, updatedAt }` — field names, never
@@ -206,11 +209,11 @@ stage-1 interfaces. Still no Supabase/vendor-network/frontend code (tests use fa
   allow-lists only `{ id, type, capabilities, controlRoomUrl, secretRef }`. A test asserts no
   secret value appears on any public surface.
 - **Per-instance credential scoping.** A connector only ever resolves its own `config.secretRef`;
-  two Control Rooms cannot read each other's credentials, and their bots stay attributed by
+  two Control Rooms cannot read each other's credentials, and their workflows stay attributed by
   `connectorId` (ids namespaced `${connectorId}:${sourceId}`).
 - **Token lifecycle.** `A360Session` caches a token with an expiry taken from the JWT `exp`
   (fallback TTL configurable), refreshes on expiry with no user re-entry (API-key re-auth or OAuth
-  refresh grant). A **refresh failure surfaces as an unhealthy `health()`**, so `BotService`'s
+  refresh grant). A **refresh failure surfaces as an unhealthy `health()`**, so `WorkflowService`'s
   health-gate skips the connector rather than crashing the listing path.
 - **Status normalisation.** `normalizeStatus()` folds A360 status tokens onto `BotState`; anything
   unrecognised or absent maps to `Unknown` (an explicit state, not a silent partial).
@@ -218,14 +221,14 @@ stage-1 interfaces. Still no Supabase/vendor-network/frontend code (tests use fa
   live Control Room. Only the fake transport carries vendor-shaped payloads.
 
 **Open TODO(a360) / TODO(supabase) flags** (endpoints/shapes not verified against a live Control
-Room; do not treat as confirmed): OAuth refresh endpoint+params; bot-list endpoint + filter schema
-+ list envelope; the auth header (`X-Authorization` vs `Bearer`); the per-bot status source field;
-bot `name`/`createdBy` field names; token TTL fallback; and the production Supabase `VaultClient`.
+Room; do not treat as confirmed): OAuth refresh endpoint+params; workflow-list endpoint + filter schema
++ list envelope; the auth header (`X-Authorization` vs `Bearer`); the per-workflow status source field;
+workflow `name`/`createdBy` field names; token TTL fallback; and the production Supabase `VaultClient`.
 See the connector source and the stage-2 report for the exact questions.
 
 ## Implemented so far — stage 3: Supabase wiring (all-in)
 
-The Supabase backend for the `bots` data plane: schema + RLS, Vault-backed secrets, and Deno
+The Supabase backend for the `workflows` data plane: schema + RLS, Vault-backed secrets, and Deno
 Edge Functions consuming the workspace TS. Deploy is scaffold + runbook (`supabase/README.md`) —
 you run `supabase db push` / `functions deploy` with your own credentials; **no secret is in the
 repo or this session.**
@@ -237,17 +240,17 @@ Bare `@conduit/*` specifiers stay extensionless (resolved by the Vitest alias, t
 Deno import map). App code under `src/` is unchanged.
 
 **Layout**
-- `supabase/migrations` — `connector_instances` (+RLS, `updated_at`), `bots` cache (+RLS:
+- `supabase/migrations` — `connector_instances` (+RLS, `updated_at`), `workflows` cache (+RLS:
   authenticated read), Vault + service-role-only RPCs (`app_vault_read/write/metadata/delete`),
   and `pg_cron` → `sync` every 15 min (URL+token read from Vault).
 - `supabase/functions` — Deno Edge Functions: `connectors` (admin CRUD + write-only credential
-  path), `sync` (pull→normalise→upsert bots), `capabilities` (declared-capability union), `health`.
+  path), `sync` (pull→normalise→upsert workflows), `capabilities` (declared-capability union), `health`.
   `_shared` holds the service client, `SupabaseVaultClient`, the registry loader, and the auth guard.
   `import_map.json` maps `@conduit/*` → workspace TS and `@supabase/supabase-js` → `npm:`.
 
 **Contract details that concretized**
 - **Reads via PostgREST, writes/orchestration via Edge Functions.** The frontend will read
-  `bots` (RLS: `authenticated`) directly; connector admin + sync go through functions (service role).
+  `workflows` (RLS: `authenticated`) directly; connector admin + sync go through functions (service role).
 - **Secrets never leave the server.** Vault access is wrapped in `SECURITY DEFINER` RPCs granted to
   `service_role` only; `anon`/`authenticated`/PostgREST cannot read `vault.decrypted_secrets`. The
   `connectors` GET returns secret presence + field names (`describe()`), never values.
@@ -272,22 +275,22 @@ no errors, the capability-gated nav renders, and the Integrations page shows liv
 - The app can import the shared domain types: `@conduit/domain` is aliased in `vite.config.ts`
   and `tsconfig.json` (paths). `src/` code stays extensionless; the alias resolves to the package.
 - `src/lib/supabase.ts` — optional `supabase-js` client from `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`
-  (anon only; unset → seed mode). `src/lib/api.ts` — `getBots()` / `getCapabilities()` calling our
-  Edge Functions, with defensive `coerceBot`/`coerceBots`/`coerceCapabilities` at the boundary.
-- `src/data/toDomain.ts` — `seedBots()` maps the rich seed `Automation`s to canonical `Bot`s, so
+  (anon only; unset → seed mode). `src/lib/api.ts` — `getWorkflows()` / `getCapabilities()` calling our
+  Edge Functions, with defensive `coerceWorkflow`/`coerceWorkflows`/`coerceCapabilities` at the boundary.
+- `src/data/toDomain.ts` — `seedConnectedWorkflows()` maps the rich seed `Workflow`s to the canonical flat model, so
   there is one domain code path with or without a backend.
-- `src/store.tsx` gained `bots`, `capabilities`, `hasCapability(c)`, `dataSource`, `integrationError`;
+- `src/store.tsx` gained `workflows`, `capabilities`, `hasCapability(c)`, `dataSource`, `integrationError`;
   a mount effect loads live data when Supabase is configured, else keeps the seed fallback.
-- Nav is capability-gated: `NavItemDef.capability` + a Sidebar filter (Automations → `bots`). Seed
+- Nav is capability-gated: `NavItemDef.capability` + a Sidebar filter (Workflows → `workflows`). Seed
   mode enables all capabilities, so the default prototype is unchanged.
-- `supabase/functions/bots` — a service-role GET returning domain bots, so the frontend reads work
+- `supabase/functions/workflows` — a service-role GET returning domain workflows, so the frontend reads work
   with the anon key before Supabase Auth is wired (once it is, switch to a direct PostgREST read).
-- Settings → **Integrations** renders the capabilities union + the live `bots` (title/state/platform/
+- Settings → **Integrations** renders the capabilities union + the live workflows (title/state/platform/
   owner) — the first surface that actually consumes our-API domain models.
 
 **Contract details that concretized**
 - **The frontend calls our API, never a vendor.** Reads go through `supabase.functions.invoke`
-  (`bots`, `capabilities`); responses are coerced to domain types (malformed rows dropped — the
+  (`workflows`, `capabilities`); responses are coerced to domain types (malformed rows dropped — the
   loud-failure guarantee lives server-side at the adapter).
 - **Only the anon URL + key reach the browser** (`VITE_`-prefixed). No service-role key or secret is
   ever in a `VITE_` var. `.env.example` documents this; real `.env` is git-ignored.
@@ -335,3 +338,42 @@ errors, Home/Runners/Activity/Automations all render, 104 tests pass.
 **Not yet built after stage 5** (do not assume these exist): the runner protocol (register /
 heartbeat / dispatch / claim / ingest), `run_events` + Realtime streaming, tiers and the review
 lifecycle, workflow versions, the audit surface, the backend-served node catalogue, and AI nodes.
+
+## Implemented so far — stage 6: one word, tiers, and honest surfaces
+
+The third inversion, the naming decision, and the readiness markers. Verified in a real browser
+(Chromium): the review queue works end to end, tier gating hides what it should, and 120 tests pass.
+
+**One word: workflow**
+- `Bot` and `Automation` are gone. The domain type, the capability id, `WorkflowProvider` /
+  `WorkflowService`, the A360 mapper, the Postgres cache table, its Edge Function, the API client,
+  the store, the library view and the UI label are all `workflow`. Ids moved `aut_` → `wf_`.
+- `bot` survives only inside the A360 adapter, describing *their* payloads — the one place it's
+  still accurate.
+- **Migrations are append-only.** `0005_rename_bots_to_workflows.sql` renames the table, its
+  indexes and its read policy, and unschedules the old cron job before scheduling the renamed one.
+  0002 and 0004 were left untouched because they may already have been applied.
+- The local `Workflow` (rich, authored) and the domain `Workflow` (flat, crosses the API) share a
+  name because they're the same entity at two fidelities. The store calls the API-side list
+  `connectedWorkflows`; they converge when the library reads from the API.
+
+**Tiers + the review lifecycle** (`packages/domain/src/review.ts`, 16 tests)
+- `Role` = `consumer · builder · professional · admin`, with a permission table
+  (`trigger · author · submit · review · publish · administer`) and `can(role, permission)`.
+- `WorkflowStatus` = `Draft → In review → Changes requested → Approved → Published → Paused`.
+  Transitions are a table; `availableTransitions(role, status)` is what both the buttons and the
+  store's `reviewWorkflow` are built from, so the UI can't offer a move the rules refuse.
+- **No path skips approval, for any tier.** `Draft → Published` doesn't exist: a professional walks
+  their own work through in two clicks, but every published workflow carries an approval.
+- `src/components/ReviewView.tsx` — the queue, on the Inbox chassis (grouped list → detail → act).
+- Gates read `allowed(permission)`. There are no `role === "…"` comparisons left in the app.
+
+**Surface readiness** (`src/data/readiness.ts`)
+- Per-view `live | prototype | roadmap`, rendered as a Titlebar chip. `roadmap` marks exactly what
+  the vision's §7 says the prototype doesn't prove — Manage, Administration, Users, Surfaces.
+  `prototype` is unmarked, because that's the baseline; only the exceptions need saying.
+- Named `SurfaceReadiness` to avoid colliding with the workload `Readiness` bands in the domain.
+
+**Not yet built after stage 6** (do not assume these exist): the runner protocol (register /
+heartbeat / dispatch / claim / ingest), `run_events` + Realtime streaming, workflow versions, the
+audit surface, the backend-served node catalogue, and AI nodes.

@@ -9,15 +9,15 @@ import {
   Package,
   Pencil,
   Play,
-  Workflow,
+  Workflow as WorkflowIcon,
 } from "lucide-react";
 import { useStore } from "../store";
-import { explainRequirements } from "@conduit/domain";
+import { WORKFLOW_STATUSES, availableTransitions, explainRequirements } from "@conduit/domain";
 import { PLATFORM_LABEL } from "../data/types";
-import type { Automation, AutomationStatus, Visibility } from "../data/types";
-import { folders as allFolders } from "../data/automations";
+import type { Workflow, WorkflowStatus, Visibility } from "../data/types";
+import { folders as allFolders } from "../data/workflows";
 import { Avatar } from "./Avatar";
-import { AUTOMATION_STATUS_ACCENT, AutomationStatusChip } from "./Badges";
+import { WORKFLOW_STATUS_ACCENT, WorkflowStatusChip } from "./Badges";
 import { RunRow } from "./RunRow";
 import { minutesAgo, num } from "../lib/format";
 import { SplitView, Pane, DetailPane, ContextPane, EmptyDetail, PANE_WIDTH } from "./layout/SplitView";
@@ -30,10 +30,10 @@ import { Button } from "./Button";
 
 const pct = (r: number) => `${Math.round(r * 100)}%`;
 
-/** Automations narrowed and ordered by the workspace header — the same set the
+/** Workflows narrowed and ordered by the workspace header — the same set the
  *  library tree, the search results, and the board all draw from. */
-function visibleAutomations(automations: Automation[], state: WorkspaceState): Automation[] {
-  const rows = automations.filter(
+function visibleWorkflows(workflows: Workflow[], state: WorkspaceState): Workflow[] {
+  const rows = workflows.filter(
     (a) =>
       matchesQuery(state.query, [a.name, a.id, a.description, a.packages.join(" ")]) &&
       passesFilter(state, "status", a.status) &&
@@ -42,8 +42,8 @@ function visibleAutomations(automations: Automation[], state: WorkspaceState): A
       passesFilter(state, "migration", a.migration),
   );
 
-  const { id, dir } = resolveSort(state, workspaceControls("automations", "")?.sorts ?? []);
-  const compare: Record<string, (a: Automation, b: Automation) => number> = {
+  const { id, dir } = resolveSort(state, workspaceControls("workflows", "")?.sorts ?? []);
+  const compare: Record<string, (a: Workflow, b: Workflow) => number> = {
     name: (a, b) => a.name.localeCompare(b.name),
     runs: (a, b) => a.runCount - b.runCount,
     success: (a, b) => a.successRate - b.successRate,
@@ -119,27 +119,27 @@ function TreeRow({
   );
 }
 
-/** A selectable automation leaf inside the library tree (status dot + name, with
+/** A selectable workflow leaf inside the library tree (status dot + name, with
  *  the owner avatar trailing). */
-function AutomationLeaf({
-  automation,
+function WorkflowLeaf({
+  workflow,
   depth,
   active,
   onSelect,
 }: {
-  automation: Automation;
+  workflow: Workflow;
   depth: number;
   active: boolean;
   onSelect: () => void;
 }) {
   const { memberById } = useStore();
-  const owner = memberById(automation.ownerId);
-  const accent = AUTOMATION_STATUS_ACCENT[automation.status];
+  const owner = memberById(workflow.ownerId);
+  const accent = WORKFLOW_STATUS_ACCENT[workflow.status];
   return (
     <TreeRow
       depth={depth}
       icon={<span className="size-2 rounded-full" style={{ background: `var(--${accent}-9)` }} />}
-      label={automation.name}
+      label={workflow.name}
       active={active}
       hasChildren={false}
       open={false}
@@ -151,7 +151,7 @@ function AutomationLeaf({
 }
 
 /** One folder branch: the folder row, then (when open) its subfolders and the
- *  automations that live directly in it, rendered as leaf rows. */
+ *  workflows that live directly in it, rendered as leaf rows. */
 function FolderBranch({
   folderId,
   depth,
@@ -159,7 +159,7 @@ function FolderBranch({
   toggle,
   selectedId,
   onSelect,
-  automations,
+  workflows,
 }: {
   folderId: string;
   depth: number;
@@ -167,11 +167,11 @@ function FolderBranch({
   toggle: (id: string) => void;
   selectedId: string | null;
   onSelect: (id: string) => void;
-  automations: Automation[];
+  workflows: Workflow[];
 }) {
   const folder = allFolders.find((f) => f.id === folderId)!;
   const kids = allFolders.filter((f) => f.parentId === folderId);
-  const autos = automations.filter((a) => a.folderId === folderId);
+  const autos = workflows.filter((a) => a.folderId === folderId);
   const open = expanded.has(folderId);
   return (
     <>
@@ -196,13 +196,13 @@ function FolderBranch({
               toggle={toggle}
               selectedId={selectedId}
               onSelect={onSelect}
-              automations={automations}
+              workflows={workflows}
             />
           ))}
           {autos.map((a) => (
-            <AutomationLeaf
+            <WorkflowLeaf
               key={a.id}
-              automation={a}
+              workflow={a}
               depth={depth + 1}
               active={a.id === selectedId}
               onSelect={() => onSelect(a.id)}
@@ -216,23 +216,23 @@ function FolderBranch({
 
 /* --------------------------------------------------- merged library (nav + list) */
 
-/** The automation library: a single left panel that merges the Public/Private
- *  folder tree with the automations inside each folder (as selectable leaves), so
+/** The workflow library: a single left panel that merges the Public/Private
+ *  folder tree with the workflows inside each folder (as selectable leaves), so
  *  navigation and selection live in one column instead of two. While the
  *  workspace header narrows the page (a search or a filter), the tree flattens to
  *  the matches — the folders are structure, not a second filter. */
-function AutomationLibrary({
-  automations,
+function WorkflowLibrary({
+  workflows,
   narrowed,
   selectedId,
   onSelect,
 }: {
-  automations: Automation[];
+  workflows: Workflow[];
   narrowed: boolean;
   selectedId: string | null;
   onSelect: (id: string) => void;
 }) {
-  // Default to fully expanded so the merged automations are visible up front.
+  // Default to fully expanded so the merged workflows are visible up front.
   const [expanded, setExpanded] = useState<Set<string>>(
     () => new Set<string>(["vis:public", "vis:private", ...allFolders.map((f) => f.id)]),
   );
@@ -252,15 +252,15 @@ function AutomationLibrary({
     <Pane width={PANE_WIDTH.list}>
       <div className="scrollbar-none flex-1 overflow-y-auto px-2 py-2">
         {narrowed ? (
-          automations.length === 0 ? (
+          workflows.length === 0 ? (
             <p className="px-3 py-6 text-center text-body-sm text-tertiary-foreground">
-              No automations match the current search or filters.
+              No workflows match the current search or filters.
             </p>
           ) : (
-            automations.map((a) => (
-              <AutomationLeaf
+            workflows.map((a) => (
+              <WorkflowLeaf
                 key={a.id}
-                automation={a}
+                workflow={a}
                 depth={0}
                 active={a.id === selectedId}
                 onSelect={() => onSelect(a.id)}
@@ -294,7 +294,7 @@ function AutomationLibrary({
                       toggle={toggle}
                       selectedId={selectedId}
                       onSelect={onSelect}
-                      automations={automations}
+                      workflows={workflows}
                     />
                   ))}
               </div>
@@ -320,18 +320,18 @@ function MetaRow({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function AutomationDetail({ automation, onSelectAutomation }: { automation: Automation; onSelectAutomation: (id: string) => void }) {
-  const { memberById, runsForAutomation, automationById, editAutomation, role } = useStore();
+function WorkflowDetail({ workflow, onSelectWorkflow }: { workflow: Workflow; onSelectWorkflow: (id: string) => void }) {
+  const { memberById, runsForWorkflow, workflowById, editWorkflow, reviewWorkflow, role, allowed } = useStore();
   const [tab, setTab] = useState<DetailTab>("History");
-  const owner = memberById(automation.ownerId);
-  const runs = runsForAutomation(automation.id);
+  const owner = memberById(workflow.ownerId);
+  const runs = runsForWorkflow(workflow.id);
 
   return (
     <>
       {/* Tabbed pane — primary detail */}
       <DetailPane>
         <TabStrip
-          ariaLabel="Automation detail"
+          ariaLabel="Workflow detail"
           segments={DETAIL_TABS.map((t) => ({ id: t, label: t, badge: t === "History" ? runs.length : undefined }))}
           value={tab}
           onChange={(id) => setTab(id as DetailTab)}
@@ -352,11 +352,11 @@ function AutomationDetail({ automation, onSelectAutomation }: { automation: Auto
                 <div className="flex flex-col gap-0.5">
                   <h3 className="text-body-base font-medium text-primary-foreground">Packages</h3>
                   <span className="text-body-sm text-tertiary-foreground">
-                    Derived from the {automation.steps.length} step{automation.steps.length === 1 ? "" : "s"} in the flow.
+                    Derived from the {workflow.steps.length} step{workflow.steps.length === 1 ? "" : "s"} in the flow.
                   </span>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {automation.packages.map((p) => (
+                  {workflow.packages.map((p) => (
                     <span
                       key={p}
                       className="inline-flex items-center gap-1.5 rounded-lg bg-component px-2.5 py-1 font-departure-mono text-[0.72rem] text-secondary-foreground"
@@ -370,18 +370,18 @@ function AutomationDetail({ automation, onSelectAutomation }: { automation: Auto
 
               <section className="flex flex-col gap-3">
                 <h3 className="text-body-base font-medium text-primary-foreground">References</h3>
-                {automation.references.length === 0 ? (
-                  <p className="text-body-sm text-tertiary-foreground">This automation references no others.</p>
+                {workflow.references.length === 0 ? (
+                  <p className="text-body-sm text-tertiary-foreground">This workflow references no others.</p>
                 ) : (
                   <div className="flex flex-col gap-1">
-                    {automation.references.map((rid) => {
-                      const ref = automationById(rid);
+                    {workflow.references.map((rid) => {
+                      const ref = workflowById(rid);
                       if (!ref) return null;
                       return (
                         <button
                           key={rid}
                           type="button"
-                          onClick={() => onSelectAutomation(rid)}
+                          onClick={() => onSelectWorkflow(rid)}
                           className="focusable flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-transparent-hover"
                         >
                           <Link2 size={14} strokeWidth={1.8} className="shrink-0 text-tertiary-foreground" />
@@ -406,12 +406,12 @@ function AutomationDetail({ automation, onSelectAutomation }: { automation: Auto
               className="flex size-12 items-center justify-center rounded-xl"
               style={{ background: "var(--violet-a3)", color: "var(--violet-a11)" }}
             >
-              <Workflow size={22} strokeWidth={1.7} />
+              <WorkflowIcon size={22} strokeWidth={1.7} />
             </div>
             <div className="flex flex-col gap-2">
-              <span className="font-departure-mono text-[0.72rem] text-tertiary-foreground">{automation.id}</span>
-              <h2 className="font-sans font-medium text-heading-4 text-primary-foreground">{automation.name}</h2>
-              <p className="text-body-base text-secondary-foreground">{automation.description}</p>
+              <span className="font-departure-mono text-[0.72rem] text-tertiary-foreground">{workflow.id}</span>
+              <h2 className="font-sans font-medium text-heading-4 text-primary-foreground">{workflow.name}</h2>
+              <p className="text-body-base text-secondary-foreground">{workflow.description}</p>
             </div>
             <div className="flex items-center gap-2">
               <Button variant="solid" className="w-fit">
@@ -420,16 +420,24 @@ function AutomationDetail({ automation, onSelectAutomation }: { automation: Auto
               </Button>
               {/* Only a natively-authored flow can be opened here; a mirrored one
                   lives on its own platform. */}
-              {role !== "user" && automation.platform === "conduit" && (
+              {allowed("author") && workflow.platform === "conduit" && (
                 <Button
                   variant="outlined"
-                  onClick={() => editAutomation(automation.id)}
+                  onClick={() => editWorkflow(workflow.id)}
                   className="w-fit"
                 >
                   <Pencil size={14} strokeWidth={1.8} />
                   Edit flow
                 </Button>
               )}
+              {/* The lifecycle moves this tier may make from here — the same table
+                  the Review queue and the store are built from, so an author sees
+                  "Submit for review" and never sees "Approve". */}
+              {availableTransitions(role, workflow.status).map((t) => (
+                <Button key={t.action} variant="outlined" onClick={() => reviewWorkflow(workflow.id, t.action)} className="w-fit">
+                  {t.label}
+                </Button>
+              ))}
             </div>
           </div>
 
@@ -437,18 +445,18 @@ function AutomationDetail({ automation, onSelectAutomation }: { automation: Auto
 
           <div className="flex flex-col gap-1">
             <MetaRow label="Status">
-              <AutomationStatusChip status={automation.status} />
+              <WorkflowStatusChip status={workflow.status} />
             </MetaRow>
             <MetaRow label="Runs on">
               <span className="inline-flex items-center gap-1.5">
-                {PLATFORM_LABEL[automation.platform]}
-                {automation.platform !== "conduit" && (
+                {PLATFORM_LABEL[workflow.platform]}
+                {workflow.platform !== "conduit" && (
                   <span className="text-tertiary-foreground">· authored there, mirrored here</span>
                 )}
               </span>
             </MetaRow>
-            <MetaRow label="Migration">{automation.migration}</MetaRow>
-            <MetaRow label="Needs">{explainRequirements(automation.requirements)}</MetaRow>
+            <MetaRow label="Migration">{workflow.migration}</MetaRow>
+            <MetaRow label="Needs">{explainRequirements(workflow.requirements)}</MetaRow>
             <MetaRow label="Owner">
               <span className="inline-flex items-center gap-1.5">
                 {owner && <Avatar member={owner} size={18} />}
@@ -457,16 +465,16 @@ function AutomationDetail({ automation, onSelectAutomation }: { automation: Auto
             </MetaRow>
             <MetaRow label="Visibility">
               <span className="inline-flex items-center gap-1.5 capitalize">
-                {automation.visibility === "public" ? (
+                {workflow.visibility === "public" ? (
                   <Globe size={14} strokeWidth={1.8} className="text-tertiary-foreground" />
                 ) : (
                   <Lock size={14} strokeWidth={1.8} className="text-tertiary-foreground" />
                 )}
-                {automation.visibility}
+                {workflow.visibility}
               </span>
             </MetaRow>
             <MetaRow label="Folder">
-              <span className="truncate">{folderPath(automation.folderId)}</span>
+              <span className="truncate">{folderPath(workflow.folderId)}</span>
             </MetaRow>
           </div>
 
@@ -474,16 +482,16 @@ function AutomationDetail({ automation, onSelectAutomation }: { automation: Auto
 
           <div className="flex flex-col gap-1">
             <MetaRow label="Total runs">
-              <span>{num(automation.runCount)}</span>
+              <span>{num(workflow.runCount)}</span>
             </MetaRow>
             <MetaRow label="Success rate">
-              <span>{pct(automation.successRate)}</span>
+              <span>{pct(workflow.successRate)}</span>
             </MetaRow>
             <MetaRow label="Last run">
-              <span>{automation.lastRunAt}</span>
+              <span>{workflow.lastRunAt}</span>
             </MetaRow>
             <MetaRow label="Updated">
-              <span>{automation.updatedAgo}</span>
+              <span>{workflow.updatedAgo}</span>
             </MetaRow>
           </div>
         </div>
@@ -496,21 +504,21 @@ function AutomationDetail({ automation, onSelectAutomation }: { automation: Auto
 
 /* ------------------------------------------------------------------- board mode */
 
-const AUTOMATION_STATUSES: AutomationStatus[] = ["Active", "Paused", "Draft"];
+const BOARD_STATUSES: WorkflowStatus[] = [...WORKFLOW_STATUSES];
 
-/** Board presentation: automations laid out in columns by lifecycle status.
- *  Selecting a card returns to the list focused on that automation — mirroring the
+/** Board presentation: workflows laid out in columns by lifecycle status.
+ *  Selecting a card returns to the list focused on that workflow — mirroring the
  *  inbox board → detail flow. */
-function AutomationsBoard({ items, onSelect }: { items: Automation[]; onSelect: (id: string) => void }) {
+function WorkflowsBoard({ items, onSelect }: { items: Workflow[]; onSelect: (id: string) => void }) {
   const { memberById } = useStore();
   const columns = useMemo(() => {
-    const by = new Map<AutomationStatus, Automation[]>();
+    const by = new Map<WorkflowStatus, Workflow[]>();
     for (const a of items) {
       const arr = by.get(a.status) ?? [];
       arr.push(a);
       by.set(a.status, arr);
     }
-    return AUTOMATION_STATUSES.map((status) => ({ status, items: by.get(status) ?? [] }));
+    return BOARD_STATUSES.map((status) => ({ status, items: by.get(status) ?? [] }));
   }, [items]);
 
   return (
@@ -520,7 +528,7 @@ function AutomationsBoard({ items, onSelect }: { items: Automation[]; onSelect: 
         style={{ background: "color-mix(in srgb, var(--color-primary-foreground) 3%, transparent)" }}
       >
         {columns.map((col) => {
-          const accent = AUTOMATION_STATUS_ACCENT[col.status];
+          const accent = WORKFLOW_STATUS_ACCENT[col.status];
           return (
             <section key={col.status} className="flex w-72 shrink-0 flex-col">
               <header className="flex items-center gap-2 px-1 pb-3">
@@ -571,28 +579,28 @@ function AutomationsBoard({ items, onSelect }: { items: Automation[]; onSelect: 
   );
 }
 
-/** Automations — the first-class automation library. List mode is the shared shell
- *  with one merged left panel (the Public/Private folder tree and the automations
+/** Workflows — the first-class workflow library. List mode is the shared shell
+ *  with one merged left panel (the Public/Private folder tree and the workflows
  *  inside each folder together) → run-history / dependencies detail → collapsible
  *  summary. Board mode fills the panel with a status board (like the inbox board).
  *  Failed runs link back to the incidents they spawned. */
-export function AutomationsView() {
-  const { automations, viewMode, selectedAutomationId, selectAutomation, controls } = useStore();
-  const state = controls("automations");
-  const visible = visibleAutomations(automations, state);
-  const selected = selectedAutomationId
-    ? automations.find((a) => a.id === selectedAutomationId) ?? null
+export function WorkflowsView() {
+  const { workflows, viewMode, selectedWorkflowId, selectWorkflow, controls } = useStore();
+  const state = controls("workflows");
+  const visible = visibleWorkflows(workflows, state);
+  const selected = selectedWorkflowId
+    ? workflows.find((a) => a.id === selectedWorkflowId) ?? null
     : null;
 
-  // Board layout: the status board fills the panel; opening an automation shows its
+  // Board layout: the status board fills the panel; opening an workflow shows its
   // detail (the board is hidden) — deselect via the breadcrumb returns to the board.
-  if (viewMode("automations") === "board") {
+  if (viewMode("workflows") === "board") {
     return (
       <SplitView>
         {selected ? (
-          <AutomationDetail automation={selected} onSelectAutomation={selectAutomation} />
+          <WorkflowDetail workflow={selected} onSelectWorkflow={selectWorkflow} />
         ) : (
-          <AutomationsBoard items={visible} onSelect={selectAutomation} />
+          <WorkflowsBoard items={visible} onSelect={selectWorkflow} />
         )}
       </SplitView>
     );
@@ -600,16 +608,16 @@ export function AutomationsView() {
 
   return (
     <SplitView>
-      <AutomationLibrary
-        automations={visible}
+      <WorkflowLibrary
+        workflows={visible}
         narrowed={isNarrowed(state)}
-        selectedId={selectedAutomationId}
-        onSelect={selectAutomation}
+        selectedId={selectedWorkflowId}
+        onSelect={selectWorkflow}
       />
       {selected ? (
-        <AutomationDetail automation={selected} onSelectAutomation={selectAutomation} />
+        <WorkflowDetail workflow={selected} onSelectWorkflow={selectWorkflow} />
       ) : (
-        <EmptyDetail>Select an automation.</EmptyDetail>
+        <EmptyDetail>Select an workflow.</EmptyDetail>
       )}
     </SplitView>
   );

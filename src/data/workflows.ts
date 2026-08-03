@@ -1,8 +1,8 @@
-import type { ActivityEvent, Automation, AutomationTrigger, Folder, MigrationState, Run } from "./types";
+import type { ActivityEvent, Workflow, WorkflowTrigger, Folder, MigrationState, Run } from "./types";
 import type { WorkflowRequirements } from "@conduit/domain";
 
 /**
- * Seed data for the automation library — the first-class entity. Automations live
+ * Seed data for the workflow library — the first-class entity. Workflows live
  * in a Public/Private folder tree, produce Runs (executions), and a failed run can
  * spin off an incident (see `issues.ts`; #120 is linked from run `run_1043`). This
  * is in-memory prototype data — edit freely.
@@ -21,7 +21,7 @@ export const folders: Folder[] = [
   // native work on purpose — one library, two platforms, nothing to switch between.
   { id: "pub-aa", name: "Automation Anywhere", parentId: "pub-root", visibility: "public" },
   // Private (owner-scoped) tree
-  { id: "prv-root", name: "My automations", parentId: null, visibility: "private" },
+  { id: "prv-root", name: "My workflows", parentId: null, visibility: "private" },
   { id: "prv-drafts", name: "Drafts", parentId: "prv-root", visibility: "private" },
 ];
 
@@ -54,20 +54,20 @@ const runLog = (
 /* -------------------------------------------------------------------------- runs */
 
 /**
- * Recent executions, grouped by automation and newest first within each group —
- * so `runsForAutomation` reads newest → oldest. Cross-automation surfaces
+ * Recent executions, grouped by workflow and newest first within each group —
+ * so `runsForWorkflow` reads newest → oldest. Cross-workflow surfaces
  * (Activity) order by recency themselves.
  *
  * Times are the relative labels the UI renders; the Activity timeline reads them
  * back with `minutesAgo`/`durationSeconds` (`src/lib/format.ts`), so keep them in
  * that vocabulary ("14 minutes ago", "2 hours ago", "2 min 10 s") — and keep two
- * runs of the same automation on distinct labels, or they land on the same spot
+ * runs of the same workflow on distinct labels, or they land on the same spot
  * of the time axis.
  */
 export const runs: Run[] = [
   {
     id: "run_1045",
-    automationId: "aut_reset_audit",
+    workflowId: "wf_reset_audit",
     state: "Running",
     trigger: "Manual",
     startedBy: "Luke Shiels",
@@ -88,7 +88,7 @@ export const runs: Run[] = [
   },
   {
     id: "run_1043",
-    automationId: "aut_reset_audit",
+    workflowId: "wf_reset_audit",
     state: "Failed",
     trigger: "Schedule",
     startedBy: "Schedule · every 15m",
@@ -108,7 +108,7 @@ export const runs: Run[] = [
   },
   {
     id: "run_1042",
-    automationId: "aut_reset_audit",
+    workflowId: "wf_reset_audit",
     state: "Completed",
     trigger: "Schedule",
     startedBy: "Schedule · every 15m",
@@ -119,7 +119,7 @@ export const runs: Run[] = [
   },
   {
     id: "run_1044",
-    automationId: "aut_reset_audit",
+    workflowId: "wf_reset_audit",
     state: "Completed",
     trigger: "Schedule",
     startedBy: "Schedule · every 15m",
@@ -130,7 +130,7 @@ export const runs: Run[] = [
   },
   {
     id: "run_1041",
-    automationId: "aut_reset_audit",
+    workflowId: "wf_reset_audit",
     state: "Completed",
     trigger: "Schedule",
     startedBy: "Schedule · every 15m",
@@ -141,7 +141,7 @@ export const runs: Run[] = [
   },
   {
     id: "run_1030",
-    automationId: "aut_invoice_export",
+    workflowId: "wf_invoice_export",
     state: "Running",
     trigger: "Manual",
     startedBy: "Priya Fenn",
@@ -155,7 +155,7 @@ export const runs: Run[] = [
   },
   {
     id: "run_1029",
-    automationId: "aut_invoice_export",
+    workflowId: "wf_invoice_export",
     state: "Completed",
     trigger: "Schedule",
     startedBy: "Schedule · nightly",
@@ -166,7 +166,7 @@ export const runs: Run[] = [
   },
   {
     id: "run_1028",
-    automationId: "aut_invoice_export",
+    workflowId: "wf_invoice_export",
     state: "Failed",
     trigger: "Schedule",
     startedBy: "Schedule · nightly",
@@ -177,7 +177,7 @@ export const runs: Run[] = [
   },
   {
     id: "run_1027",
-    automationId: "aut_welcome_email",
+    workflowId: "wf_welcome_email",
     state: "Completed",
     trigger: "Event",
     startedBy: "Event · user.signup",
@@ -187,7 +187,7 @@ export const runs: Run[] = [
   },
   {
     id: "run_1026",
-    automationId: "aut_welcome_email",
+    workflowId: "wf_welcome_email",
     state: "Completed",
     trigger: "Event",
     startedBy: "Event · user.signup",
@@ -197,7 +197,7 @@ export const runs: Run[] = [
   },
   {
     id: "run_1025",
-    automationId: "aut_welcome_email",
+    workflowId: "wf_welcome_email",
     state: "Completed",
     trigger: "Event",
     startedBy: "Event · user.signup",
@@ -207,7 +207,7 @@ export const runs: Run[] = [
   },
   {
     id: "run_1024",
-    automationId: "aut_welcome_email",
+    workflowId: "wf_welcome_email",
     state: "Completed",
     trigger: "Event",
     startedBy: "Event · user.signup",
@@ -217,7 +217,7 @@ export const runs: Run[] = [
   },
   {
     id: "run_1019",
-    automationId: "aut_synthetic_login",
+    workflowId: "wf_synthetic_login",
     state: "Completed",
     trigger: "Schedule",
     startedBy: "Schedule · every 5m",
@@ -228,7 +228,7 @@ export const runs: Run[] = [
   },
   {
     id: "run_1018",
-    automationId: "aut_synthetic_login",
+    workflowId: "wf_synthetic_login",
     state: "Completed",
     trigger: "Schedule",
     startedBy: "Schedule · every 5m",
@@ -239,7 +239,7 @@ export const runs: Run[] = [
   },
   {
     id: "run_1017",
-    automationId: "aut_synthetic_login",
+    workflowId: "wf_synthetic_login",
     state: "Completed",
     trigger: "Schedule",
     startedBy: "Schedule · every 5m",
@@ -250,7 +250,7 @@ export const runs: Run[] = [
   },
   {
     id: "run_1016",
-    automationId: "aut_synthetic_login",
+    workflowId: "wf_synthetic_login",
     state: "Failed",
     trigger: "Schedule",
     startedBy: "Schedule · every 5m",
@@ -261,7 +261,7 @@ export const runs: Run[] = [
   },
   {
     id: "run_1015",
-    automationId: "aut_synthetic_login",
+    workflowId: "wf_synthetic_login",
     state: "Completed",
     trigger: "Schedule",
     startedBy: "Schedule · every 5m",
@@ -272,7 +272,7 @@ export const runs: Run[] = [
   },
   {
     id: "run_1014",
-    automationId: "aut_synthetic_login",
+    workflowId: "wf_synthetic_login",
     state: "Completed",
     trigger: "Schedule",
     startedBy: "Schedule · every 5m",
@@ -283,7 +283,7 @@ export const runs: Run[] = [
   },
   {
     id: "run_1013",
-    automationId: "aut_synthetic_login",
+    workflowId: "wf_synthetic_login",
     state: "Completed",
     trigger: "Schedule",
     startedBy: "Schedule · every 5m",
@@ -294,7 +294,7 @@ export const runs: Run[] = [
   },
   {
     id: "run_1012",
-    automationId: "aut_synthetic_login",
+    workflowId: "wf_synthetic_login",
     state: "Completed",
     trigger: "Schedule",
     startedBy: "Schedule · every 5m",
@@ -305,7 +305,7 @@ export const runs: Run[] = [
   },
   {
     id: "run_1005",
-    automationId: "aut_payment_recon",
+    workflowId: "wf_payment_recon",
     state: "Queued",
     trigger: "Schedule",
     startedBy: "Schedule · hourly",
@@ -315,7 +315,7 @@ export const runs: Run[] = [
   },
   {
     id: "run_1004",
-    automationId: "aut_payment_recon",
+    workflowId: "wf_payment_recon",
     state: "Completed",
     trigger: "Schedule",
     startedBy: "Schedule · hourly",
@@ -326,7 +326,7 @@ export const runs: Run[] = [
   },
   {
     id: "run_1003",
-    automationId: "aut_payment_recon",
+    workflowId: "wf_payment_recon",
     state: "Completed",
     trigger: "Schedule",
     startedBy: "Schedule · hourly",
@@ -337,7 +337,7 @@ export const runs: Run[] = [
   },
   {
     id: "run_1002",
-    automationId: "aut_index_rebuild",
+    workflowId: "wf_index_rebuild",
     state: "Failed",
     trigger: "Manual",
     startedBy: "Priya Fenn",
@@ -347,10 +347,10 @@ export const runs: Run[] = [
   },
 ];
 
-/* ------------------------------------------------------------------- automations */
+/* ------------------------------------------------------------------- workflows */
 
 /**
- * An automation mirrored from a connected platform by its connector.
+ * An workflow mirrored from a connected platform by its connector.
  *
  * We show it, observe its runs, and track where it sits in the move onto Conduit —
  * but its flow is authored on its own platform, so `steps` and `packages` are empty
@@ -365,15 +365,15 @@ function mirrored(
   ownerId: string,
   requirements: WorkflowRequirements,
   migration: MigrationState,
-  stats: { runCount: number; successRate: number; lastRunAt: string; trigger: AutomationTrigger },
-): Automation {
+  stats: { runCount: number; successRate: number; lastRunAt: string; trigger: WorkflowTrigger },
+): Workflow {
   return {
     id,
     name,
     description,
     folderId: "pub-aa",
     visibility: "public",
-    status: "Active",
+    status: "Published",
     ownerId,
     platform: "automation-anywhere",
     migration,
@@ -389,20 +389,20 @@ function mirrored(
   };
 }
 
-const schedule = (detail: string): AutomationTrigger => ({ kind: "Schedule", detail });
+const schedule = (detail: string): WorkflowTrigger => ({ kind: "Schedule", detail });
 const headed: WorkflowRequirements = { auth: "none", ui: "headed", platform: "windows" };
 const windowsAuth: WorkflowRequirements = { auth: "windows-integrated", ui: "none", platform: "windows" };
 const apiFirst = (auth: WorkflowRequirements["auth"]): WorkflowRequirements => ({ auth, ui: "none", platform: "any" });
 
-export const automations: Automation[] = [
+export const workflows: Workflow[] = [
   {
-    id: "aut_reset_audit",
+    id: "wf_reset_audit",
     name: "Password reset link audit",
     description:
       "Exercises the production password-reset flow end to end and verifies the generated link resolves.",
     folderId: "pub-monitoring-synth",
     visibility: "public",
-    status: "Active",
+    status: "Published",
     ownerId: "ls",
     platform: "conduit",
     migration: "Migrated",
@@ -421,15 +421,15 @@ export const automations: Automation[] = [
     lastRunAt: "1 minute ago",
     updatedAgo: "2 days ago",
     packages: ["browser", "http", "assertions"],
-    references: ["aut_synthetic_login"],
+    references: ["wf_synthetic_login"],
   },
   {
-    id: "aut_invoice_export",
+    id: "wf_invoice_export",
     name: "Bulk invoice export",
     description: "Generates and archives monthly invoice exports for accounts with long billing history.",
     folderId: "pub-billing",
     visibility: "public",
-    status: "Active",
+    status: "Published",
     ownerId: "pf",
     platform: "conduit",
     migration: "Migrated",
@@ -448,12 +448,12 @@ export const automations: Automation[] = [
     references: [],
   },
   {
-    id: "aut_welcome_email",
+    id: "wf_welcome_email",
     name: "Welcome email dispatch",
     description: "Sends welcome and verification emails when a new user signs up.",
     folderId: "pub-onboarding",
     visibility: "public",
-    status: "Active",
+    status: "Published",
     ownerId: "ps",
     platform: "conduit",
     migration: "Migrated",
@@ -471,12 +471,12 @@ export const automations: Automation[] = [
     references: [],
   },
   {
-    id: "aut_synthetic_login",
+    id: "wf_synthetic_login",
     name: "Synthetic login check",
     description: "Logs into the app from EU and US probes every five minutes and records latency.",
     folderId: "pub-monitoring-synth",
     visibility: "public",
-    status: "Active",
+    status: "Published",
     ownerId: "jk",
     platform: "conduit",
     migration: "Migrated",
@@ -497,12 +497,12 @@ export const automations: Automation[] = [
     references: [],
   },
   {
-    id: "aut_payment_recon",
+    id: "wf_payment_recon",
     name: "Payment reconciliation",
     description: "Reconciles authorised payments against the ledger and flags declines by region.",
     folderId: "pub-billing",
     visibility: "public",
-    status: "Active",
+    status: "Published",
     ownerId: "jk",
     platform: "conduit",
     migration: "Migrated",
@@ -518,16 +518,18 @@ export const automations: Automation[] = [
     lastRunAt: "an hour ago",
     updatedAgo: "6 days ago",
     packages: ["billing-api", "ledger", "assertions"],
-    references: ["aut_invoice_export"],
+    references: ["wf_invoice_export"],
   },
   {
-    id: "aut_index_rebuild",
+    id: "wf_index_rebuild",
     name: "Search index rebuild",
     description: "Rebuilds the product search index and validates relevance against a golden set.",
     folderId: "prv-drafts",
     visibility: "private",
-    status: "Draft",
+    status: "In review",
     ownerId: "pf",
+    submittedBy: "pf",
+    submittedAt: "2 hours ago",
     platform: "conduit",
     migration: "Piloting",
     requirements: { auth: "api-key", ui: "none", platform: "any" },
@@ -544,21 +546,80 @@ export const automations: Automation[] = [
     references: [],
   },
 
+  {
+    id: "wf_expense_digest",
+    name: "Expense digest",
+    description: "Pulls the week's card transactions and mails a categorised digest to each budget owner.",
+    folderId: "prv-drafts",
+    visibility: "private",
+    status: "Changes requested",
+    ownerId: "ps",
+    platform: "conduit",
+    migration: "Migrated",
+    requirements: { auth: "api-key", ui: "none", platform: "any" },
+    submittedBy: "ps",
+    submittedAt: "yesterday",
+    reviewedBy: "ls",
+    reviewedAt: "4 hours ago",
+    reviewNote: "Good shape. Narrow the query to the current period and handle the empty-result case before this goes near production.",
+    trigger: { kind: "Schedule", detail: "Weekly on Friday" },
+    steps: [
+      { id: "stp_ed_1", actionId: "records.query", config: { source: "transactions", filter: "posted_at > now() - 7d", limit: "500" } },
+      { id: "stp_ed_2", actionId: "templates.render", config: { template: "expense-digest", data: "owner, lines" } },
+      { id: "stp_ed_3", actionId: "email.send", config: { to: "{{ owner.email }}", template: "expense-digest", subject: "Your weekly expense digest" } },
+    ],
+    runCount: 0,
+    successRate: 0,
+    lastRunAt: "never",
+    updatedAgo: "4 hours ago",
+    packages: ["billing-api", "templates", "email-ses"],
+    references: [],
+  },
+  {
+    id: "wf_supplier_check",
+    name: "Supplier detail check",
+    description: "Verifies supplier bank details against the finance API before a payment run.",
+    folderId: "prv-drafts",
+    visibility: "private",
+    status: "Approved",
+    ownerId: "ps",
+    platform: "conduit",
+    migration: "Migrated",
+    requirements: { auth: "api-key", ui: "none", platform: "any" },
+    submittedBy: "ps",
+    submittedAt: "3 days ago",
+    reviewedBy: "jk",
+    reviewedAt: "2 days ago",
+    reviewNote: "Hardened the mismatch path and tightened the assertion. Good to publish.",
+    trigger: { kind: "Manual", detail: "Owner and admins" },
+    steps: [
+      { id: "stp_sc_1", actionId: "records.query", config: { source: "suppliers", filter: "status = 'active'", limit: "500" } },
+      { id: "stp_sc_2", actionId: "http.request", config: { method: "POST", url: "https://api.conduit.com/v1/verify/bank", body: '{ "id": "{{ supplier.id }}" }' } },
+      { id: "stp_sc_3", actionId: "assert.equals", config: { actual: "{{ response.status }}", expected: "200" } },
+    ],
+    runCount: 0,
+    successRate: 0,
+    lastRunAt: "never",
+    updatedAgo: "2 days ago",
+    packages: ["billing-api", "http", "assertions"],
+    references: [],
+  },
+
   /* ----------------------------------------------- mirrored from Automation Anywhere
      The incumbent estate, read through the A360 connector. Its shape is the argument:
      mostly headed and Windows-bound today, with a shrinking band of workloads blocked
      only by Windows-integrated auth. Home reads the split straight off these rows
      rather than asserting it. */
-  mirrored("aut_aa_vendor_onboarding", "Vendor onboarding", "Keys new vendor records into the finance desktop client and files the approval pack.", "ls", headed, "Not started", { runCount: 3120, successRate: 0.91, lastRunAt: "12 minutes ago", trigger: schedule("Weekdays at 07:00") }),
-  mirrored("aut_aa_claims_keying", "Claims keying", "Rekeys scanned claims into the legacy claims terminal. No API path exists.", "jk", headed, "Won't move", { runCount: 18244, successRate: 0.88, lastRunAt: "3 minutes ago", trigger: schedule("Every 10 minutes") }),
-  mirrored("aut_aa_statement_pack", "Statement pack assembly", "Drives the reporting client to assemble and print monthly statement packs.", "pf", headed, "Not started", { runCount: 640, successRate: 0.93, lastRunAt: "an hour ago", trigger: schedule("Monthly on the 1st") }),
-  mirrored("aut_aa_pricing_upload", "Pricing sheet upload", "Uploads pricing workbooks through the supplier portal UI.", "ps", headed, "Not started", { runCount: 1490, successRate: 0.86, lastRunAt: "26 minutes ago", trigger: schedule("Daily at 06:00") }),
-  mirrored("aut_aa_stock_count", "Stock count reconciliation", "Reconciles counted stock against the warehouse desktop system.", "jk", headed, "Won't move", { runCount: 2210, successRate: 0.9, lastRunAt: "2 hours ago", trigger: schedule("Nightly at 23:00") }),
-  mirrored("aut_aa_credit_review", "Credit review packet", "Assembles credit review packets from the underwriting client.", "ls", headed, "Not started", { runCount: 880, successRate: 0.94, lastRunAt: "4 hours ago", trigger: schedule("Weekly on Monday") }),
-  mirrored("aut_aa_timesheet_post", "Timesheet posting", "Posts approved timesheets through the payroll desktop app.", "ps", headed, "Not started", { runCount: 5030, successRate: 0.96, lastRunAt: "38 minutes ago", trigger: schedule("Daily at 18:00") }),
+  mirrored("wf_aa_vendor_onboarding", "Vendor onboarding", "Keys new vendor records into the finance desktop client and files the approval pack.", "ls", headed, "Not started", { runCount: 3120, successRate: 0.91, lastRunAt: "12 minutes ago", trigger: schedule("Weekdays at 07:00") }),
+  mirrored("wf_aa_claims_keying", "Claims keying", "Rekeys scanned claims into the legacy claims terminal. No API path exists.", "jk", headed, "Won't move", { runCount: 18244, successRate: 0.88, lastRunAt: "3 minutes ago", trigger: schedule("Every 10 minutes") }),
+  mirrored("wf_aa_statement_pack", "Statement pack assembly", "Drives the reporting client to assemble and print monthly statement packs.", "pf", headed, "Not started", { runCount: 640, successRate: 0.93, lastRunAt: "an hour ago", trigger: schedule("Monthly on the 1st") }),
+  mirrored("wf_aa_pricing_upload", "Pricing sheet upload", "Uploads pricing workbooks through the supplier portal UI.", "ps", headed, "Not started", { runCount: 1490, successRate: 0.86, lastRunAt: "26 minutes ago", trigger: schedule("Daily at 06:00") }),
+  mirrored("wf_aa_stock_count", "Stock count reconciliation", "Reconciles counted stock against the warehouse desktop system.", "jk", headed, "Won't move", { runCount: 2210, successRate: 0.9, lastRunAt: "2 hours ago", trigger: schedule("Nightly at 23:00") }),
+  mirrored("wf_aa_credit_review", "Credit review packet", "Assembles credit review packets from the underwriting client.", "ls", headed, "Not started", { runCount: 880, successRate: 0.94, lastRunAt: "4 hours ago", trigger: schedule("Weekly on Monday") }),
+  mirrored("wf_aa_timesheet_post", "Timesheet posting", "Posts approved timesheets through the payroll desktop app.", "ps", headed, "Not started", { runCount: 5030, successRate: 0.96, lastRunAt: "38 minutes ago", trigger: schedule("Daily at 18:00") }),
   // Blocked only by the auth model — these become API-eligible the moment their target
   // app finishes moving to Entra, which is the compounding the vision is betting on.
-  mirrored("aut_aa_hr_starter", "HR starter setup", "Creates starter records in the internal HR web app, which still authenticates as the logged-in Windows user.", "pf", windowsAuth, "Piloting", { runCount: 1204, successRate: 0.97, lastRunAt: "18 minutes ago", trigger: schedule("Hourly") }),
-  mirrored("aut_aa_asset_register", "Asset register sync", "Syncs the internal asset register, currently behind Windows-integrated auth.", "jk", windowsAuth, "Not started", { runCount: 970, successRate: 0.95, lastRunAt: "an hour ago", trigger: schedule("Every 4 hours") }),
-  mirrored("aut_aa_fx_rates", "FX rate refresh", "Pulls daily FX rates from a vendor API. Already API-shaped — ready to move.", "ps", apiFirst("api-key"), "Not started", { runCount: 730, successRate: 0.99, lastRunAt: "5 hours ago", trigger: schedule("Daily at 05:00") }),
+  mirrored("wf_aa_hr_starter", "HR starter setup", "Creates starter records in the internal HR web app, which still authenticates as the logged-in Windows user.", "pf", windowsAuth, "Piloting", { runCount: 1204, successRate: 0.97, lastRunAt: "18 minutes ago", trigger: schedule("Hourly") }),
+  mirrored("wf_aa_asset_register", "Asset register sync", "Syncs the internal asset register, currently behind Windows-integrated auth.", "jk", windowsAuth, "Not started", { runCount: 970, successRate: 0.95, lastRunAt: "an hour ago", trigger: schedule("Every 4 hours") }),
+  mirrored("wf_aa_fx_rates", "FX rate refresh", "Pulls daily FX rates from a vendor API. Already API-shaped — ready to move.", "ps", apiFirst("api-key"), "Not started", { runCount: 730, successRate: 0.99, lastRunAt: "5 hours ago", trigger: schedule("Daily at 05:00") }),
 ];
