@@ -18,6 +18,7 @@
  * backs the workflow list. One code path either way.
  */
 import { AUTH_MODELS, DEFAULT_REQUIREMENTS, type AuthModel, type WorkflowRequirements } from "@conduit/domain";
+import type { ActionStep, WorkflowStep } from "./types";
 
 /** One configurable input on an action. */
 export type ActionField = {
@@ -272,11 +273,39 @@ export function defaultConfig(action: StepAction): Record<string, string> {
   return config;
 }
 
-/** The packages a flow depends on, derived from its steps (deduped, in step
- *  order). This is what keeps an workflow's Dependencies tab honest. */
-export function packagesForSteps(steps: { actionId: string }[]): string[] {
-  const seen: string[] = [];
+/**
+ * Every action in a flow, in execution order, flattened out of the tree.
+ *
+ * Both derivations below walk this rather than the top-level list, because a branch's
+ * contents are still part of what the flow does: a headed step inside an `else` makes
+ * the whole workflow headed, and a package used only on the unhappy path is still a
+ * dependency. Deriving from the top level alone would understate both — and
+ * understating requirements is how a flow lands on a runner that cannot carry it.
+ */
+export function flattenSteps(steps: readonly WorkflowStep[]): ActionStep[] {
+  const out: ActionStep[] = [];
   for (const step of steps) {
+    // Discriminate on "is it a branch" rather than "is it an action": a step that
+    // arrives without a `kind` is far likelier to be a v1 action that missed
+    // migration than a branch, and reading `.then` off it would take the page down.
+    if (step.kind === "branch") out.push(...flattenSteps(step.then ?? []), ...flattenSteps(step.else ?? []));
+    else out.push(step as ActionStep);
+  }
+  return out;
+}
+
+/** Every step in a flow including the branches themselves, for id allocation and counting. */
+export function allSteps(steps: readonly WorkflowStep[]): WorkflowStep[] {
+  return steps.flatMap((step) =>
+    step.kind === "branch" ? [step, ...allSteps(step.then ?? []), ...allSteps(step.else ?? [])] : [step],
+  );
+}
+
+/** The packages a flow depends on, derived from its steps (deduped, in step
+ *  order). This is what keeps a workflow's Dependencies tab honest. */
+export function packagesForSteps(steps: readonly WorkflowStep[]): string[] {
+  const seen: string[] = [];
+  for (const step of flattenSteps(steps)) {
     const pkg = BY_ID.get(step.actionId)?.package;
     if (pkg && !seen.includes(pkg)) seen.push(pkg);
   }
@@ -302,9 +331,9 @@ const strictestAuth = (a: AuthModel, b: AuthModel): AuthModel =>
  *
  * Same contract as `packagesForSteps`: read the steps, derive the truth, don't ask.
  */
-export function requirementsForSteps(steps: { actionId: string; config: Record<string, string> }[]): WorkflowRequirements {
+export function requirementsForSteps(steps: readonly WorkflowStep[]): WorkflowRequirements {
   let derived: WorkflowRequirements = { ...DEFAULT_REQUIREMENTS };
-  for (const step of steps) {
+  for (const step of flattenSteps(steps)) {
     const action = BY_ID.get(step.actionId);
     if (!action?.requires) continue;
     const need = typeof action.requires === "function" ? action.requires(step.config) : action.requires;
@@ -321,7 +350,7 @@ export function requirementsForSteps(steps: { actionId: string; config: Record<s
  *  either, so an author can ask for more than the steps need but never for less. */
 export function effectiveRequirements(
   declared: WorkflowRequirements,
-  steps: { actionId: string; config: Record<string, string> }[],
+  steps: readonly WorkflowStep[],
 ): WorkflowRequirements {
   const derived = requirementsForSteps(steps);
   return {

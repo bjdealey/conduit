@@ -1,4 +1,14 @@
-import { ACTIONS, actionById, actionsByPackage, defaultConfig, effectiveRequirements, packagesForSteps, type StepAction } from "../data/actions";
+import {
+  ACTIONS,
+  actionById,
+  actionsByPackage,
+  allSteps,
+  defaultConfig,
+  effectiveRequirements,
+  flattenSteps,
+  packagesForSteps,
+  type StepAction,
+} from "../data/actions";
 import {
   CURRENT_SCHEMA_VERSION,
   DEFAULT_REQUIREMENTS,
@@ -77,30 +87,90 @@ export function blankDraft(ownerId: string, folderId: string): WorkflowDraft {
   };
 }
 
-/** Next free step id for a flow. Ids only need to be unique within the flow, so
- *  they stay readable rather than random. */
+/** Next free step id for a flow. Unique across the whole tree, not just the top
+ *  level — a branch's contents are steps too, and a duplicate id inside an `else`
+ *  would make selection ambiguous. */
 export function nextStepId(steps: WorkflowStep[]): string {
-  const taken = new Set(steps.map((s) => s.id));
-  let n = steps.length + 1;
+  const taken = new Set(allSteps(steps).map((s) => s.id));
+  let n = taken.size + 1;
   while (taken.has(`stp_${n}`)) n++;
   return `stp_${n}`;
 }
 
-/** A new step for an action, with the action's defaults filled in. */
+/** A new action step, with the action's defaults filled in. */
 export function newStep(actionId: string, steps: WorkflowStep[]): WorkflowStep {
   const action = actionById(actionId);
-  return { id: nextStepId(steps), actionId, config: action ? defaultConfig(action) : {} };
+  return { kind: "action", id: nextStepId(steps), actionId, config: action ? defaultConfig(action) : {} };
 }
 
-/** Move a step one place earlier or later. Out-of-range moves are no-ops, so the
- *  first step's "up" and the last step's "down" simply do nothing. */
+/** A new, empty conditional. Both arms start empty so the author fills whichever
+ *  they mean; an `if` with a pre-populated `else` invites a branch nobody wanted. */
+export function newBranch(steps: WorkflowStep[]): WorkflowStep {
+  return { kind: "branch", id: nextStepId(steps), condition: "{{ response.status }} == 200", then: [], else: [] };
+}
+
+/**
+ * Move a step one place earlier or later, wherever it sits in the tree.
+ *
+ * A step only ever moves within the list that contains it: reordering across a branch
+ * boundary would silently change whether a step is conditional, which is a different
+ * edit from "move it up one" and shouldn't happen by accident.
+ */
 export function moveStep(steps: WorkflowStep[], id: string, direction: -1 | 1): WorkflowStep[] {
   const from = steps.findIndex((s) => s.id === id);
-  const to = from + direction;
-  if (from === -1 || to < 0 || to >= steps.length) return steps;
-  const next = [...steps];
-  [next[from], next[to]] = [next[to], next[from]];
-  return next;
+  if (from !== -1) {
+    const to = from + direction;
+    if (to < 0 || to >= steps.length) return steps;
+    const next = [...steps];
+    [next[from], next[to]] = [next[to], next[from]];
+    return next;
+  }
+  // Not at this level — recurse into branches, rebuilding only the arm that changed.
+  let changed = false;
+  const next = steps.map((step) => {
+    if (step.kind !== "branch") return step;
+    const thenArm = moveStep(step.then, id, direction);
+    const elseArm = moveStep(step.else, id, direction);
+    if (thenArm === step.then && elseArm === step.else) return step;
+    changed = true;
+    return { ...step, then: thenArm, else: elseArm };
+  });
+  return changed ? next : steps;
+}
+
+/** Replace a step anywhere in the tree, leaving everything else identical. */
+export function updateStep(steps: WorkflowStep[], id: string, patch: (step: WorkflowStep) => WorkflowStep): WorkflowStep[] {
+  return steps.map((step) => {
+    if (step.id === id) return patch(step);
+    if (step.kind !== "branch") return step;
+    return { ...step, then: updateStep(step.then, id, patch), else: updateStep(step.else, id, patch) };
+  });
+}
+
+/** Remove a step anywhere in the tree. Removing a branch removes its arms with it. */
+export function removeStep(steps: WorkflowStep[], id: string): WorkflowStep[] {
+  return steps
+    .filter((step) => step.id !== id)
+    .map((step) => (step.kind === "branch" ? { ...step, then: removeStep(step.then, id), else: removeStep(step.else, id) } : step));
+}
+
+/** Add a step into a branch arm, or at the top level when no arm is named. */
+export function addStepTo(
+  steps: WorkflowStep[],
+  target: { branchId: string; arm: "then" | "else" } | null,
+  step: WorkflowStep,
+): WorkflowStep[] {
+  if (!target) return [...steps, step];
+  return steps.map((s) => {
+    if (s.kind !== "branch") return s;
+    if (s.id === target.branchId) return { ...s, [target.arm]: [...s[target.arm], step] } as WorkflowStep;
+    return { ...s, then: addStepTo(s.then, target, step), else: addStepTo(s.else, target, step) };
+  });
+}
+
+/** Find a step anywhere in the tree. */
+export function findStep(steps: readonly WorkflowStep[], id: string): WorkflowStep | undefined {
+  return allSteps(steps).find((s) => s.id === id);
 }
 
 /** A readable, collision-free id for a new workflow, from its name. */
@@ -130,7 +200,8 @@ export function draftProblems(draft: WorkflowDraft): string[] {
  */
 /** A one-line summary of what this version is, for the history list. */
 function summarise(draft: WorkflowDraft): string {
-  const steps = `${draft.steps.length} step${draft.steps.length === 1 ? "" : "s"}`;
+  const count = allSteps(draft.steps).length;
+  const steps = `${count} step${count === 1 ? "" : "s"}`;
   return draft.versions.length === 0 ? `First version — ${steps}` : `Edited — ${steps}`;
 }
 
@@ -225,7 +296,9 @@ export function fakeRunnerEvents(runId: string, workflow: Workflow, placement: s
     { runId, sequence: 1, kind: "started", message: "Test run started from the builder", at },
     { runId, sequence: 2, kind: "log", message: `${placement} — ${rationale}`, at },
   ];
-  workflow.steps.forEach((step, i) => {
+  // Flattened: a branch's contents are what actually executes, and a run log that
+  // stopped at the top level would omit everything inside a conditional.
+  flattenSteps(workflow.steps).forEach((step, i) => {
     events.push({
       runId,
       sequence: 3 + i,

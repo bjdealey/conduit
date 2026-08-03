@@ -417,5 +417,39 @@ requirement (a browser step's headedness) stays compiled in.
 `readiness: "roadmap"`. Proving the interface holds an AI step without reshaping the runtime or the
 canvas; none of them execute, and the palette says so.
 
-**Not yet built after stage 7** (do not assume these exist): atomic run dispatch (`claim`), pool
-autoscaling / `drain`, conditionals in the workflow schema, and any real execution runtime.
+## Implemented so far — stage 8: dispatch, autoscaling, and conditionals
+
+**Atomic dispatch.** `0008` adds `runs` + `app_claim_run`, which claims one queued run inside a
+single statement holding a row lock (`for update skip locked`). Two runners polling a second apart
+cannot execute the same workflow twice. The run **snapshots** its steps and the exact version, so a
+workflow edited mid-queue can't change what an already-queued run executes.
+- ⚠️ **The eligibility test is stated twice** — in `app_claim_run` (SQL) and `claimableBy`
+  (`packages/domain/src/dispatch.ts`, under test). If they diverge, a run gets claimed by a runner
+  the placement rules would never have chosen. **Change them together.**
+- `unservable` separates "nothing free right now" from "no runner of that class exists"; `exhausted`
+  surfaces runs retried past `MAX_ATTEMPTS` rather than growing the queue silently.
+
+**Autoscaling** (`packages/domain/src/autoscale.ts`). `scalePlan(pool, queue)` is pure and
+reproducible. Demand is per class, computed from each run's requirements. Scaling up counts only
+idle capacity; scaling down **never touches a busy runner**. `lightweight` keeps one warm (a cold
+start sits on every trigger's critical path); the Windows classes keep none. Hitting the per-class
+ceiling is reported (`capped`), never silently absorbed. `drain` is recomputed per heartbeat rather
+than stored — a stored flag goes stale the moment demand changes.
+
+**Conditionals — schema v2.** `WorkflowStep` is now `ActionStep | BranchStep`; a branch carries
+`condition` plus nested `then`/`else` lists, so a flow is a tree.
+- `migrateWorkflow` grew its first real step (v1→v2 tags every step `kind: "action"`), and the
+  **seed literals are still written in v1 and migrated on load** — so the migration is exercised on
+  every page load, not only in its unit test.
+- **Derivation walks the whole tree** (`flattenSteps`): a package used only on the unhappy path is
+  still a dependency, and a headed step inside an `else` still makes the flow headed, because
+  placement happens before anyone knows which way it goes.
+- The walkers discriminate on *is it a branch*, not *is it an action* — a step arriving without a
+  `kind` is likelier a v1 action that missed migration than a branch, and reading `.then` off it
+  would take the page down.
+- Builder: `StepList` recurses, arms are labelled and indented, and adding an action while a branch
+  is selected puts it in that branch's `then`. `moveStep` only ever moves within the containing
+  list — crossing a branch boundary would silently change whether a step is conditional.
+
+**Not yet built after stage 8** (do not assume these exist): any real execution runtime — that is a
+separate artefact by design (see the framing at the top). Conduit dispatches and observes.

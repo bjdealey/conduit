@@ -19,9 +19,16 @@
  * The current workflow schema version.
  *
  * Bump this when the stored shape changes, and add a migration step for the gap.
- * v1 is the flat, linear `steps` array the builder writes today.
+ *
+ * - **v1** — a flat, linear `steps` array. Every step is an action.
+ * - **v2** — steps are a tree. A step is either an action or a branch carrying nested
+ *   `then`/`else` lists, which is what lets a flow express a conditional. This is the
+ *   change the versioning was put in place for: a linear array cannot represent
+ *   "if the response was 200, do this, otherwise do that", and the vision's API-first
+ *   workloads are explicitly HTTP calls, transformations, *conditionals* and
+ *   orchestration.
  */
-export const CURRENT_SCHEMA_VERSION = 1;
+export const CURRENT_SCHEMA_VERSION = 2;
 
 /** A snapshot of a workflow at a point in its editorial history. */
 export type WorkflowVersion = {
@@ -77,13 +84,30 @@ export type StoredWorkflow = Record<string, unknown> & { schemaVersion?: number 
 type MigrationStep = { from: number; to: number; apply: (raw: StoredWorkflow) => StoredWorkflow };
 
 /**
+ * v1 → v2: tag every step as an action.
+ *
+ * A v1 step is `{ id, actionId, config }` with no discriminant, because there was
+ * only one kind. v2 adds branches, so every step must say which it is. Nothing else
+ * changes and nothing is dropped: a v1 flow means exactly what it meant, it just says
+ * so explicitly now.
+ */
+function v1ToV2(raw: StoredWorkflow): StoredWorkflow {
+  const steps = Array.isArray(raw.steps) ? raw.steps : [];
+  return {
+    ...raw,
+    steps: steps.map((step) =>
+      typeof step === "object" && step !== null ? { kind: "action", ...(step as Record<string, unknown>) } : step,
+    ),
+  };
+}
+
+/**
  * The migration chain, in order.
  *
- * Empty at v1 because there is nothing older to migrate yet. It exists now so that
- * adding v2 is one entry rather than a retrofit — and so the guarantee is testable
- * before it is needed.
+ * Applied in sequence, so a v1 workflow read by a build that has reached v4 walks
+ * v1→v2→v3→v4 rather than needing a direct v1→v4 step for every pair.
  */
-const MIGRATIONS: readonly MigrationStep[] = Object.freeze([]);
+const MIGRATIONS: readonly MigrationStep[] = Object.freeze([{ from: 1, to: 2, apply: v1ToV2 }]);
 
 /**
  * Bring a stored workflow up to the current schema.
@@ -98,10 +122,18 @@ export function migrateWorkflow(raw: StoredWorkflow): StoredWorkflow {
   if (current >= CURRENT_SCHEMA_VERSION) return { ...raw, schemaVersion: current };
 
   let out = { ...raw };
-  for (const step of MIGRATIONS) {
-    if (step.from !== current) continue;
-    out = step.apply(out);
-    current = step.to;
+  // Walk the chain rather than looking for one direct step: a workflow three versions
+  // behind is migrated by composition, which is the only way the chain stays short.
+  let moved = true;
+  while (moved && current < CURRENT_SCHEMA_VERSION) {
+    moved = false;
+    for (const step of MIGRATIONS) {
+      if (step.from !== current) continue;
+      out = step.apply(out);
+      current = step.to;
+      moved = true;
+      break;
+    }
   }
   return { ...out, schemaVersion: current };
 }

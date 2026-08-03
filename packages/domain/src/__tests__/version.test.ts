@@ -81,13 +81,63 @@ describe("schema migration", () => {
   });
 
   it("never loses fields it doesn't know about", () => {
+    // The chain rewrites what it understands and carries everything else through
+    // untouched — a migration that drops an unrecognised field is a migration that
+    // loses whatever a newer feature added.
     const out = migrateWorkflow({ name: "Flow", steps: [{ id: "a" }], mystery: 42 });
     expect(out.mystery).toBe(42);
-    expect(out.steps).toEqual([{ id: "a" }]);
+    expect(out.name).toBe("Flow");
+    expect(out.steps).toEqual([{ kind: "action", id: "a" }]);
   });
 
   it("is idempotent", () => {
     const once = migrateWorkflow({ name: "Flow" });
     expect(migrateWorkflow(once)).toEqual(once);
+  });
+});
+
+describe("the v1 → v2 migration", () => {
+  it("tags every v1 step as an action", () => {
+    // A v1 step had no discriminant because there was only one kind. v2 adds
+    // branches, so every step must now say which it is.
+    const out = migrateWorkflow({
+      schemaVersion: 1,
+      steps: [
+        { id: "stp_1", actionId: "http.request", config: { method: "GET" } },
+        { id: "stp_2", actionId: "assert.equals", config: {} },
+      ],
+    });
+    expect(out.schemaVersion).toBe(2);
+    expect(out.steps).toEqual([
+      { kind: "action", id: "stp_1", actionId: "http.request", config: { method: "GET" } },
+      { kind: "action", id: "stp_2", actionId: "assert.equals", config: {} },
+    ]);
+  });
+
+  it("means exactly what it meant before — nothing is dropped or reordered", () => {
+    const steps = [{ id: "a", actionId: "x", config: { k: "v" }, extra: 1 }, { id: "b", actionId: "y", config: {} }];
+    const out = migrateWorkflow({ schemaVersion: 1, steps });
+    const migrated = out.steps as Record<string, unknown>[];
+    expect(migrated.map((s) => s.id)).toEqual(["a", "b"]);
+    expect(migrated[0].extra).toBe(1);
+  });
+
+  it("migrates a workflow that predates the field at all", () => {
+    const out = migrateWorkflow({ steps: [{ id: "a", actionId: "x", config: {} }] });
+    expect(out.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
+    expect((out.steps as Record<string, unknown>[])[0].kind).toBe("action");
+  });
+
+  it("leaves an already-v2 flow alone, branches and all", () => {
+    const v2 = {
+      schemaVersion: 2,
+      steps: [{ kind: "branch", id: "b1", condition: "{{ x }} == 1", then: [], else: [] }],
+    };
+    expect(migrateWorkflow(v2)).toEqual(v2);
+  });
+
+  it("tolerates a workflow with no steps at all", () => {
+    // Mirrored workflows have none — their flow lives on another platform.
+    expect(migrateWorkflow({ schemaVersion: 1 }).steps).toEqual([]);
   });
 });
