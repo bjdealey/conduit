@@ -518,6 +518,48 @@ be tabbable and still read out by a screen reader. Note `grid-template-rows` is 
 compositor-animated property: it needs main-thread style recalc, so it can't be timed from a
 throttled headless browser (the transition is observable there, its wall-clock duration isn't).
 
-**Still seed-backed.** Edits live in React state: they survive navigation, not a reload. The
-persistence path is the same one the library's reads will take (PostgREST/Edge Functions), and the
-rules in `src/lib/library.ts` are the ones a server would have to enforce too.
+**The tree is a real ARIA tree** (`role="tree"` / `treeitem` / `group`, with `aria-expanded`,
+`aria-level`, `aria-selected`). One tab stop, roving `tabIndex`: 35 rows of three buttons each was
+~75 tab stops to get *past* a navigation pane, and a screen reader read it as "button, button,
+button". The row itself is the only focusable thing in it — the chevron and the "…" are
+`tabIndex={-1}`, since `aria-expanded` already says what the chevron says.
+- Keys: ↑/↓ move, → expands then steps in, ← collapses then steps out, Home/End, Enter opens, F2
+  renames, Delete opens the confirm, Shift+F10 / ContextMenu / right-click open the row menu, and
+  typing does prefix typeahead with a 600ms buffer (so "sy" reaches Synthetics).
+- **`visibleRows` in `src/lib/tree.ts` is the single source of row order**, used by both the renderer
+  and the arrow keys. Two implementations of "the next row" drift the first time someone reorders a
+  section; one cannot.
+
+**Search keeps the tree** (`narrowTree`): the matches, every folder on the path down to one, and a
+name-matched folder's whole subtree. It used to flatten — a deliberate decision, but one that fought
+the breadcrumb work, which exists precisely because where a thing lives is half of what you need.
+
+**Drag to move.** Drop targets come from `moveTargets`, the same call the move menu is built from, so
+a destination the rules refuse never lights up. `readOnlyReason` is the one gate for "can this be
+edited at all" — the menu's explain panel, `draggable`, and the F2/Delete shortcuts all ask it.
+
+**One level of undo**, offered in a bar above the tree. The edits are pure and return a *new* tree,
+so the previous one is still intact and is the whole of what undo needs; it restores the selection
+too. The trail stays append-only — undoing writes a new entry, it never removes the one it reverses.
+
+**Expansion persists** (`tree-expanded` in localStorage, via the store) — it was component state, so
+navigating away and back re-expanded everything. A never-opened branch is **not mounted**: `<Reveal>`
+has to keep children mounted to animate closed, which would otherwise put the whole library in the
+DOM whether or not anyone looked at it.
+
+**Sibling folders sort by name** (`childFolders`). They were in insertion order, so a folder created
+today landed at the bottom of its siblings rather than where its name says it belongs.
+
+**New work lands where you are.** `newWorkflow(folderId)` takes a destination; the header passes the
+open folder (or the folder of whatever is open), falling back to Drafts. A folder's row menu offers
+it too.
+
+⚠️ **Don't set state from a ref mutated during render.** `ActionMenu`'s "open onto this panel" was
+written that way and silently did nothing: StrictMode's double invocation ran the guard twice, the
+first pass set the ref, the second pass saw it set and skipped the update — and React keeps the
+second pass. It's a `useLayoutEffect` keyed on `[isOpen, openTo]` now.
+
+**Still seed-backed.** Edits live in React state: they survive navigation, not a reload — except the
+expansion set, which is persisted. The persistence path is the same one the library's reads will take
+(PostgREST/Edge Functions), and the rules in `src/lib/library.ts` are the ones a server would have to
+enforce too.

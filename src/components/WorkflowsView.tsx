@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import {
   ArrowUpRight,
   ChevronRight,
@@ -36,7 +36,15 @@ import { WORKFLOW_STATUS_ACCENT, WorkflowStatusChip } from "./Badges";
 import { RunRow } from "./RunRow";
 import { minutesAgo, num } from "../lib/format";
 import { childFolders, folderPath, subtreeIds, workflowsUnder } from "../lib/folders";
-import { kindOfFile, moveTargets, type LibraryNode, type LibraryTree, type MoveTarget } from "../lib/library";
+import {
+  kindOfFile,
+  moveTargets,
+  readOnlyReason,
+  type LibraryNode,
+  type LibraryTree,
+  type MoveTarget,
+} from "../lib/library";
+import { narrowTree, rowAfter, rowMatching, visibleRows, type TreeRowInfo, type TreeSlice } from "../lib/tree";
 import { SplitView, Pane, DetailPane, ContextPane, EmptyDetail, PANE_WIDTH } from "./layout/SplitView";
 import { isNarrowed, matchesQuery, ordered, passesFilter, resolveSort, type WorkspaceState } from "../lib/workspace";
 import { workspaceControls } from "../data/workspaceControls";
@@ -97,97 +105,191 @@ const FILE_ICON: Record<FileKind, { icon: ReactNode; tone: string; label: string
 
 const WORKFLOW_ROW_ICON = { icon: <WorkflowIcon size={14} strokeWidth={1.8} />, tone: "var(--violet-a11)" };
 
+/**
+ * Everything a tree row needs that isn't its own content, threaded down as one
+ * object so adding a capability doesn't mean adding a prop to every level.
+ *
+ * It carries two trees on purpose. `tree` is the whole library and is what the
+ * edit rules read — a rename has to see a sibling the current search is hiding,
+ * or it would allow a collision. `slice` is what's on screen.
+ */
+type TreeCtx = {
+  tree: LibraryTree;
+  /** Which nodes the current search leaves showing, or undefined for all of them. */
+  slice?: TreeSlice;
+  /** Whether the signed-in tier may edit the library at all. */
+  editable: boolean;
+  isExpanded: (id: string) => boolean;
+  toggle: (id: string) => void;
+  renamingId: string | null;
+  startRename: (id: string) => void;
+  cancelRename: () => void;
+  commitRename: (node: LibraryNode, name: string) => void;
+  move: (node: LibraryNode, target: MoveTarget) => void;
+  remove: (node: LibraryNode) => void;
+  createFolder: (target: MoveTarget) => void;
+  createFile: (folderId: string, extension: string) => void;
+  newWorkflowIn: (folderId: string) => void;
+  countUnder: (node: LibraryNode) => { folders: number; workflows: number; files: number };
+  /** The keyboard cursor — exactly one row is tabbable at a time. */
+  cursorId: string | null;
+  setCursor: (id: string) => void;
+  /** One menu is open at a time, which is also what a menu *should* mean. */
+  menuFor: { id: string; panel: string } | null;
+  openMenu: (id: string, panel?: string) => void;
+  closeMenu: () => void;
+  /** Drag state: what's moving, where it may land, and what it's over. */
+  dragging: LibraryNode | null;
+  dropIds: Set<string>;
+  dropOn: string | null;
+  onDragStart: (node: LibraryNode) => void;
+  onDragEnd: () => void;
+  onDragOver: (rowId: string) => void;
+  onDrop: (rowId: string) => void;
+};
+
+/**
+ * One row of the tree.
+ *
+ * The row itself is the `treeitem` and the only focusable thing in it: the
+ * chevron and the "…" button are `tabIndex={-1}`, reachable by pointer and by
+ * the tree's own keys. That is what makes the whole tree a single tab stop
+ * instead of the ~75 it used to be, and it is the shape screen readers expect —
+ * `aria-expanded` on the row already says what the chevron says.
+ */
 function TreeRow({
+  id,
+  ctx,
   depth,
   icon,
   iconTone,
   label,
   active,
-  hasChildren,
+  expandable,
   open,
-  onToggle,
+  node,
   onSelect,
   trailing,
   menu,
-  renaming = false,
-  onRename,
-  onCancelRename,
+  droppable = false,
 }: {
+  id: string;
+  ctx: TreeCtx;
   depth: number;
   icon: ReactNode;
   /** Colour for the icon only — never the sole carrier of what a row is. */
   iconTone?: string;
   label: string;
   active: boolean;
-  hasChildren: boolean;
+  expandable: boolean;
   open: boolean;
-  onToggle: () => void;
+  /** The library node this row stands for; absent for the section headers. */
+  node?: LibraryNode;
   onSelect: () => void;
   trailing?: ReactNode;
-  /** The row's "…" menu. Given the open state so the row can keep it visible
-   *  while it's showing — an open popover hangs below the row, outside the box
-   *  that hover applies to, so a hover-only rule would hide it the moment you
-   *  reached for it. */
-  menu?: (control: { open: boolean; setOpen: (open: boolean) => void }) => ReactNode;
-  renaming?: boolean;
-  onRename?: (name: string) => void;
-  onCancelRename?: () => void;
+  menu?: ReactNode;
+  /** Whether a drag may land here (folders and the section headers). */
+  droppable?: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
-  const [focused, setFocused] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const revealed = hovered || focused || menuOpen;
+  const renaming = ctx.renamingId === id;
+  const menuOpen = ctx.menuFor?.id === id;
+  const revealed = hovered || ctx.cursorId === id || menuOpen;
+  const isDropTarget = droppable && ctx.dragging !== null && ctx.dropIds.has(id);
+  const isOver = isDropTarget && ctx.dropOn === id;
+  const dragged = ctx.dragging !== null && node !== undefined && ctx.dragging.id === node.id;
+
+  const background = isOver
+    ? "var(--blue-a3)"
+    : active
+      ? "var(--color-transparent-hover)"
+      : hovered
+        ? "var(--color-transparent-hover)"
+        : undefined;
 
   return (
     <div
+      role="treeitem"
+      aria-label={label}
+      aria-level={depth + 1}
+      aria-selected={active}
+      aria-expanded={expandable ? open : undefined}
+      tabIndex={ctx.cursorId === id ? 0 : -1}
+      data-tree-row={id}
+      draggable={node !== undefined && ctx.editable && !readOnlyReason(ctx.tree, node)}
+      onDragStart={(e) => {
+        if (!node) return;
+        // Firefox refuses to start a drag with no payload.
+        e.dataTransfer.setData("text/plain", node.id);
+        e.dataTransfer.effectAllowed = "move";
+        ctx.onDragStart(node);
+      }}
+      onDragEnd={ctx.onDragEnd}
+      onDragOver={(e) => {
+        if (!isDropTarget) return;
+        // Only a preventDefault here makes this a drop target at all.
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        ctx.onDragOver(id);
+      }}
+      onDrop={(e) => {
+        if (!isDropTarget) return;
+        e.preventDefault();
+        ctx.onDrop(id);
+      }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      onFocus={() => setFocused(true)}
-      onBlur={() => setFocused(false)}
-      className={
-        "focusable group flex h-8 w-full items-center gap-1 rounded-lg pr-1 text-left transition-colors " +
-        // Only the inactive row takes a hover tint — an inline background would
-        // beat the class, so the active row keeps its own and stays put.
-        (active ? "" : "hover:bg-transparent-hover")
-      }
-      style={{ paddingLeft: 6 + depth * 14, background: active ? "var(--color-transparent-hover)" : undefined }}
+      onClick={() => {
+        ctx.setCursor(id);
+        onSelect();
+      }}
+      onContextMenu={(e) => {
+        if (!menu) return;
+        e.preventDefault();
+        ctx.setCursor(id);
+        ctx.openMenu(id);
+      }}
+      className="focusable flex h-8 w-full items-center gap-1 rounded-lg pr-1 text-left transition-colors"
+      style={{
+        paddingLeft: 6 + depth * 14,
+        background,
+        opacity: dragged ? 0.4 : 1,
+        // A legal destination outlines itself the moment a drag starts, so where
+        // something *can* go is visible before you go hunting for it.
+        boxShadow: isDropTarget && !isOver ? "inset 0 0 0 1px var(--blue-a6)" : undefined,
+      }}
     >
       <button
         type="button"
-        onClick={onToggle}
-        aria-label={open ? "Collapse" : "Expand"}
+        tabIndex={-1}
+        aria-hidden="true"
+        onClick={(e) => {
+          e.stopPropagation();
+          ctx.toggle(id);
+        }}
         className="flex size-4 shrink-0 items-center justify-center rounded text-tertiary-foreground transition-colors hover:text-primary-foreground"
-        style={{ visibility: hasChildren ? "visible" : "hidden" }}
+        style={{ visibility: expandable ? "visible" : "hidden" }}
       >
         <ChevronRight size={13} strokeWidth={2} style={{ transform: open ? "rotate(90deg)" : "none" }} />
       </button>
 
-      {renaming && onRename ? (
-        <span className="flex min-w-0 flex-1 items-center gap-2 py-1">
-          <span
-            className="flex shrink-0 items-center justify-center"
-            style={{ width: 16, height: 16, color: iconTone ?? "var(--color-tertiary-foreground)" }}
-          >
-            {icon}
-          </span>
-          <RenameField value={label} onCommit={onRename} onCancel={onCancelRename ?? (() => {})} />
-        </span>
-      ) : (
-        <button
-          type="button"
-          onClick={onSelect}
-          aria-current={active ? "true" : undefined}
-          className="flex min-w-0 flex-1 items-center gap-2 py-1 text-left"
+      <span className="flex min-w-0 flex-1 items-center gap-2 py-1">
+        <span
+          className="flex shrink-0 items-center justify-center"
+          style={{ width: 16, height: 16, color: iconTone ?? "var(--color-tertiary-foreground)" }}
         >
-          <span
-            className="flex shrink-0 items-center justify-center"
-            style={{ width: 16, height: 16, color: iconTone ?? "var(--color-tertiary-foreground)" }}
-          >
-            {icon}
-          </span>
+          {icon}
+        </span>
+        {renaming && node ? (
+          <RenameField
+            value={label}
+            onCommit={(name) => ctx.commitRename(node, name)}
+            onCancel={ctx.cancelRename}
+          />
+        ) : (
           <span className="truncate text-body-sm text-primary-foreground">{label}</span>
-        </button>
-      )}
+        )}
+      </span>
 
       {!renaming && (trailing || menu) && (
         // The menu takes the metadata's slot rather than a column of its own: a
@@ -195,7 +297,7 @@ function TreeRow({
         // pane, and the status and owner are worth more at rest than an action
         // nobody is reaching for yet. Reaching for it swaps them.
         <span className="flex shrink-0 items-center gap-1.5 pr-0.5">
-          {revealed && menu ? menu({ open: menuOpen, setOpen: setMenuOpen }) : trailing}
+          {revealed && menu ? menu : trailing}
         </span>
       )}
     </div>
@@ -233,6 +335,7 @@ function RenameField({
       onClick={(e) => e.stopPropagation()}
       onBlur={() => (draft.trim() === value ? onCancel() : onCommit(draft))}
       onKeyDown={(e) => {
+        // The tree's own keys must not fire while a name is being typed.
         e.stopPropagation();
         if (e.key === "Enter") onCommit(draft);
         if (e.key === "Escape") onCancel();
@@ -245,65 +348,37 @@ function RenameField({
 
 /* ------------------------------------------------------------------ row menus */
 
-/** What a row's menu needs to build itself. Threaded down the tree as one object
- *  so adding an edit doesn't mean adding a prop to every level. */
-type TreeEdits = {
-  tree: LibraryTree;
-  /** Whether the signed-in tier may edit the library at all. */
-  editable: boolean;
-  renamingId: string | null;
-  startRename: (id: string) => void;
-  cancelRename: () => void;
-  commitRename: (node: LibraryNode, name: string) => void;
-  move: (node: LibraryNode, target: MoveTarget) => void;
-  remove: (node: LibraryNode) => void;
-  createFolder: (target: MoveTarget) => void;
-  createFile: (folderId: string, extension: string) => void;
-  /** What a delete would take with it, for the confirm's tally. */
-  countUnder: (node: LibraryNode) => { folders: number; workflows: number; files: number };
-};
-
 const targetLabel = (tree: LibraryTree, target: MoveTarget) =>
   target.kind === "root"
     ? `Top of ${target.visibility === "public" ? "Public" : "Private"}`
     : tree.folders.find((f) => f.id === target.id)?.name ?? target.id;
 
+/** The name a node shows in a menu heading. */
+function nodeLabel(tree: LibraryTree, node: LibraryNode): string {
+  if (node.kind === "folder") return tree.folders.find((f) => f.id === node.id)?.name ?? "";
+  if (node.kind === "workflow") return tree.workflows.find((w) => w.id === node.id)?.name ?? "";
+  return tree.files.find((f) => f.id === node.id)?.name ?? "";
+}
+
 /** The "…" menu on a tree row: create (folders only), rename, move, delete.
  *
- *  A mirrored workflow gets a panel that explains instead of a panel that acts.
- *  The rules would refuse every one of these edits on it, and a menu full of
- *  items that always fail teaches nothing — the reason does. */
-function RowMenu({
-  node,
-  edits,
-  control,
-}: {
-  node: LibraryNode;
-  edits: TreeEdits;
-  control: { open: boolean; setOpen: (open: boolean) => void };
-}) {
-  const { tree } = edits;
+ *  A read-only row gets a panel that explains instead of a panel that acts. The
+ *  rules would refuse every one of these edits on it, and a menu full of items
+ *  that always fail teaches nothing — the reason does. */
+function RowMenu({ node, ctx }: { node: LibraryNode; ctx: TreeCtx }) {
+  const { tree } = ctx;
   const name = nodeLabel(tree, node);
-  const mirrored =
-    node.kind === "workflow" && tree.workflows.find((w) => w.id === node.id)?.platform !== "conduit";
+  const readOnly = readOnlyReason(tree, node);
 
   const panel = (id: string, go: (next: string) => void): MenuPanel => {
-    if (mirrored) {
-      const workflow = tree.workflows.find((w) => w.id === node.id)!;
-      return {
-        heading: "Mirrored",
-        note: `Authored on ${PLATFORM_LABEL[workflow.platform]} and reflected here by its connector. Renaming, moving or deleting it here would be undone by the next sync.`,
-        items: [],
-      };
-    }
+    if (readOnly) return { heading: "Read-only", note: readOnly, items: [] };
 
     if (id === "move") {
-      const targets = moveTargets(tree, node);
       return {
         heading: `Move ${name}`,
         onBack: () => go("root"),
         scroll: true,
-        items: targets.map((target) => ({
+        items: moveTargets(tree, node).map((target) => ({
           id: target.kind === "root" ? `root:${target.visibility}` : target.id,
           label: targetLabel(tree, target),
           detail:
@@ -311,23 +386,22 @@ function RowMenu({
               ? folderPath(tree.folders, target.id).split(" / ").slice(0, -1).join(" / ") || "top level"
               : undefined,
           icon: <FolderIcon size={14} strokeWidth={1.8} />,
-          onSelect: () => edits.move(node, target),
+          onSelect: () => ctx.move(node, target),
         })),
       };
     }
 
     if (id === "delete") {
-      const under = edits.countUnder(node);
-      const tally =
-        node.kind === "folder"
-          ? `${under.folders} folder${under.folders === 1 ? "" : "s"}, ${under.workflows} workflow${under.workflows === 1 ? "" : "s"} and ${under.files} file${under.files === 1 ? "" : "s"} go with it.`
-          : "This can't be undone.";
+      const under = ctx.countUnder(node);
       return {
         heading: `Delete ${name}`,
-        note: tally,
+        note:
+          node.kind === "folder"
+            ? `${under.folders} folder${under.folders === 1 ? "" : "s"}, ${under.workflows} workflow${under.workflows === 1 ? "" : "s"} and ${under.files} file${under.files === 1 ? "" : "s"} go with it.`
+            : "This can't be undone from anywhere but the undo bar.",
         onBack: () => go("root"),
         items: [
-          { id: "confirm", label: "Delete", icon: <Trash2 size={14} strokeWidth={1.8} />, danger: true, onSelect: () => edits.remove(node) },
+          { id: "confirm", label: "Delete", icon: <Trash2 size={14} strokeWidth={1.8} />, danger: true, onSelect: () => ctx.remove(node) },
           { id: "cancel", label: "Cancel", icon: <X size={14} strokeWidth={1.8} />, onSelect: () => {} },
         ],
       };
@@ -337,33 +411,40 @@ function RowMenu({
     if (node.kind === "folder") {
       items.push(
         {
+          id: "new-workflow",
+          label: "New workflow",
+          icon: <WorkflowIcon size={14} strokeWidth={1.8} />,
+          onSelect: () => ctx.newWorkflowIn(node.id),
+        },
+        {
           id: "new-folder",
           label: "New folder",
           icon: <FolderPlus size={14} strokeWidth={1.8} />,
-          onSelect: () => edits.createFolder({ kind: "folder", id: node.id }),
+          onSelect: () => ctx.createFolder({ kind: "folder", id: node.id }),
         },
         {
           id: "new-config",
           label: "New config",
           detail: "untitled.xml",
           icon: <FileCode2 size={14} strokeWidth={1.8} />,
-          onSelect: () => edits.createFile(node.id, "xml"),
+          onSelect: () => ctx.createFile(node.id, "xml"),
         },
         {
           id: "new-doc",
           label: "New document",
           detail: "untitled.md",
           icon: <FilePlus2 size={14} strokeWidth={1.8} />,
-          onSelect: () => edits.createFile(node.id, "md"),
+          onSelect: () => ctx.createFile(node.id, "md"),
         },
       );
     }
     items.push(
-      { id: "rename", label: "Rename", icon: <Pencil size={14} strokeWidth={1.8} />, onSelect: () => edits.startRename(node.id) },
+      { id: "rename", label: "Rename", detail: "F2", icon: <Pencil size={14} strokeWidth={1.8} />, onSelect: () => ctx.startRename(node.id) },
       { id: "move", label: "Move to…", icon: <ArrowUpRight size={14} strokeWidth={1.8} />, keepOpen: true, onSelect: () => go("move") },
       {
         id: "delete",
         label: "Delete",
+        detail: "Del",
         icon: <Trash2 size={14} strokeWidth={1.8} />,
         danger: true,
         keepOpen: true,
@@ -377,38 +458,32 @@ function RowMenu({
     <ActionMenu
       label={`Actions for ${name}`}
       align="right"
-      open={control.open}
-      onOpenChange={control.setOpen}
+      open={ctx.menuFor?.id === node.id}
+      openTo={ctx.menuFor?.id === node.id ? ctx.menuFor.panel : "root"}
+      onOpenChange={(next) => (next ? ctx.openMenu(node.id) : ctx.closeMenu())}
       trigger={<MoreHorizontal size={15} strokeWidth={2} />}
       panel={panel}
     />
   );
 }
 
-/** The name a node shows in a menu heading. */
-function nodeLabel(tree: LibraryTree, node: LibraryNode): string {
-  if (node.kind === "folder") return tree.folders.find((f) => f.id === node.id)?.name ?? "";
-  if (node.kind === "workflow") return tree.workflows.find((w) => w.id === node.id)?.name ?? "";
-  return tree.files.find((f) => f.id === node.id)?.name ?? "";
-}
-
 /* ------------------------------------------------------------------- tree rows */
 
 /** A selectable workflow leaf: type icon, name, then status and owner trailing.
- *  The status dot moved right when the icon arrived — the left slot now says what
- *  a row *is*, consistently, and status is a second fact rather than the only one. */
+ *  The status dot sits right because the left slot now says what a row *is*,
+ *  consistently, and status is a second fact rather than the only one. */
 function WorkflowLeaf({
   workflow,
   depth,
   active,
   onSelect,
-  edits,
+  ctx,
 }: {
   workflow: Workflow;
   depth: number;
   active: boolean;
   onSelect: () => void;
-  edits: TreeEdits;
+  ctx: TreeCtx;
 }) {
   const { memberById } = useStore();
   const owner = memberById(workflow.ownerId);
@@ -416,18 +491,17 @@ function WorkflowLeaf({
   const node: LibraryNode = { kind: "workflow", id: workflow.id };
   return (
     <TreeRow
+      id={workflow.id}
+      ctx={ctx}
+      node={node}
       depth={depth}
       icon={WORKFLOW_ROW_ICON.icon}
       iconTone={WORKFLOW_ROW_ICON.tone}
       label={workflow.name}
       active={active}
-      hasChildren={false}
+      expandable={false}
       open={false}
-      onToggle={() => {}}
       onSelect={onSelect}
-      renaming={edits.renamingId === workflow.id}
-      onRename={(name) => edits.commitRename(node, name)}
-      onCancelRename={edits.cancelRename}
       trailing={
         <>
           <span
@@ -438,7 +512,7 @@ function WorkflowLeaf({
           {owner && <Avatar member={owner} size={18} />}
         </>
       }
-      menu={edits.editable ? (control) => <RowMenu node={node} edits={edits} control={control} /> : undefined}
+      menu={ctx.editable ? <RowMenu node={node} ctx={ctx} /> : undefined}
     />
   );
 }
@@ -449,13 +523,13 @@ function FileLeaf({
   depth,
   active,
   onSelect,
-  edits,
+  ctx,
 }: {
   file: LibraryFile;
   depth: number;
   active: boolean;
   onSelect: () => void;
-  edits: TreeEdits;
+  ctx: TreeCtx;
 }) {
   const { memberById } = useStore();
   const owner = memberById(file.ownerId);
@@ -463,20 +537,19 @@ function FileLeaf({
   const node: LibraryNode = { kind: "file", id: file.id };
   return (
     <TreeRow
+      id={file.id}
+      ctx={ctx}
+      node={node}
       depth={depth}
       icon={look.icon}
       iconTone={look.tone}
       label={file.name}
       active={active}
-      hasChildren={false}
+      expandable={false}
       open={false}
-      onToggle={() => {}}
       onSelect={onSelect}
-      renaming={edits.renamingId === file.id}
-      onRename={(name) => edits.commitRename(node, name)}
-      onCancelRename={edits.cancelRename}
       trailing={owner ? <Avatar member={owner} size={18} /> : undefined}
-      menu={edits.editable ? (control) => <RowMenu node={node} edits={edits} control={control} /> : undefined}
+      menu={ctx.editable ? <RowMenu node={node} ctx={ctx} /> : undefined}
     />
   );
 }
@@ -485,14 +558,12 @@ function FileLeaf({
  *  workflows and the files that live directly in it.
  *
  *  A folder row carries two separate actions, because it answers two questions:
- *  the chevron expands it (what's underneath?), and the label opens it (what does
+ *  the chevron expands it (what's underneath?), and the row opens it (what does
  *  it hold?). Only the second is a selection — expanding a folder never changes
  *  what the detail pane is showing. */
 function FolderBranch({
   folderId,
   depth,
-  expanded,
-  toggle,
   selectedId,
   onSelect,
   selectedFolderId,
@@ -501,12 +572,10 @@ function FolderBranch({
   onSelectFile,
   workflows,
   files,
-  edits,
+  ctx,
 }: {
   folderId: string;
   depth: number;
-  expanded: Set<string>;
-  toggle: (id: string) => void;
   selectedId: string | null;
   onSelect: (id: string) => void;
   selectedFolderId: string | null;
@@ -515,74 +584,82 @@ function FolderBranch({
   onSelectFile: (id: string) => void;
   workflows: Workflow[];
   files: LibraryFile[];
-  edits: TreeEdits;
+  ctx: TreeCtx;
 }) {
-  const folder = edits.tree.folders.find((f) => f.id === folderId);
+  const folder = ctx.tree.folders.find((f) => f.id === folderId);
+  const shows = (kind: keyof TreeSlice, id: string) => !ctx.slice || ctx.slice[kind].has(id);
+  const open = ctx.isExpanded(folderId);
+  // Never-opened branches don't render at all. <Reveal> has to keep its children
+  // mounted to animate closed, which would otherwise mean the whole library is in
+  // the DOM whether or not anyone has looked at it.
+  const [everOpened, setEverOpened] = useState(open);
+  useEffect(() => {
+    if (open) setEverOpened(true);
+  }, [open]);
+
   if (!folder) return null;
-  const kids = childFolders(edits.tree.folders, folderId);
-  const flows = workflows.filter((a) => a.folderId === folderId);
-  const docs = files.filter((f) => f.folderId === folderId);
-  const open = expanded.has(folderId);
+  const kids = childFolders(ctx.tree.folders, folderId).filter((f) => shows("folders", f.id));
+  const flows = workflows.filter((a) => a.folderId === folderId && shows("workflows", a.id));
+  const docs = files.filter((f) => f.folderId === folderId && shows("files", f.id));
   const node: LibraryNode = { kind: "folder", id: folderId };
+
   return (
     <>
       <TreeRow
+        id={folderId}
+        ctx={ctx}
+        node={node}
         depth={depth}
         icon={open ? <FolderOpen size={14} strokeWidth={1.8} /> : <FolderIcon size={14} strokeWidth={1.8} />}
         label={folder.name}
         active={folderId === selectedFolderId}
-        hasChildren={kids.length > 0 || flows.length > 0 || docs.length > 0}
+        expandable={kids.length > 0 || flows.length > 0 || docs.length > 0}
         open={open}
-        onToggle={() => toggle(folderId)}
         onSelect={() => onSelectFolder(folderId)}
-        renaming={edits.renamingId === folderId}
-        onRename={(name) => edits.commitRename(node, name)}
-        onCancelRename={edits.cancelRename}
-        menu={edits.editable ? (control) => <RowMenu node={node} edits={edits} control={control} /> : undefined}
+        droppable
+        menu={ctx.editable ? <RowMenu node={node} ctx={ctx} /> : undefined}
       />
-      {/* Mounted whether or not it's open, so closing animates too — <Reveal>
-          makes the closed subtree inert so nothing in it is tabbable. */}
-      <Reveal open={open}>
-        <>
-          {kids.map((k) => (
-            <FolderBranch
-              key={k.id}
-              folderId={k.id}
-              depth={depth + 1}
-              expanded={expanded}
-              toggle={toggle}
-              selectedId={selectedId}
-              onSelect={onSelect}
-              selectedFolderId={selectedFolderId}
-              onSelectFolder={onSelectFolder}
-              selectedFileId={selectedFileId}
-              onSelectFile={onSelectFile}
-              workflows={workflows}
-              files={files}
-              edits={edits}
-            />
-          ))}
-          {flows.map((a) => (
-            <WorkflowLeaf
-              key={a.id}
-              workflow={a}
-              depth={depth + 1}
-              active={a.id === selectedId}
-              onSelect={() => onSelect(a.id)}
-              edits={edits}
-            />
-          ))}
-          {docs.map((f) => (
-            <FileLeaf
-              key={f.id}
-              file={f}
-              depth={depth + 1}
-              active={f.id === selectedFileId}
-              onSelect={() => onSelectFile(f.id)}
-              edits={edits}
-            />
-          ))}
-        </>
+      <Reveal open={open} role="group">
+        {everOpened && (
+          <>
+            {kids.map((k) => (
+              <FolderBranch
+                key={k.id}
+                folderId={k.id}
+                depth={depth + 1}
+                selectedId={selectedId}
+                onSelect={onSelect}
+                selectedFolderId={selectedFolderId}
+                onSelectFolder={onSelectFolder}
+                selectedFileId={selectedFileId}
+                onSelectFile={onSelectFile}
+                workflows={workflows}
+                files={files}
+                ctx={ctx}
+              />
+            ))}
+            {flows.map((a) => (
+              <WorkflowLeaf
+                key={a.id}
+                workflow={a}
+                depth={depth + 1}
+                active={a.id === selectedId}
+                onSelect={() => onSelect(a.id)}
+                ctx={ctx}
+              />
+            ))}
+            {docs.map((f) => (
+              <FileLeaf
+                key={f.id}
+                file={f}
+                depth={depth + 1}
+                active={f.id === selectedFileId}
+                onSelect={() => onSelectFile(f.id)}
+                ctx={ctx}
+              />
+            ))}
+          </>
+        )}
       </Reveal>
     </>
   );
@@ -590,15 +667,61 @@ function FolderBranch({
 
 /* --------------------------------------------------- merged library (nav + list) */
 
-/** The workflow library: a single left panel that merges the Public/Private
- *  folder tree with the workflows and files inside each folder (as selectable
- *  leaves), so navigation and selection live in one column instead of two. While
- *  the workspace header narrows the page (a search or a filter), the tree flattens
- *  to the matches — the folders are structure, not a second filter. */
+/** A dismissible line above the tree — a refusal, or the offer to undo. */
+function TreeNotice({
+  tone,
+  children,
+  action,
+  onDismiss,
+}: {
+  tone: "critical" | "neutral";
+  children: ReactNode;
+  action?: { label: string; onSelect: () => void };
+  onDismiss: () => void;
+}) {
+  const colours =
+    tone === "critical"
+      ? { background: "var(--tomato-a3)", color: "var(--tomato-a11)" }
+      : { background: "var(--color-component)", color: "var(--color-secondary-foreground)" };
+  return (
+    <div role={tone === "critical" ? "alert" : "status"} className="m-2 flex items-center gap-2 rounded-lg px-2.5 py-2 text-[0.72rem] leading-snug" style={colours}>
+      <span className="min-w-0 flex-1">{children}</span>
+      {action && (
+        <button
+          type="button"
+          onClick={action.onSelect}
+          className="focusable shrink-0 rounded px-1 font-medium underline underline-offset-2"
+        >
+          {action.label}
+        </button>
+      )}
+      <button type="button" onClick={onDismiss} aria-label="Dismiss" className="focusable shrink-0 rounded">
+        <X size={13} strokeWidth={2} />
+      </button>
+    </div>
+  );
+}
+
+/**
+ * The workflow library: one left panel merging the Public/Private folder tree
+ * with the workflows and files inside each folder, so navigation and selection
+ * live in one column instead of two.
+ *
+ * It is a real ARIA tree — one tab stop, arrows to move, `aria-expanded` and
+ * `aria-level` on every row — because 35 rows of three buttons each is 75 tab
+ * stops to get *past* a navigation pane, and a screen reader reading "button,
+ * button, button" is not navigation at all.
+ *
+ * A search no longer flattens it. Matches keep their ancestors and the branches
+ * open themselves, because we added the folder path to every breadcrumb on the
+ * grounds that where a thing lives is half of what you need to know — and then a
+ * search was throwing exactly that away.
+ */
 function WorkflowLibrary({
   workflows,
   files,
   narrowed,
+  slice,
   selectedId,
   onSelect,
   selectedFolderId,
@@ -609,6 +732,7 @@ function WorkflowLibrary({
   workflows: Workflow[];
   files: LibraryFile[];
   narrowed: boolean;
+  slice?: TreeSlice;
   selectedId: string | null;
   onSelect: (id: string) => void;
   selectedFolderId: string | null;
@@ -618,34 +742,153 @@ function WorkflowLibrary({
 }) {
   const store = useStore();
   const tree: LibraryTree = { folders: store.folders, workflows: store.workflows, files: store.files };
+  // What the rows are drawn from: narrowed and ordered exactly as rendered, so
+  // the keyboard's "next row" is the row the eye sees next.
+  const rendered: LibraryTree = { folders: store.folders, workflows, files };
 
-  const [expanded, setExpanded] = useState<Set<string>>(
-    () => new Set<string>(["vis:public", "vis:private", ...store.folders.map((f) => f.id)]),
-  );
   const [renamingId, setRenamingId] = useState<string | null>(null);
-  // A refused edit says why, in the tree it was refused in. It clears on the next
-  // edit rather than on a timer — a message that vanishes while you're reading it
-  // is a message you have to reproduce to read.
   const [refusal, setRefusal] = useState<string | null>(null);
+  const [undoDismissed, setUndoDismissed] = useState(true);
+  const [cursorId, setCursorId] = useState<string | null>(null);
+  const [menuFor, setMenuFor] = useState<{ id: string; panel: string } | null>(null);
+  const [dragging, setDragging] = useState<LibraryNode | null>(null);
+  const [dropOn, setDropOn] = useState<string | null>(null);
+  const treeBox = useRef<HTMLDivElement>(null);
+  const wantFocus = useRef(false);
+  const typed = useRef<{ text: string; at: number }>({ text: "", at: 0 });
 
-  const toggle = (id: string) =>
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  const reveal = (id: string) => setExpanded((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
-  // Opening a folder also reveals it: a collapsed folder whose detail is on screen
-  // would leave the tree contradicting the pane. It never collapses one — the
-  // chevron is the only control that closes a branch.
+  // A search opens what it needs to show; outside one, the stored state rules.
+  const isExpanded = (id: string) => (narrowed ? true : store.isExpanded(id));
+  const rows = visibleRows(rendered, { expanded: isExpanded, slice });
+
+  const nameOfRow = (row: TreeRowInfo): string => {
+    if (row.kind === "root") return row.id === "vis:public" ? "Public" : "Private";
+    if (row.kind === "folder") return store.folders.find((f) => f.id === row.id)?.name ?? "";
+    if (row.kind === "workflow") return workflows.find((w) => w.id === row.id)?.name ?? "";
+    return files.find((f) => f.id === row.id)?.name ?? "";
+  };
+
+  // Keep the cursor on a row that still exists — a delete or a collapse can take
+  // the one it was on.
+  useEffect(() => {
+    if (rows.length === 0) return;
+    if (!cursorId || !rows.some((r) => r.id === cursorId)) setCursorId(rows[0].id);
+  }, [rows, cursorId]);
+
+  useEffect(() => {
+    if (!wantFocus.current || !cursorId) return;
+    wantFocus.current = false;
+    treeBox.current?.querySelector<HTMLElement>(`[data-tree-row="${CSS.escape(cursorId)}"]`)?.focus();
+  }, [cursorId, rows]);
+
+  const focusRow = (id: string | null) => {
+    if (!id) return;
+    wantFocus.current = true;
+    setCursorId(id);
+  };
+
+  const nodeOf = (row: TreeRowInfo): LibraryNode | null =>
+    row.kind === "root" ? null : { kind: row.kind, id: row.id };
+
+  const openRow = (row: TreeRowInfo) => {
+    if (row.kind === "root") store.toggleExpanded(row.id);
+    if (row.kind === "folder") selectFolder(row.id);
+    if (row.kind === "workflow") onSelect(row.id);
+    if (row.kind === "file") onSelectFile(row.id);
+  };
+
+  const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (renamingId) return;
+    const row = rows.find((r) => r.id === cursorId);
+    if (!row) return;
+    const index = rows.indexOf(row);
+    const node = nodeOf(row);
+
+    switch (e.key) {
+      case "ArrowDown":
+        e.preventDefault();
+        return focusRow(rowAfter(rows, row.id, 1));
+      case "ArrowUp":
+        e.preventDefault();
+        return focusRow(rowAfter(rows, row.id, -1));
+      case "ArrowRight":
+        e.preventDefault();
+        if (row.expandable && !row.expanded) return store.expand(row.id);
+        // Already open: step into it, but only if the next row really is a child.
+        if (rows[index + 1]?.parentId === row.id) return focusRow(rows[index + 1].id);
+        return;
+      case "ArrowLeft":
+        e.preventDefault();
+        if (row.expandable && row.expanded) return store.toggleExpanded(row.id);
+        return focusRow(row.parentId);
+      case "Home":
+        e.preventDefault();
+        return focusRow(rows[0]?.id ?? null);
+      case "End":
+        e.preventDefault();
+        return focusRow(rows[rows.length - 1]?.id ?? null);
+      case "Enter":
+      case " ":
+        e.preventDefault();
+        return openRow(row);
+      case "F2":
+        e.preventDefault();
+        if (node && ctx.editable && !readOnlyReason(tree, node)) setRenamingId(row.id);
+        return;
+      case "Delete":
+      case "Backspace":
+        e.preventDefault();
+        if (node && ctx.editable) setMenuFor({ id: row.id, panel: "delete" });
+        return;
+      case "F10":
+        if (!e.shiftKey) return;
+        e.preventDefault();
+        if (node && ctx.editable) setMenuFor({ id: row.id, panel: "root" });
+        return;
+      case "ContextMenu":
+        e.preventDefault();
+        if (node && ctx.editable) setMenuFor({ id: row.id, panel: "root" });
+        return;
+      default:
+        break;
+    }
+
+    // Typeahead. A buffer rather than a single key, so "sy" reaches Synthetics
+    // without arrowing past everything that starts with an s.
+    if (e.key.length !== 1 || e.metaKey || e.ctrlKey || e.altKey) return;
+    const now = Date.now();
+    typed.current = { text: now - typed.current.at > 600 ? e.key : typed.current.text + e.key, at: now };
+    const hit = rowMatching(rows, row.id, typed.current.text, nameOfRow);
+    if (hit) focusRow(hit);
+  };
+
   const selectFolder = (id: string) => {
-    reveal(id);
+    store.expand(id);
     onSelectFolder(id);
   };
 
-  const edits: TreeEdits = {
+  const afterEdit = (reason: string | null) => {
+    setRefusal(reason);
+    if (reason === null) setUndoDismissed(false);
+    return reason;
+  };
+
+  // Every legal destination for whatever is being dragged, as row ids — the same
+  // list the move menu is built from, so a drop the rules would refuse never
+  // lights up in the first place.
+  const dropIds = useMemo(() => {
+    if (!dragging) return new Set<string>();
+    return new Set(
+      moveTargets(tree, dragging).map((t) => (t.kind === "root" ? `vis:${t.visibility}` : t.id)),
+    );
+  }, [dragging, tree]);
+
+  const ctx: TreeCtx = {
     tree,
+    slice,
     editable: store.allowed("author"),
+    isExpanded,
+    toggle: (id) => store.toggleExpanded(id),
     renamingId,
     startRename: (id) => {
       setRefusal(null);
@@ -653,23 +896,22 @@ function WorkflowLibrary({
     },
     cancelRename: () => setRenamingId(null),
     commitRename: (node, name) => {
-      const reason = store.renameNode(node, name);
-      setRefusal(reason);
+      const reason = afterEdit(store.renameNode(node, name));
       // Stay in the field when the name was refused — otherwise the correction
       // costs another trip through the menu.
       if (reason === null) setRenamingId(null);
     },
     move: (node, target) => {
-      const reason = store.moveNode(node, target);
-      setRefusal(reason);
-      if (reason === null && target.kind === "folder") reveal(target.id);
+      const reason = afterEdit(store.moveNode(node, target));
+      if (reason === null && target.kind === "folder") store.expand(target.id);
     },
-    remove: (node) => setRefusal(store.deleteNode(node)),
+    remove: (node) => afterEdit(store.deleteNode(node)),
     createFolder: (target) => {
       setRefusal(null);
       const made = store.newFolder(target);
       if ("reason" in made) return setRefusal(made.reason);
-      if (target.kind === "folder") reveal(target.id);
+      if (target.kind === "folder") store.expand(target.id);
+      setUndoDismissed(false);
       onSelectFolder(made.id);
       setRenamingId(made.id);
     },
@@ -677,11 +919,37 @@ function WorkflowLibrary({
       setRefusal(null);
       const made = store.newFile(folderId, extension);
       if ("reason" in made) return setRefusal(made.reason);
-      reveal(folderId);
+      store.expand(folderId);
+      setUndoDismissed(false);
       onSelectFile(made.id);
       setRenamingId(made.id);
     },
+    newWorkflowIn: (folderId) => store.newWorkflow(folderId),
     countUnder: store.countUnder,
+    cursorId,
+    setCursor: setCursorId,
+    menuFor,
+    openMenu: (id, panel = "root") => setMenuFor({ id, panel }),
+    closeMenu: () => setMenuFor(null),
+    dragging,
+    dropIds,
+    dropOn,
+    onDragStart: setDragging,
+    onDragEnd: () => {
+      setDragging(null);
+      setDropOn(null);
+    },
+    onDragOver: setDropOn,
+    onDrop: (rowId) => {
+      if (!dragging) return;
+      const target: MoveTarget = rowId.startsWith("vis:")
+        ? { kind: "root", visibility: rowId === "vis:public" ? "public" : "private" }
+        : { kind: "folder", id: rowId };
+      afterEdit(store.moveNode(dragging, target));
+      if (!rowId.startsWith("vis:")) store.expand(rowId);
+      setDragging(null);
+      setDropOn(null);
+    },
   };
 
   const roots: { visibility: Visibility; label: string; icon: ReactNode }[] = [
@@ -689,85 +957,66 @@ function WorkflowLibrary({
     { visibility: "private", label: "Private", icon: <Lock size={14} strokeWidth={1.8} /> },
   ];
 
+  const nothingShowing = rows.every((r) => r.kind === "root");
+
   return (
     <Pane width={PANE_WIDTH.list}>
       {refusal && (
-        <div
-          role="alert"
-          className="m-2 flex items-start gap-2 rounded-lg px-2.5 py-2 text-[0.72rem] leading-snug"
-          style={{ background: "var(--tomato-a3)", color: "var(--tomato-a11)" }}
-        >
-          <span className="min-w-0 flex-1">{refusal}</span>
-          <button
-            type="button"
-            onClick={() => setRefusal(null)}
-            aria-label="Dismiss"
-            className="focusable shrink-0 rounded"
-          >
-            <X size={13} strokeWidth={2} />
-          </button>
-        </div>
+        <TreeNotice tone="critical" onDismiss={() => setRefusal(null)}>
+          {refusal}
+        </TreeNotice>
       )}
-      {/* A landmark, because this column is the page's navigation: the breadcrumb
-          names the same folders, and without a region to scope to, "Onboarding"
-          means two different controls. */}
-      <nav aria-label="Library tree" className="scrollbar-none flex-1 overflow-y-auto px-2 py-2">
-        {narrowed ? (
-          workflows.length === 0 && files.length === 0 ? (
-            <p className="px-3 py-6 text-center text-body-sm text-tertiary-foreground">
-              Nothing matches the current search or filters.
-            </p>
-          ) : (
-            <>
-              {workflows.map((a) => (
-                <WorkflowLeaf
-                  key={a.id}
-                  workflow={a}
-                  depth={0}
-                  active={a.id === selectedId}
-                  onSelect={() => onSelect(a.id)}
-                  edits={edits}
-                />
-              ))}
-              {files.map((f) => (
-                <FileLeaf
-                  key={f.id}
-                  file={f}
-                  depth={0}
-                  active={f.id === selectedFileId}
-                  onSelect={() => onSelectFile(f.id)}
-                  edits={edits}
-                />
-              ))}
-            </>
-          )
+      {!refusal && !undoDismissed && store.undoable && (
+        <TreeNotice
+          tone="neutral"
+          action={{ label: "Undo", onSelect: () => { store.undo(); setUndoDismissed(true); } }}
+          onDismiss={() => setUndoDismissed(true)}
+        >
+          {store.undoable.label}
+        </TreeNotice>
+      )}
+      <div
+        ref={treeBox}
+        role="tree"
+        aria-label="Library tree"
+        aria-multiselectable={false}
+        onKeyDown={onKeyDown}
+        className="scrollbar-none flex-1 overflow-y-auto px-2 py-2"
+      >
+        {narrowed && nothingShowing ? (
+          <p className="px-3 py-6 text-center text-body-sm text-tertiary-foreground">
+            Nothing matches the current search or filters.
+          </p>
         ) : (
           roots.map((root) => {
             const visKey = `vis:${root.visibility}`;
-            const open = expanded.has(visKey);
-            const topFolders = childFolders(store.folders, null, root.visibility);
+            const open = isExpanded(visKey);
+            const topFolders = childFolders(store.folders, null, root.visibility).filter(
+              (f) => !slice || slice.folders.has(f.id),
+            );
             return (
               <div key={root.visibility} className="mb-1">
                 {/* Public/Private are section headers, not folders — nothing lives
-                    in them directly, so they expand rather than open. The one edit
-                    they carry is making a folder at the top of their tree. */}
+                    in them directly, so they expand rather than open. They still
+                    take a drop: a folder can move to the top of either tree. */}
                 <TreeRow
+                  id={visKey}
+                  ctx={ctx}
                   depth={0}
                   icon={root.icon}
                   label={root.label}
                   active={false}
-                  hasChildren={topFolders.length > 0}
+                  expandable={topFolders.length > 0}
                   open={open}
-                  onToggle={() => toggle(visKey)}
-                  onSelect={() => toggle(visKey)}
+                  onSelect={() => store.toggleExpanded(visKey)}
+                  droppable
                   menu={
-                    edits.editable
-                      ? (control) => (
+                    ctx.editable ? (
                       <ActionMenu
                         label={`Actions for ${root.label}`}
                         align="right"
-                        open={control.open}
-                        onOpenChange={control.setOpen}
+                        open={menuFor?.id === visKey}
+                        onOpenChange={(next) => (next ? setMenuFor({ id: visKey, panel: "root" }) : setMenuFor(null))}
                         trigger={<MoreHorizontal size={15} strokeWidth={2} />}
                         panel={() => ({
                           items: [
@@ -775,23 +1024,20 @@ function WorkflowLibrary({
                               id: "new-folder",
                               label: "New folder",
                               icon: <FolderPlus size={14} strokeWidth={1.8} />,
-                              onSelect: () => edits.createFolder({ kind: "root", visibility: root.visibility }),
+                              onSelect: () => ctx.createFolder({ kind: "root", visibility: root.visibility }),
                             },
                           ],
                         })}
                       />
-                        )
-                      : undefined
+                    ) : undefined
                   }
                 />
-                <Reveal open={open}>
+                <Reveal open={open} role="group">
                   {topFolders.map((f) => (
                     <FolderBranch
                       key={f.id}
                       folderId={f.id}
                       depth={1}
-                      expanded={expanded}
-                      toggle={toggle}
                       selectedId={selectedId}
                       onSelect={onSelect}
                       selectedFolderId={selectedFolderId}
@@ -800,7 +1046,7 @@ function WorkflowLibrary({
                       onSelectFile={onSelectFile}
                       workflows={workflows}
                       files={files}
-                      edits={edits}
+                      ctx={ctx}
                     />
                   ))}
                 </Reveal>
@@ -808,7 +1054,7 @@ function WorkflowLibrary({
             );
           })
         )}
-      </nav>
+      </div>
     </Pane>
   );
 }
@@ -1545,6 +1791,20 @@ export function WorkflowsView() {
   const narrowed = isNarrowed(state);
   const visible = visibleWorkflows(workflows, state);
   const visibleFiles = narrowedFiles(files, state);
+  // While a search is on, the tree keeps its shape: the matches, plus every
+  // folder on the path down to one, plus a folder matched by its own name.
+  const slice = narrowed
+    ? narrowTree(
+        { folders, workflows, files },
+        {
+          folders: new Set(
+            folders.filter((f) => matchesQuery(state.query, [f.name, f.id])).map((f) => f.id),
+          ),
+          workflows: new Set(visible.map((w) => w.id)),
+          files: new Set(visibleFiles.map((f) => f.id)),
+        },
+      )
+    : undefined;
   const selected = selectedWorkflowId
     ? workflows.find((a) => a.id === selectedWorkflowId) ?? null
     : null;
@@ -1571,6 +1831,7 @@ export function WorkflowsView() {
         workflows={visible}
         files={visibleFiles}
         narrowed={narrowed}
+        slice={slice}
         selectedId={selectedWorkflowId}
         onSelect={selectWorkflow}
         selectedFolderId={selectedFolderId}

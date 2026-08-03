@@ -63,6 +63,11 @@ export function WorkspaceHeader() {
     sectionTab,
     setView,
     newWorkflow,
+    selectedFolderId,
+    selectedWorkflowId,
+    selectedFileId,
+    workflows,
+    files,
   } = useStore();
 
   const definition = workspaceControls(view, sectionTab(view));
@@ -85,7 +90,16 @@ export function WorkspaceHeader() {
   // are wired here, so the descriptor stays presentation-only.
   const runAction = (id: string) => {
     if (id === "all-problems") setView("inbox");
-    if (id === "new-workflow") newWorkflow();
+    // New work lands where the library is open — the folder itself, or the folder
+    // holding whatever is open in it. Creating always into Drafts made sense when
+    // folders weren't destinations; now it just files things away from you.
+    if (id === "new-workflow") {
+      const home =
+        selectedFolderId ??
+        workflows.find((w) => w.id === selectedWorkflowId)?.folderId ??
+        files.find((f) => f.id === selectedFileId)?.folderId;
+      newWorkflow(home ?? undefined);
+    }
   };
 
   const allowed = actions.filter((a) => !a.roles || a.roles.includes(role));

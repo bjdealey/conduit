@@ -97,6 +97,7 @@ export function ActionMenu({
   panel,
   align = "left",
   open,
+  openTo,
   onOpenChange,
 }: {
   /** Accessible name for the trigger. */
@@ -108,11 +109,14 @@ export function ActionMenu({
   align?: "left" | "right";
   /** Controlled open state, for a menu opened from somewhere else (a right-click). */
   open?: boolean;
+  /** Which panel to show when it opens — so a Delete shortcut can land straight
+   *  on the confirm instead of making you walk the menu to it. */
+  openTo?: string;
   onOpenChange?: (open: boolean) => void;
 }) {
   const [uncontrolled, setUncontrolled] = useState(false);
   const isOpen = open ?? uncontrolled;
-  const [panelId, setPanelId] = useState("root");
+  const [panelId, setPanelId] = useState(openTo ?? "root");
   const trigger = useRef<HTMLButtonElement>(null);
   const panelBox = useRef<HTMLSpanElement>(null);
   const [placement, setPlacement] = useState<{
@@ -130,6 +134,18 @@ export function ActionMenu({
     // "Delete" is a menu that arms a destructive action behind one click.
     if (!next) setPanelId("root");
   };
+
+  // A controlled open that names a panel starts there — the Delete shortcut opens
+  // straight onto the confirm. It keys off `openTo` changing rather than off every
+  // render, so choosing "Move to…" by hand isn't immediately undone.
+  //
+  // This has to be an effect, not a render-phase guard: a ref mutated during
+  // render is exactly the impurity StrictMode's double invocation is built to
+  // expose, and it did — the first pass set the ref, the second pass saw it
+  // already set and skipped the update React actually kept.
+  useLayoutEffect(() => {
+    if (isOpen) setPanelId(openTo ?? "root");
+  }, [isOpen, openTo]);
 
   // Measured off the trigger before paint, and again when the panel swaps, since
   // a destination list is a different height from the root menu and may need to

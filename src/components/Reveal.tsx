@@ -22,10 +22,15 @@ export function Reveal({
   open,
   /** Milliseconds. Kept short — this is a disclosure, not a transition. */
   duration = 180,
+  /** Role for the inner box — `group` when this is a tree branch, so the
+   *  animation wrapper doesn't break the tree's ARIA ownership. The outer box
+   *  takes `none`, since it exists only to animate. */
+  role,
   children,
 }: {
   open: boolean;
   duration?: number;
+  role?: string;
   children: ReactNode;
 }) {
   const box = useRef<HTMLDivElement>(null);
@@ -38,6 +43,7 @@ export function Reveal({
 
   return (
     <div
+      role={role ? "none" : undefined}
       style={{
         display: "grid",
         gridTemplateRows: open ? "1fr" : "0fr",
@@ -46,7 +52,7 @@ export function Reveal({
     >
       {/* minHeight:0 lets the row shrink below its content; overflow hides what
           hasn't been revealed yet. */}
-      <div ref={box} style={{ overflow: "hidden", minHeight: 0 }}>
+      <div ref={box} role={role} style={{ overflow: "hidden", minHeight: 0 }}>
         {children}
       </div>
     </div>
