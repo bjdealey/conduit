@@ -95,6 +95,35 @@ export type Folder = {
   visibility: Visibility;
 };
 
+/** File types the library renders differently. `unknown` is a state we show, not
+ *  a fallback we hide — a file with an extension we don't recognise still gets a
+ *  row, an icon and a detail pane. */
+export const FILE_KINDS = ["config", "document", "unknown"] as const;
+export type FileKind = (typeof FILE_KINDS)[number];
+
+/**
+ * A non-workflow artefact in the library: a connector's config, a runbook, a
+ * note. It lives in a Folder exactly as a workflow does, so there is one tree
+ * rather than a tree and a sidecar.
+ *
+ * Its kind is read from the name's extension (`kindOfFile` in `src/lib/library.ts`)
+ * rather than stored — rename a file and its icon follows, because there is only
+ * one thing for the name and the icon to disagree about.
+ */
+export type LibraryFile = {
+  id: string;
+  /** Name including the extension, e.g. "a360-mapping.xml". */
+  name: string;
+  folderId: string;
+  visibility: Visibility;
+  /** Owning team member id (see `members`). */
+  ownerId: string;
+  updatedAgo: string;
+  /** Source, shown verbatim in the detail pane. The prototype holds it in
+   *  memory; a backend would serve it. */
+  content: string;
+};
+
 /** Workflow run states, in the order the Activity view groups them. */
 export const RUN_STATES = ["Queued", "Running", "Completed", "Failed"] as const;
 export type RunState = (typeof RUN_STATES)[number];
