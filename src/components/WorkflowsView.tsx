@@ -20,17 +20,19 @@ import {
   publishedVersion,
 } from "@conduit/domain";
 import { PLATFORM_LABEL } from "../data/types";
-import type { Workflow, WorkflowStatus, Visibility } from "../data/types";
+import type { Folder, Workflow, WorkflowStatus, Visibility } from "../data/types";
 import { folders as allFolders } from "../data/workflows";
 import { Avatar } from "./Avatar";
 import { Chip } from "./Chip";
 import { WORKFLOW_STATUS_ACCENT, WorkflowStatusChip } from "./Badges";
 import { RunRow } from "./RunRow";
 import { minutesAgo, num } from "../lib/format";
+import { childFolders, folderPath, workflowsUnder } from "../lib/folders";
 import { SplitView, Pane, DetailPane, ContextPane, EmptyDetail, PANE_WIDTH } from "./layout/SplitView";
 import { isNarrowed, matchesQuery, ordered, passesFilter, resolveSort, type WorkspaceState } from "../lib/workspace";
 import { workspaceControls } from "../data/workspaceControls";
 import { TabStrip } from "./TabStrip";
+import { StatTile } from "./StatTile";
 import { Button } from "./Button";
 
 /* ------------------------------------------------------------------ shared bits */
@@ -60,22 +62,7 @@ function visibleWorkflows(workflows: Workflow[], state: WorkspaceState): Workflo
   return ordered(rows, dir, compare[id] ?? compare.name);
 }
 
-/** Ancestry path of a folder, e.g. "Shared / Monitoring / Synthetics". */
-function folderPath(folderId: string): string {
-  const names: string[] = [];
-  let cur = allFolders.find((f) => f.id === folderId);
-  while (cur) {
-    names.unshift(cur.name);
-    cur = cur.parentId ? allFolders.find((f) => f.id === cur!.parentId) : undefined;
-  }
-  return names.join(" / ");
-}
-
 /* ----------------------------------------------------------------- folder tree */
-
-function childrenOf(parentId: string | null, visibility: Visibility) {
-  return allFolders.filter((f) => f.visibility === visibility && f.parentId === parentId);
-}
 
 function TreeRow({
   depth,
@@ -100,8 +87,13 @@ function TreeRow({
 }) {
   return (
     <div
-      className="focusable group flex h-8 w-full items-center gap-1 rounded-lg pr-2 text-left transition-colors"
-      style={{ paddingLeft: 6 + depth * 14, background: active ? "var(--color-transparent-hover)" : "transparent" }}
+      className={
+        "focusable group flex h-8 w-full items-center gap-1 rounded-lg pr-2 text-left transition-colors " +
+        // Only the inactive row takes a hover tint — an inline background would
+        // beat the class, so the active row keeps its own and stays put.
+        (active ? "" : "hover:bg-transparent-hover")
+      }
+      style={{ paddingLeft: 6 + depth * 14, background: active ? "var(--color-transparent-hover)" : undefined }}
     >
       <button
         type="button"
@@ -158,7 +150,12 @@ function WorkflowLeaf({
 }
 
 /** One folder branch: the folder row, then (when open) its subfolders and the
- *  workflows that live directly in it, rendered as leaf rows. */
+ *  workflows that live directly in it, rendered as leaf rows.
+ *
+ *  A folder row carries two separate actions, because it answers two questions:
+ *  the chevron expands it (what's underneath?), and the label opens it (what does
+ *  it hold?). Only the second is a selection — expanding a folder never changes
+ *  what the detail pane is showing. */
 function FolderBranch({
   folderId,
   depth,
@@ -166,6 +163,8 @@ function FolderBranch({
   toggle,
   selectedId,
   onSelect,
+  selectedFolderId,
+  onSelectFolder,
   workflows,
 }: {
   folderId: string;
@@ -174,10 +173,12 @@ function FolderBranch({
   toggle: (id: string) => void;
   selectedId: string | null;
   onSelect: (id: string) => void;
+  selectedFolderId: string | null;
+  onSelectFolder: (id: string) => void;
   workflows: Workflow[];
 }) {
   const folder = allFolders.find((f) => f.id === folderId)!;
-  const kids = allFolders.filter((f) => f.parentId === folderId);
+  const kids = childFolders(allFolders, folderId);
   const autos = workflows.filter((a) => a.folderId === folderId);
   const open = expanded.has(folderId);
   return (
@@ -186,11 +187,11 @@ function FolderBranch({
         depth={depth}
         icon={<FolderIcon size={14} strokeWidth={1.8} />}
         label={folder.name}
-        active={false}
+        active={folderId === selectedFolderId}
         hasChildren={kids.length > 0 || autos.length > 0}
         open={open}
         onToggle={() => toggle(folderId)}
-        onSelect={() => toggle(folderId)}
+        onSelect={() => onSelectFolder(folderId)}
       />
       {open && (
         <>
@@ -203,6 +204,8 @@ function FolderBranch({
               toggle={toggle}
               selectedId={selectedId}
               onSelect={onSelect}
+              selectedFolderId={selectedFolderId}
+              onSelectFolder={onSelectFolder}
               workflows={workflows}
             />
           ))}
@@ -233,11 +236,15 @@ function WorkflowLibrary({
   narrowed,
   selectedId,
   onSelect,
+  selectedFolderId,
+  onSelectFolder,
 }: {
   workflows: Workflow[];
   narrowed: boolean;
   selectedId: string | null;
   onSelect: (id: string) => void;
+  selectedFolderId: string | null;
+  onSelectFolder: (id: string) => void;
 }) {
   // Default to fully expanded so the merged workflows are visible up front.
   const [expanded, setExpanded] = useState<Set<string>>(
@@ -249,6 +256,13 @@ function WorkflowLibrary({
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
+  // Opening a folder also reveals it: a collapsed folder whose detail is on screen
+  // would leave the tree contradicting the pane. It never collapses one — the
+  // chevron is the only control that closes a branch.
+  const selectFolder = (id: string) => {
+    setExpanded((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
+    onSelectFolder(id);
+  };
 
   const roots: { visibility: Visibility; label: string; icon: ReactNode }[] = [
     { visibility: "public", label: "Public", icon: <Globe size={14} strokeWidth={1.8} /> },
@@ -278,9 +292,11 @@ function WorkflowLibrary({
           roots.map((root) => {
             const visKey = `vis:${root.visibility}`;
             const open = expanded.has(visKey);
-            const topFolders = childrenOf(null, root.visibility);
+            const topFolders = childFolders(allFolders, null, root.visibility);
             return (
               <div key={root.visibility} className="mb-1">
+                {/* Public/Private are section headers, not folders — nothing lives
+                    in them directly, so they expand rather than open. */}
                 <TreeRow
                   depth={0}
                   icon={root.icon}
@@ -301,6 +317,8 @@ function WorkflowLibrary({
                       toggle={toggle}
                       selectedId={selectedId}
                       onSelect={onSelect}
+                      selectedFolderId={selectedFolderId}
+                      onSelectFolder={selectFolder}
                       workflows={workflows}
                     />
                   ))}
@@ -328,7 +346,8 @@ function MetaRow({ label, children }: { label: string; children: ReactNode }) {
 }
 
 function WorkflowDetail({ workflow, onSelectWorkflow }: { workflow: Workflow; onSelectWorkflow: (id: string) => void }) {
-  const { memberById, runsForWorkflow, workflowById, editWorkflow, reviewWorkflow, role, allowed } = useStore();
+  const { memberById, runsForWorkflow, workflowById, editWorkflow, reviewWorkflow, role, allowed, selectFolder } =
+    useStore();
   const [tab, setTab] = useState<DetailTab>("History");
   const owner = memberById(workflow.ownerId);
   const runs = runsForWorkflow(workflow.id);
@@ -517,7 +536,16 @@ function WorkflowDetail({ workflow, onSelectWorkflow }: { workflow: Workflow; on
               </span>
             </MetaRow>
             <MetaRow label="Folder">
-              <span className="truncate">{folderPath(workflow.folderId)}</span>
+              {/* The same destination the tree opens — a workflow's location is a
+                  place you can go, not a label. */}
+              <button
+                type="button"
+                onClick={() => selectFolder(workflow.folderId)}
+                className="focusable -mx-1 flex min-w-0 items-center gap-1 rounded-md px-1 py-0.5 text-left transition-colors hover:text-primary-foreground"
+              >
+                <FolderIcon size={13} strokeWidth={1.8} className="shrink-0 text-tertiary-foreground" />
+                <span className="truncate">{folderPath(allFolders, workflow.folderId)}</span>
+              </button>
             </MetaRow>
           </div>
 
@@ -535,6 +563,246 @@ function WorkflowDetail({ workflow, onSelectWorkflow }: { workflow: Workflow; on
             </MetaRow>
             <MetaRow label="Updated">
               <span>{workflow.updatedAgo}</span>
+            </MetaRow>
+          </div>
+        </div>
+      </ContextPane>
+    </>
+  );
+}
+
+/* ----------------------------------------------------------------- folder detail */
+
+/** One row in a folder's contents — a subfolder or a workflow, both of which open
+ *  the way their tree row does, so the pane navigates like the tree it mirrors. */
+function ContentRow({
+  icon,
+  title,
+  sub,
+  trailing,
+  onOpen,
+}: {
+  icon: ReactNode;
+  title: string;
+  sub: string;
+  trailing?: ReactNode;
+  onOpen: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="focusable flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-transparent-hover"
+    >
+      <span className="flex size-4 shrink-0 items-center justify-center text-tertiary-foreground">{icon}</span>
+      <div className="flex min-w-0 flex-1 flex-col leading-tight">
+        <span className="truncate text-body-sm text-primary-foreground">{title}</span>
+        <span className="truncate text-[0.72rem] text-tertiary-foreground">{sub}</span>
+      </div>
+      {trailing}
+    </button>
+  );
+}
+
+/** The detail for an opened folder: what it holds, and what that adds up to.
+ *
+ *  It counts the whole subtree, not the direct contents — a folder holding only
+ *  subfolders still holds work, and a count that says "0" over five nested
+ *  workflows would be a lie. The rows below stay direct, so the pane mirrors the
+ *  branch you clicked rather than flattening it.
+ *
+ *  Contents are drawn from the same narrowed set the tree draws from, so a search
+ *  narrows both together; the pane says so rather than reporting a partial count
+ *  as the folder's size. */
+function FolderDetail({
+  folder,
+  workflows,
+  narrowed,
+  onSelectFolder,
+  onSelectWorkflow,
+}: {
+  folder: Folder;
+  workflows: Workflow[];
+  narrowed: boolean;
+  onSelectFolder: (id: string) => void;
+  onSelectWorkflow: (id: string) => void;
+}) {
+  const { memberById } = useStore();
+  const subtree = workflowsUnder(workflows, allFolders, folder.id);
+  const here = workflows.filter((w) => w.folderId === folder.id);
+  const subfolders = childFolders(allFolders, folder.id);
+  const runCount = subtree.reduce((n, w) => n + w.runCount, 0);
+  // Weighted by runs: an workflow that ran twice shouldn't move the folder's rate
+  // as far as one that ran a thousand times.
+  const successRate =
+    runCount === 0 ? null : subtree.reduce((n, w) => n + w.runCount * w.successRate, 0) / runCount;
+  const published = subtree.filter((w) => w.status === "Published").length;
+  const platforms = [...new Set(subtree.map((w) => w.platform))];
+  const parentPath = folder.parentId ? folderPath(allFolders, folder.parentId) : null;
+
+  return (
+    <>
+      <DetailPane>
+        <div className="scrollbar-none flex-1 overflow-y-auto px-6 py-6">
+          <div className="mx-auto flex max-w-3xl flex-col gap-8">
+            {narrowed && (
+              <p className="rounded-xl px-3 py-2 text-body-sm" style={{ background: "var(--amber-a3)", color: "var(--amber-a11)" }}>
+                Narrowed by the current search or filters — this counts the matches in this folder,
+                not everything it holds.
+              </p>
+            )}
+
+            <div className="grid grid-cols-3 gap-3">
+              <StatTile
+                label="Workflows"
+                value={num(subtree.length)}
+                sub={
+                  subtree.length === here.length
+                    ? "all directly here"
+                    : `${here.length} here · ${subtree.length - here.length} in subfolders`
+                }
+              />
+              <StatTile label="Published" value={num(published)} sub={`of ${subtree.length}`} />
+              <StatTile
+                label="Runs"
+                value={num(runCount)}
+                sub={successRate === null ? "never run" : `${pct(successRate)} success`}
+              />
+            </div>
+
+            {subfolders.length > 0 && (
+              <section className="flex flex-col gap-3">
+                <h3 className="text-body-base font-medium text-primary-foreground">Subfolders</h3>
+                <div className="flex flex-col gap-1">
+                  {subfolders.map((sub) => {
+                    const count = workflowsUnder(workflows, allFolders, sub.id).length;
+                    return (
+                      <ContentRow
+                        key={sub.id}
+                        icon={<FolderIcon size={14} strokeWidth={1.8} />}
+                        title={sub.name}
+                        sub={`${count} workflow${count === 1 ? "" : "s"}`}
+                        trailing={<ArrowUpRight size={14} strokeWidth={1.8} className="shrink-0 text-tertiary-foreground" />}
+                        onOpen={() => onSelectFolder(sub.id)}
+                      />
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+
+            <section className="flex flex-col gap-3">
+              <div className="flex flex-col gap-0.5">
+                <h3 className="text-body-base font-medium text-primary-foreground">Workflows</h3>
+                <span className="text-body-sm text-tertiary-foreground">
+                  {here.length === 0 ? "Nothing lives directly in this folder." : "Living directly in this folder."}
+                </span>
+              </div>
+              {here.length > 0 && (
+                <div className="flex flex-col gap-1">
+                  {here.map((w) => {
+                    const owner = memberById(w.ownerId);
+                    // A mirrored workflow carries no edit time of ours ("—"), so the
+                    // line drops the clause rather than printing "updated —".
+                    const updated = minutesAgo(w.updatedAgo) === null ? null : `updated ${w.updatedAgo}`;
+                    return (
+                      <ContentRow
+                        key={w.id}
+                        icon={
+                          <span
+                            className="size-2 rounded-full"
+                            style={{ background: `var(--${WORKFLOW_STATUS_ACCENT[w.status]}-9)` }}
+                          />
+                        }
+                        title={w.name}
+                        sub={[PLATFORM_LABEL[w.platform], updated].filter(Boolean).join(" · ")}
+                        trailing={
+                          <span className="flex shrink-0 items-center gap-2">
+                            <WorkflowStatusChip status={w.status} />
+                            {owner && <Avatar member={owner} size={18} />}
+                          </span>
+                        }
+                        onOpen={() => onSelectWorkflow(w.id)}
+                      />
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          </div>
+        </div>
+      </DetailPane>
+
+      <ContextPane>
+        <div className="flex flex-col gap-6 px-6 py-6">
+          <div className="flex flex-col gap-4">
+            <div
+              className="flex size-12 items-center justify-center rounded-xl bg-component text-secondary-foreground"
+            >
+              <FolderIcon size={22} strokeWidth={1.7} />
+            </div>
+            <div className="flex flex-col gap-2">
+              <span className="font-departure-mono text-[0.72rem] text-tertiary-foreground">{folder.id}</span>
+              <h2 className="font-sans font-medium text-heading-4 text-primary-foreground">{folder.name}</h2>
+              <p className="text-body-base text-secondary-foreground">
+                {folderPath(allFolders, folder.id)}
+              </p>
+            </div>
+          </div>
+
+          <div className="h-px w-full" style={{ background: "var(--color-border-default)" }} />
+
+          <div className="flex flex-col gap-1">
+            <MetaRow label="Visibility">
+              <span className="inline-flex items-center gap-1.5 capitalize">
+                {folder.visibility === "public" ? (
+                  <Globe size={14} strokeWidth={1.8} className="text-tertiary-foreground" />
+                ) : (
+                  <Lock size={14} strokeWidth={1.8} className="text-tertiary-foreground" />
+                )}
+                {folder.visibility}
+              </span>
+            </MetaRow>
+            <MetaRow label="Inside">
+              {parentPath ? (
+                <button
+                  type="button"
+                  onClick={() => onSelectFolder(folder.parentId!)}
+                  className="focusable -mx-1 flex min-w-0 items-center gap-1 rounded-md px-1 py-0.5 text-left transition-colors hover:text-primary-foreground"
+                >
+                  <FolderIcon size={13} strokeWidth={1.8} className="shrink-0 text-tertiary-foreground" />
+                  <span className="truncate">{parentPath}</span>
+                </button>
+              ) : (
+                <span className="text-tertiary-foreground">Top of the tree</span>
+              )}
+            </MetaRow>
+            <MetaRow label="Subfolders">{num(subfolders.length)}</MetaRow>
+            <MetaRow label="Workflows">
+              {subtree.length === here.length
+                ? num(subtree.length)
+                : `${num(subtree.length)} · ${num(here.length)} directly here`}
+            </MetaRow>
+            <MetaRow label="Runs on">
+              {platforms.length === 0 ? (
+                <span className="text-tertiary-foreground">—</span>
+              ) : (
+                platforms.map((p) => PLATFORM_LABEL[p]).join(" · ")
+              )}
+            </MetaRow>
+          </div>
+
+          <div className="h-px w-full" style={{ background: "var(--color-border-default)" }} />
+
+          <div className="flex flex-col gap-1">
+            <MetaRow label="Total runs">
+              <span>{num(runCount)}</span>
+            </MetaRow>
+            <MetaRow label="Success rate">
+              <span>{successRate === null ? "—" : pct(successRate)}</span>
+            </MetaRow>
+            <MetaRow label="Published">
+              <span>{`${num(published)} of ${num(subtree.length)}`}</span>
             </MetaRow>
           </div>
         </div>
@@ -628,12 +896,15 @@ function WorkflowsBoard({ items, onSelect }: { items: Workflow[]; onSelect: (id:
  *  summary. Board mode fills the panel with a status board (like the inbox board).
  *  Failed runs link back to the incidents they spawned. */
 export function WorkflowsView() {
-  const { workflows, viewMode, selectedWorkflowId, selectWorkflow, controls } = useStore();
+  const { workflows, viewMode, selectedWorkflowId, selectWorkflow, selectedFolderId, selectFolder, controls } =
+    useStore();
   const state = controls("workflows");
+  const narrowed = isNarrowed(state);
   const visible = visibleWorkflows(workflows, state);
   const selected = selectedWorkflowId
     ? workflows.find((a) => a.id === selectedWorkflowId) ?? null
     : null;
+  const selectedFolder = selectedFolderId ? allFolders.find((f) => f.id === selectedFolderId) ?? null : null;
 
   // Board layout: the status board fills the panel; opening an workflow shows its
   // detail (the board is hidden) — deselect via the breadcrumb returns to the board.
@@ -653,14 +924,24 @@ export function WorkflowsView() {
     <SplitView>
       <WorkflowLibrary
         workflows={visible}
-        narrowed={isNarrowed(state)}
+        narrowed={narrowed}
         selectedId={selectedWorkflowId}
         onSelect={selectWorkflow}
+        selectedFolderId={selectedFolderId}
+        onSelectFolder={selectFolder}
       />
       {selected ? (
         <WorkflowDetail workflow={selected} onSelectWorkflow={selectWorkflow} />
+      ) : selectedFolder ? (
+        <FolderDetail
+          folder={selectedFolder}
+          workflows={visible}
+          narrowed={narrowed}
+          onSelectFolder={selectFolder}
+          onSelectWorkflow={selectWorkflow}
+        />
       ) : (
-        <EmptyDetail>Select an workflow.</EmptyDetail>
+        <EmptyDetail>Select a workflow or a folder.</EmptyDetail>
       )}
     </SplitView>
   );

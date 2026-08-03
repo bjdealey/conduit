@@ -130,6 +130,12 @@ type Store = {
   selectUser: (id: string | null) => void;
   selectedWorkflowId: string | null;
   selectWorkflow: (id: string | null) => void;
+  /** Folder opened from the library tree. A folder is a destination like anything
+   *  else in the tree — selecting one shows what it holds. The library's detail
+   *  pane shows one thing at a time, so opening a folder closes the open workflow
+   *  and vice versa. */
+  selectedFolderId: string | null;
+  selectFolder: (id: string | null) => void;
   selectedRunnerId: string | null;
   selectRunner: (id: string | null) => void;
   /** Run opened from the Activity timeline. Null = the timeline itself is showing
@@ -222,6 +228,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [selectedId, setSelectedId] = useState<number | null>(seedIssues[0]?.id ?? null);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(endUsers[0]?.id ?? null);
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(seedWorkflows[0]?.id ?? null);
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [selectedRunnerId, setSelectedRunnerId] = useState<string | null>(runners[0]?.id ?? null);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [controlState, setControlState] = useState<Partial<Record<View, WorkspaceState>>>({});
@@ -374,6 +381,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const { workflows: next, id } = commitDraft(workflows, draft, currentUser.name);
       setWorkflows(next);
       setSelectedWorkflowId(id);
+      setSelectedFolderId(null);
       setDraft(null);
       setViewRaw("workflows");
       return id;
@@ -385,6 +393,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setWorkflows(next.map((a) => (a.id === id ? { ...a, runCount: a.runCount + 1, lastRunAt: "just now" } : a)));
       setRuns((prev) => [testRun(saved, currentUser.name, prev, runners), ...prev]);
       setSelectedWorkflowId(id);
+      setSelectedFolderId(null);
       setDraft(null);
       setViewRaw("activity");
     },
@@ -477,7 +486,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     selectedUserId,
     selectUser: setSelectedUserId,
     selectedWorkflowId,
-    selectWorkflow: setSelectedWorkflowId,
+    // The library's detail pane holds one thing: opening a workflow closes the
+    // open folder, and opening a folder closes the open workflow. Clearing either
+    // (the breadcrumb, a layout switch) leaves the other alone.
+    selectWorkflow: (id) => {
+      setSelectedWorkflowId(id);
+      if (id !== null) setSelectedFolderId(null);
+    },
+    selectedFolderId,
+    selectFolder: (id) => {
+      setSelectedFolderId(id);
+      if (id !== null) setSelectedWorkflowId(null);
+    },
     selectedRunnerId,
     selectRunner: setSelectedRunnerId,
     selectedRunId,
