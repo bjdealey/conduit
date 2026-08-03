@@ -374,6 +374,48 @@ The third inversion, the naming decision, and the readiness markers. Verified in
   `prototype` is unmarked, because that's the baseline; only the exceptions need saying.
 - Named `SurfaceReadiness` to avoid colliding with the workload `Readiness` bands in the domain.
 
-**Not yet built after stage 6** (do not assume these exist): the runner protocol (register /
-heartbeat / dispatch / claim / ingest), `run_events` + Realtime streaming, workflow versions, the
-audit surface, the backend-served node catalogue, and AI nodes.
+## Implemented so far — stage 7: versions, the runner protocol, audit, and the catalogue
+
+The rest of the control plane's parity work, plus the contract the execution plane codes against.
+Verified in a real browser (Chromium): 158 tests pass, no page errors.
+
+**Workflow versions** (`packages/domain/src/version.ts`, 11 tests)
+- `WorkflowVersion` history per workflow, appended on every save. Approving and publishing stamp
+  the version they acted on, not the workflow — otherwise an approval silently covers a later edit.
+- `hasUnpublishedChanges` surfaces the gap between what runs and what has been edited since.
+- Seed history is *derived* from each row's status, so the seed can't drift into a state the
+  lifecycle would never produce (a published workflow with no approval). A test pins that.
+- `CURRENT_SCHEMA_VERSION` + `migrateWorkflow`: missing `schemaVersion` reads as v1; a
+  future-versioned workflow is returned untouched rather than downgraded. The chain is empty at v1
+  — it exists so adding v2 is one entry, and lands **before** the schema grows a conditional.
+
+**The runner protocol** (`packages/domain/src/protocol.ts`, 12 tests) — **authoritative for the
+runtime team.** `register` / `heartbeat` / `claim` / `ingest`, versioned because a runner in the
+field is not redeployed in lockstep.
+- **A runner states what it is, never what it wants.** No field for a workload, queue or workflow
+  id, and there must never be one — placement is the platform's decision.
+- Liveness tolerates 3 missed beats (`isStale`); events order and de-duplicate on the runner's
+  `sequence`, never a timestamp (`orderEvents`).
+- `0006` adds `runners` + append-only `run_events` keyed `(run_id, sequence)` — ingest is
+  idempotent — and publishes `run_events` to `supabase_realtime`.
+- `supabase/functions/runner` serves all four behind `RUNNER_TOKEN`. Runners are **not**
+  `authenticated` users and must never hold a user JWT.
+- **`claim` returns no work** (`TODO(runner)`): handing a run over needs an atomic claim-once.
+- `testRun` emits protocol events via `fakeRunnerEvents` — a fake *runner*, not a fake log, so a
+  real runner posting the same shapes needs no viewer change.
+
+**Audit** (`packages/domain/src/audit.ts`, 7 tests) — `AuditEntry` is `SourceStamped`, so both
+estates share one trail. Append-only by construction: no update or delete in the module or the
+view. The store writes an entry on every lifecycle move.
+
+**Node catalogue** — `0007` `node_types` + the `node-types` function; `ACTIONS` is now the
+*fallback*, matching the `seedConnectedWorkflows` pattern. An empty catalogue keeps the fallback.
+`coerceNodeType` states the honest limit: `requires` crosses as JSON, so a config-dependent
+requirement (a browser step's headedness) stays compiled in.
+
+**AI nodes** — `ai.extract` / `ai.classify` / `ai.summarise`, through the ordinary interface with
+`readiness: "roadmap"`. Proving the interface holds an AI step without reshaping the runtime or the
+canvas; none of them execute, and the palette says so.
+
+**Not yet built after stage 7** (do not assume these exist): atomic run dispatch (`claim`), pool
+autoscaling / `drain`, conditionals in the workflow schema, and any real execution runtime.
