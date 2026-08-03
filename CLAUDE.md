@@ -500,6 +500,15 @@ the same folders and "Onboarding" would otherwise mean two different controls.
 trail (`Workflows › Shared › Monitoring › Synthetics › …`), every ancestor clickable. "Workflows ›
 Bulk invoice export" named the thing without saying where it lived.
 
+**Row menus are portalled, and must stay that way.** `ActionMenu`'s panel renders into `document.body`
+positioned `fixed`, not absolutely inside the row. A tree row sits inside a scrolling pane and inside
+one `overflow: hidden` per `<Reveal>` nesting level — five clipping ancestors deep in places — and an
+absolutely positioned panel is clipped by every one of them (this sliced "Delete" off the bottom of a
+menu). **z-index cannot fix that: overflow clips regardless of stacking**; leaving the box is the only
+fix. The panel measures its trigger before paint, pins an edge rather than computing a left from a
+width it doesn't know yet, flips above when it wouldn't fit below, and closes on any scroll *except*
+one inside its own destination list.
+
 **`<Reveal>`** (`src/components/Reveal.tsx`) animates a branch open and closed with the grid trick —
 a one-row grid interpolating `0fr → 1fr`, which reaches the content's natural height with no ref
 measuring, no ResizeObserver, and no `max-height` guess that clips tall content or animates empty
