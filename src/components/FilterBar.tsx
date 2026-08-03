@@ -397,7 +397,11 @@ export function SearchFilterField({
 
   return (
     <div ref={wrapper} className="relative flex min-w-0 flex-1 items-center" style={{ maxWidth: "22rem" }}>
-      <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg bg-component py-1 pl-2.5 pr-1">
+      {/* min-h-8 keeps the field 32px whether or not the filter glyph is present.
+          Without it the workspace header is content-sized, so a page that
+          declares no filters or sorts (Surfaces) rendered a 47px bar against
+          everyone else's 49px and shifted its content up 2px. */}
+      <div className="flex min-h-8 min-w-0 flex-1 items-center gap-2 rounded-lg bg-component py-1 pl-2.5 pr-1">
         <Search size={15} strokeWidth={1.8} className="shrink-0 text-tertiary-foreground" />
         <input
           ref={input}

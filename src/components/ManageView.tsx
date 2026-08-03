@@ -8,22 +8,14 @@ import { Avatar } from "./Avatar";
 import { num } from "../lib/format";
 import { isNarrowed, matchesQuery, passesFilter } from "../lib/workspace";
 import { TabStrip } from "./TabStrip";
+import { Chip } from "./Chip";
 
 const TABS = ["Scheduled", "Event triggers", "Credentials", "Packages", "Global values"] as const;
 type Tab = (typeof TABS)[number];
 
 /** Enabled / Paused state chip (reserved status palette, label-carried). */
 function EnabledChip({ on }: { on: boolean }) {
-  const accent = on ? "grass" : "gray";
-  return (
-    <span
-      className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[0.72rem] font-medium"
-      style={{ background: `var(--${accent}-a3)`, color: `var(--${accent}-a11)` }}
-    >
-      <span className="size-1.5 shrink-0 rounded-full" style={{ background: `var(--${accent}-9)` }} />
-      {on ? "Enabled" : "Paused"}
-    </span>
-  );
+  return <Chip tone={on ? "grass" : "gray"}>{on ? "Enabled" : "Paused"}</Chip>;
 }
 
 function Kind({ children }: { children: ReactNode }) {

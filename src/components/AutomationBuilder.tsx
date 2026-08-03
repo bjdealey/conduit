@@ -9,6 +9,7 @@ import { draftProblems, moveStep, newStep, paletteGroups, type PaletteGroup } fr
 import { isNarrowed } from "../lib/workspace";
 import { SplitView, Pane, DetailPane, ContextPane, PANE_WIDTH } from "./layout/SplitView";
 import { Avatar } from "./Avatar";
+import { Button } from "./Button";
 
 /* =============================================================================
    The automation builder
@@ -451,7 +452,7 @@ export function AutomationBuilder() {
 
         <DetailPane>
           <div className="scrollbar-none flex-1 overflow-y-auto px-6 py-6">
-            <div className="mx-auto flex max-w-2xl flex-col gap-4">
+            <div className="mx-auto flex max-w-3xl flex-col gap-4">
               {/* Title — the document's own header. */}
               <input
                 value={draft.name}
@@ -566,28 +567,22 @@ export function AutomationBuilder() {
             : `${draft.steps.length} step${draft.steps.length === 1 ? "" : "s"} · ${packages.length} package${packages.length === 1 ? "" : "s"}`}
         </span>
         <div className="ml-auto flex items-center gap-2">
-          <button
-            type="button"
-            onClick={closeBuilder}
-            className="focusable rounded-lg px-2.5 py-1.5 text-body-sm text-secondary-foreground transition-colors hover:bg-transparent-hover hover:text-primary-foreground"
-          >
+          <Button variant="ghost" onClick={closeBuilder}>
             Cancel
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="outlined"
             onClick={testRunDraft}
             disabled={problems.length > 0}
-            className="pressable focusable inline-flex items-center gap-1.5 rounded-lg border-border-default border-[0.5px] px-2.5 py-1.5 text-body-sm text-secondary-foreground transition-colors hover:bg-transparent-hover hover:text-primary-foreground"
             style={{ opacity: problems.length > 0 ? 0.5 : 1, pointerEvents: problems.length > 0 ? "none" : "auto" }}
           >
             <Play size={14} strokeWidth={2} />
             Test run
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="solid"
             onClick={saveDraft}
             disabled={problems.length > 0}
-            className="pressable focusable inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-body-sm font-medium"
             style={{
               background: "var(--color-brand-solid)",
               color: "#fff",
@@ -596,7 +591,7 @@ export function AutomationBuilder() {
             }}
           >
             {draft.isNew ? "Create automation" : "Save changes"}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

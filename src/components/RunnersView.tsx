@@ -12,6 +12,7 @@ import { runners } from "../data/runners";
 import { SplitView, Pane, DetailPane, ContextPane, EmptyDetail, PANE_WIDTH } from "./layout/SplitView";
 import { isNarrowed, matchesQuery, ordered, passesFilter, resolveSort, type WorkspaceState } from "../lib/workspace";
 import { workspaceControls } from "../data/workspaceControls";
+import { Chip } from "./Chip";
 
 /* =============================================================================
    Runners — the execution pool
@@ -50,15 +51,12 @@ const CLASS_BLURB: Record<RunnerClass, string> = {
 };
 
 function StateChip({ state }: { state: RunnerState }) {
-  const accent = RUNNER_STATE_ACCENT[state];
+  // Mono, like run states: a runner state sits beside a monospace runner name and
+  // reads as a technical token rather than prose.
   return (
-    <span
-      className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-1.5 py-0.5 font-departure-mono text-[0.65rem] font-medium"
-      style={{ background: `var(--${accent}-a3)`, color: `var(--${accent}-a11)` }}
-    >
-      <span className="size-1.5 shrink-0 rounded-full" style={{ background: `var(--${accent}-9)` }} />
+    <Chip tone={RUNNER_STATE_ACCENT[state]} mono className="shrink-0">
       {state}
-    </span>
+    </Chip>
   );
 }
 
@@ -137,7 +135,6 @@ function RunnerList({
 /* ------------------------------------------------------------------ grid mode */
 
 function RunnerCard({ runner, onOpen }: { runner: Runner; onOpen: () => void }) {
-  const accent = RUNNER_STATE_ACCENT[runner.state];
   return (
     <button
       type="button"
@@ -145,11 +142,8 @@ function RunnerCard({ runner, onOpen }: { runner: Runner; onOpen: () => void }) 
       className="pressable focusable flex flex-col gap-3 rounded-xl border-border-default border-[0.5px] bg-page p-4 text-left shadow-default transition-colors hover:border-border-strong"
     >
       <div className="flex items-center gap-2">
-        <span className="size-2.5 shrink-0 rounded-full" style={{ background: `var(--${accent}-9)` }} />
         <span className="truncate font-departure-mono text-body-sm font-medium text-primary-foreground">{runner.name}</span>
-        <span className="ml-auto shrink-0">
-          <StateChip state={runner.state} />
-        </span>
+        <StateChip state={runner.state} />
       </div>
 
       <span className="inline-flex items-center gap-1.5 truncate text-[0.72rem] text-tertiary-foreground">

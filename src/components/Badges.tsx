@@ -1,3 +1,4 @@
+import { Chip } from "./Chip";
 import type { AutomationStatus, Priority, RunState, Status } from "../data/types";
 
 const PRIORITY_ACCENT: Record<Priority, string> = {
@@ -29,16 +30,7 @@ const STATUS_ACCENT: Record<Status, string> = {
 
 /** Status chip used in the inbox group headers and detail. */
 export function StatusBadge({ status }: { status: Status }) {
-  const accent = STATUS_ACCENT[status];
-  return (
-    <span
-      className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-body-sm font-medium"
-      style={{ background: `var(--${accent}-a3)`, color: `var(--${accent}-a11)` }}
-    >
-      <span className="size-1.5 shrink-0 rounded-full" style={{ background: `var(--${accent}-9)` }} />
-      {status}
-    </span>
-  );
+  return <Chip tone={STATUS_ACCENT[status]}>{status}</Chip>;
 }
 
 /* ------------------------------------------------------------------ automation */
@@ -54,16 +46,7 @@ const RUN_STATE_ACCENT: Record<RunState, string> = {
 
 /** Run-state chip (mono, dot + label) for run tables and timelines. */
 export function RunStateChip({ state }: { state: RunState }) {
-  const accent = RUN_STATE_ACCENT[state];
-  return (
-    <span
-      className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-1.5 py-0.5 font-departure-mono text-[0.65rem] font-medium"
-      style={{ background: `var(--${accent}-a3)`, color: `var(--${accent}-a11)` }}
-    >
-      <span className="size-1.5 shrink-0 rounded-full" style={{ background: `var(--${accent}-9)` }} />
-      {state}
-    </span>
-  );
+  return <Chip tone={RUN_STATE_ACCENT[state]} mono className="shrink-0">{state}</Chip>;
 }
 
 const AUTOMATION_STATUS_ACCENT: Record<AutomationStatus, string> = {
@@ -74,16 +57,7 @@ const AUTOMATION_STATUS_ACCENT: Record<AutomationStatus, string> = {
 
 /** Automation lifecycle chip (Active / Paused / Draft). */
 export function AutomationStatusChip({ status }: { status: AutomationStatus }) {
-  const accent = AUTOMATION_STATUS_ACCENT[status];
-  return (
-    <span
-      className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[0.72rem] font-medium"
-      style={{ background: `var(--${accent}-a3)`, color: `var(--${accent}-a11)` }}
-    >
-      <span className="size-1.5 shrink-0 rounded-full" style={{ background: `var(--${accent}-9)` }} />
-      {status}
-    </span>
-  );
+  return <Chip tone={AUTOMATION_STATUS_ACCENT[status]}>{status}</Chip>;
 }
 
 export { PRIORITY_ACCENT, STATUS_ACCENT, RUN_STATE_ACCENT, AUTOMATION_STATUS_ACCENT };
