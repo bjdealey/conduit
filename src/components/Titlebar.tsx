@@ -5,6 +5,7 @@ import { endUsers } from "../data/users";
 import { runners } from "../data/runners";
 import { VIEW_MODES, CONTEXT_LABEL } from "../data/viewLayout";
 import { SETTINGS_PAGES, DEFAULT_SETTINGS_PAGE } from "../data/settings";
+import { folderTrail } from "../lib/folders";
 import { Breadcrumb, type Crumb } from "./Breadcrumb";
 import { Chip } from "./Chip";
 import { READINESS_META, readinessOfView } from "../data/readiness";
@@ -17,7 +18,7 @@ import { Avatar } from "./Avatar";
  *  Switching to a non-list mode clears the open item so the board/grid shows (the
  *  detail returns only when you click into an item), matching the inbox. */
 function ViewModeSwitcher({ view }: { view: View }) {
-  const { layout, setLayout, select, selectUser, selectWorkflow, selectRunner, selectRun } = useStore();
+  const { layout, setLayout, select, selectUser, selectWorkflow, selectFolder, selectRunner, selectRun } = useStore();
   const modes = VIEW_MODES[view];
   if (!modes || modes.length < 2) return null;
   // Switching to the alternate layout clears every page's open item, so each page
@@ -26,6 +27,7 @@ function ViewModeSwitcher({ view }: { view: View }) {
     select(null);
     selectUser(null);
     selectWorkflow(null);
+    selectFolder(null);
     selectRunner(null);
     selectRun(null);
   };
@@ -98,6 +100,9 @@ export function Titlebar() {
     selectUser,
     selectedWorkflowId,
     selectWorkflow,
+    selectedFolderId,
+    selectFolder,
+    folders,
     selectedRunnerId,
     selectRunner,
     selectedRunId,
@@ -117,6 +122,9 @@ export function Titlebar() {
     ? workflows.find((a) => a.id === selectedWorkflowId) ?? null
     : null;
   const openRunner = selectedRunnerId ? runners.find((r) => r.id === selectedRunnerId) ?? null : null;
+  // A folder's trail is its ancestry, so the breadcrumb walks back up the library
+  // tree the same way the tree walks down it.
+  const folderCrumbs = selectedFolderId ? folderTrail(folders, selectedFolderId) : [];
   // Only the Activity timeline opens a run full-pane; the list layout expands runs
   // in place, so a stale selection never leaks into its breadcrumb.
   const openRun =
@@ -139,10 +147,17 @@ export function Titlebar() {
       ? [{ label: "Users", onClick: () => selectUser(null) }, { label: openUser.name }]
       : [{ label: "Users" }];
   } else if (view === "workflows") {
-    hasContext = !!openWorkflow;
+    hasContext = !!openWorkflow || folderCrumbs.length > 0;
     items = openWorkflow
       ? [{ label: "Workflows", onClick: () => selectWorkflow(null) }, { label: openWorkflow.name }]
-      : [{ label: "Workflows" }];
+      : folderCrumbs.length > 0
+        ? [
+            { label: "Workflows", onClick: () => selectFolder(null) },
+            // Every ancestor is a crumb you can climb to; the Breadcrumb renders
+            // the last one inert, so the open folder is the only dead label.
+            ...folderCrumbs.map((f) => ({ label: f.name, onClick: () => selectFolder(f.id) })),
+          ]
+        : [{ label: "Workflows" }];
   } else if (view === "settings") {
     const pageId = subview ?? DEFAULT_SETTINGS_PAGE;
     const page = SETTINGS_PAGES.find((p) => p.id === pageId);

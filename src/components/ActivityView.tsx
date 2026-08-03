@@ -12,6 +12,7 @@ import { SplitView, Pane, DetailPane, ContextPane, PANE_WIDTH } from "./layout/S
 import { isNarrowed, matchesQuery, ordered, passesFilter, resolveSort, type WorkspaceState } from "../lib/workspace";
 import { workspaceControls } from "../data/workspaceControls";
 import { TabStrip } from "./TabStrip";
+import { StatTile } from "./StatTile";
 
 const TABS = ["In progress", "Historical", "Insights"] as const;
 type Tab = (typeof TABS)[number];
@@ -563,16 +564,6 @@ function IncidentsRail({ issues }: { issues: Issue[] }) {
 }
 
 /* -------------------------------------------------------------------- insights */
-
-function StatTile({ label, value, sub }: { label: string; value: string; sub?: string }) {
-  return (
-    <div className="flex flex-col gap-1 rounded-xl border-border-default border-[0.5px] bg-page p-4 shadow-default">
-      <span className="font-departure-mono text-[0.65rem] uppercase tracking-wide text-tertiary-foreground">{label}</span>
-      <span className="font-sans text-heading-3 font-medium text-primary-foreground">{value}</span>
-      {sub && <span className="text-body-sm text-tertiary-foreground">{sub}</span>}
-    </div>
-  );
-}
 
 function Insights({ runs, workflows, activeIncidents }: { runs: Run[]; workflows: Workflow[]; activeIncidents: number }) {
   const counts = useMemo(() => {

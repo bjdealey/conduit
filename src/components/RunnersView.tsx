@@ -13,6 +13,7 @@ import { SplitView, Pane, DetailPane, ContextPane, EmptyDetail, PANE_WIDTH } fro
 import { isNarrowed, matchesQuery, ordered, passesFilter, resolveSort, type WorkspaceState } from "../lib/workspace";
 import { workspaceControls } from "../data/workspaceControls";
 import { Chip } from "./Chip";
+import { StatTile } from "./StatTile";
 
 /* =============================================================================
    Runners — the execution pool
@@ -208,16 +209,6 @@ function RunnerGrid({ list, narrowed, onOpen }: { list: Runner[]; narrowed: bool
 }
 
 /* -------------------------------------------------------------------- detail */
-
-function StatTile({ label, value, sub }: { label: string; value: string; sub?: string }) {
-  return (
-    <div className="flex flex-col gap-1 rounded-xl border-border-default border-[0.5px] bg-page p-4 shadow-default">
-      <span className="font-departure-mono text-[0.65rem] uppercase tracking-wide text-tertiary-foreground">{label}</span>
-      <span className="font-sans text-heading-3 font-medium text-primary-foreground">{value}</span>
-      {sub && <span className="text-body-sm text-tertiary-foreground">{sub}</span>}
-    </div>
-  );
-}
 
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
