@@ -104,6 +104,7 @@ export function Titlebar() {
     selectWorkflow,
     selectedFolderId,
     selectFolder,
+    expand,
     selectedFileId,
     selectFile,
     folders,
@@ -161,7 +162,15 @@ export function Titlebar() {
     hasContext = !!openWorkflow || !!openFile || folderCrumbs.length > 0;
     // Every ancestor is a crumb you can climb to; the Breadcrumb renders the last
     // one inert, so whatever is open is the only dead label.
-    const trail = folderCrumbs.map((f) => ({ label: f.name, onClick: () => selectFolder(f.id) }));
+    // Climbing to an ancestor reveals it in the tree as well as opening it — the
+    // crumb is a destination, and a destination you can't see isn't one.
+    const trail = folderCrumbs.map((f) => ({
+      label: f.name,
+      onClick: () => {
+        expand(f.id);
+        selectFolder(f.id);
+      },
+    }));
     items = openWorkflow
       ? [{ label: "Workflows", onClick: () => selectWorkflow(null) }, ...trail, { label: openWorkflow.name }]
       : openFile

@@ -550,6 +550,20 @@ DOM whether or not anyone looked at it.
 **Sibling folders sort by name** (`childFolders`). They were in insertion order, so a folder created
 today landed at the bottom of its siblings rather than where its name says it belongs.
 
+**Clicking a folder row toggles it** as well as selecting it — a second click closes what the first
+revealed. Enter does the same, so pointer and keyboard agree. Navigating to a folder from anywhere
+*else* (a detail pane, a breadcrumb crumb) only ever reveals it: you asked to go there, not to toggle
+it.
+
+⚠️ **Tree rows use an INSET focus ring** (`.tree-row:focus-visible` in `app.css`), not `.focusable`'s
+outline. An outline is drawn *outside* the border box (`outline-offset: 2px`) and `<Reveal>`'s
+`overflow: hidden` clips it — visibly, on every nested row, while Public/Private looked fine because
+they sit outside any `<Reveal>`. Same root cause as the portalled menus. The drag drop-target ring
+rides on a `--row-ring` custom property so the two compose in one `box-shadow` instead of the inline
+style silently replacing the class. Note the fallback is `0 0 0 0 transparent`, **not `none`**: `none`
+is only legal as the sole value of `box-shadow`, so `inset …, none` is invalid and the whole
+declaration is dropped — which is exactly what happened on the first attempt, and it fails silently.
+
 **New work lands where you are.** `newWorkflow(folderId)` takes a destination; the header passes the
 open folder (or the folder of whatever is open), falling back to Drafts. A folder's row menu offers
 it too.

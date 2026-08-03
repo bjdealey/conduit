@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+} from "react";
 import {
   ArrowUpRight,
   ChevronRight,
@@ -249,15 +257,20 @@ function TreeRow({
         ctx.setCursor(id);
         ctx.openMenu(id);
       }}
-      className="focusable flex h-8 w-full items-center gap-1 rounded-lg pr-1 text-left transition-colors"
-      style={{
-        paddingLeft: 6 + depth * 14,
-        background,
-        opacity: dragged ? 0.4 : 1,
-        // A legal destination outlines itself the moment a drag starts, so where
-        // something *can* go is visible before you go hunting for it.
-        boxShadow: isDropTarget && !isOver ? "inset 0 0 0 1px var(--blue-a6)" : undefined,
-      }}
+      className="tree-row flex h-8 w-full items-center gap-1 rounded-lg pr-1 text-left transition-colors"
+      style={
+        {
+          paddingLeft: 6 + depth * 14,
+          background,
+          opacity: dragged ? 0.4 : 1,
+          // A legal destination outlines itself the moment a drag starts, so where
+          // something *can* go is visible before you go hunting for it. It goes
+          // through a custom property rather than `boxShadow` so the focus ring
+          // (also a box-shadow, see `.tree-row` in app.css) can compose with it
+          // instead of one silently replacing the other.
+          "--row-ring": isDropTarget && !isOver ? "inset 0 0 0 1px var(--blue-a6)" : undefined,
+        } as CSSProperties
+      }
     >
       <button
         type="button"
@@ -792,7 +805,7 @@ function WorkflowLibrary({
 
   const openRow = (row: TreeRowInfo) => {
     if (row.kind === "root") store.toggleExpanded(row.id);
-    if (row.kind === "folder") selectFolder(row.id);
+    if (row.kind === "folder") clickFolder(row.id);
     if (row.kind === "workflow") onSelect(row.id);
     if (row.kind === "file") onSelectFile(row.id);
   };
@@ -862,8 +875,12 @@ function WorkflowLibrary({
     if (hit) focusRow(hit);
   };
 
-  const selectFolder = (id: string) => {
-    store.expand(id);
+  // Clicking a folder row opens it *and* toggles it: the second click closes what
+  // the first revealed, which is what a folder does in every other tree. Selecting
+  // still happens either way, so the detail pane follows the click regardless of
+  // which direction the branch went.
+  const clickFolder = (id: string) => {
+    store.toggleExpanded(id);
     onSelectFolder(id);
   };
 
@@ -1041,7 +1058,7 @@ function WorkflowLibrary({
                       selectedId={selectedId}
                       onSelect={onSelect}
                       selectedFolderId={selectedFolderId}
-                      onSelectFolder={selectFolder}
+                      onSelectFolder={clickFolder}
                       selectedFileId={selectedFileId}
                       onSelectFile={onSelectFile}
                       workflows={workflows}
@@ -1074,7 +1091,7 @@ function MetaRow({ label, children }: { label: string; children: ReactNode }) {
 }
 
 function WorkflowDetail({ workflow, onSelectWorkflow }: { workflow: Workflow; onSelectWorkflow: (id: string) => void }) {
-  const { memberById, runsForWorkflow, workflowById, editWorkflow, reviewWorkflow, role, allowed, selectFolder, folders } =
+  const { memberById, runsForWorkflow, workflowById, editWorkflow, reviewWorkflow, role, allowed, selectFolder, expand, folders } =
     useStore();
   const [tab, setTab] = useState<DetailTab>("History");
   const owner = memberById(workflow.ownerId);
@@ -1268,7 +1285,10 @@ function WorkflowDetail({ workflow, onSelectWorkflow }: { workflow: Workflow; on
                   place you can go, not a label. */}
               <button
                 type="button"
-                onClick={() => selectFolder(workflow.folderId)}
+                onClick={() => {
+                  expand(workflow.folderId);
+                  selectFolder(workflow.folderId);
+                }}
                 className="focusable -mx-1 flex min-w-0 items-center gap-1 rounded-md px-1 py-0.5 text-left transition-colors hover:text-primary-foreground"
               >
                 <FolderIcon size={13} strokeWidth={1.8} className="shrink-0 text-tertiary-foreground" />
@@ -1785,6 +1805,7 @@ export function WorkflowsView() {
     selectFolder,
     selectedFileId,
     selectFile,
+    expand,
     controls,
   } = useStore();
   const state = controls("workflows");
@@ -1810,6 +1831,12 @@ export function WorkflowsView() {
     : null;
   const selectedFolder = selectedFolderId ? folders.find((f) => f.id === selectedFolderId) ?? null : null;
   const selectedFile = selectedFileId ? files.find((f) => f.id === selectedFileId) ?? null : null;
+  // Going to a folder from a detail pane reveals it in the tree. Unlike a click on
+  // the row itself it never collapses one — you asked to go there, not to toggle it.
+  const openFolder = (id: string) => {
+    expand(id);
+    selectFolder(id);
+  };
 
   // Board layout: the status board fills the panel; opening an workflow shows its
   // detail (the board is hidden) — deselect via the breadcrumb returns to the board.
@@ -1835,7 +1862,7 @@ export function WorkflowsView() {
         selectedId={selectedWorkflowId}
         onSelect={selectWorkflow}
         selectedFolderId={selectedFolderId}
-        onSelectFolder={selectFolder}
+        onSelectFolder={openFolder}
         selectedFileId={selectedFileId}
         onSelectFile={selectFile}
       />
@@ -1847,12 +1874,12 @@ export function WorkflowsView() {
           workflows={visible}
           files={visibleFiles}
           narrowed={narrowed}
-          onSelectFolder={selectFolder}
+          onSelectFolder={openFolder}
           onSelectWorkflow={selectWorkflow}
           onSelectFile={selectFile}
         />
       ) : selectedFile ? (
-        <FileDetail file={selectedFile} onSelectFolder={selectFolder} />
+        <FileDetail file={selectedFile} onSelectFolder={openFolder} />
       ) : (
         <EmptyDetail>Select a workflow, a folder, or a file.</EmptyDetail>
       )}

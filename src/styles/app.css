@@ -47,6 +47,29 @@ body {
   outline-offset: 2px;
 }
 
+/* Library tree rows.
+
+   The focus ring here is INSET rather than an outline, and that is not a style
+   preference. A nested row sits inside <Reveal>'s `overflow: hidden` box, and an
+   outline drawn 2px *outside* the border box is clipped by it — which is why the
+   ring looked right on Public and Private (not inside a Reveal) and shaved on
+   every row below them. An inset ring is painted inside the box and cannot be
+   clipped, whatever it is nested in.
+
+   `--row-ring` carries the drag-and-drop target outline so the two compose in one
+   box-shadow rather than overwriting each other. */
+.tree-row {
+  /* A transparent layer, not `none`: `none` is only legal as the *sole* value of
+     box-shadow, so `inset …, none` below would be invalid and the whole
+     declaration silently dropped — which is exactly what happened first time. */
+  --row-ring: 0 0 0 0 transparent;
+  box-shadow: var(--row-ring);
+}
+.tree-row:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--color-brand-border-focus), var(--row-ring);
+}
+
 /* Collapsed-sidebar hover tooltips: hidden by default, shown when the parent
    .group rail item is hovered or keyboard-focused. */
 .rail-tooltip {
