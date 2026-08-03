@@ -3,11 +3,13 @@ import {
   CURRENT_SCHEMA_VERSION,
   DEFAULT_REQUIREMENTS,
   nextVersion,
+  orderEvents,
   pickRunner,
+  type RunEvent,
   type Runner,
   type WorkflowVersion,
 } from "@conduit/domain";
-import type { Workflow, WorkflowDraft, WorkflowStep, Run } from "../data/types";
+import type { ActivityEvent, Workflow, WorkflowDraft, WorkflowStep, Run } from "../data/types";
 import { workspaceControls } from "../data/workspaceControls";
 import { matchesQuery, ordered, passesFilter, resolveSort, type WorkspaceState } from "./workspace";
 
@@ -203,21 +205,45 @@ export function testRun(workflow: Workflow, startedBy: string, runs: Run[], pool
     startedAt: "just now",
     duration: "2 s",
     runnerId: runner?.id,
-    activity: [
-      { id: `${id}-1`, kind: "status", time: "just now", title: "Test run started from the builder" },
-      {
-        id: `${id}-p`,
-        kind: "fact",
-        time: "just now",
-        title: runner ? `Placed on ${runner.name}` : "Waiting for a runner",
-        body: rationale,
-      },
-      ...workflow.steps.map((step, i) => ({
-        id: `${id}-s${i + 1}`,
-        kind: "fact" as const,
-        time: "just now",
-        title: `${i + 1}. ${actionById(step.actionId)?.label ?? step.actionId}`,
-      })),
-    ],
+    activity: runEventsToActivity(
+      fakeRunnerEvents(id, workflow, runner ? `Placed on ${runner.name}` : "Waiting for a runner", rationale),
+    ),
   };
+}
+
+/**
+ * The events a runner would report for this flow.
+ *
+ * A test run has no real runner behind it yet, so this stands in for one — but it
+ * emits the *protocol's* events rather than fabricating a screen. When a real runner
+ * arrives it posts the same shapes to `runner/ingest`, and the viewer needs no
+ * change: the fake is a fake runner, not a fake log.
+ */
+export function fakeRunnerEvents(runId: string, workflow: Workflow, placement: string, rationale: string): RunEvent[] {
+  const at = "just now";
+  const events: RunEvent[] = [
+    { runId, sequence: 1, kind: "started", message: "Test run started from the builder", at },
+    { runId, sequence: 2, kind: "log", message: `${placement} — ${rationale}`, at },
+  ];
+  workflow.steps.forEach((step, i) => {
+    events.push({
+      runId,
+      sequence: 3 + i,
+      kind: "step-started",
+      stepId: step.id,
+      message: `${i + 1}. ${actionById(step.actionId)?.label ?? step.actionId}`,
+      at,
+    });
+  });
+  return events;
+}
+
+/** Protocol events rendered as the timeline the run viewer already speaks. */
+export function runEventsToActivity(events: readonly RunEvent[]): ActivityEvent[] {
+  return orderEvents(events).map((e) => ({
+    id: `${e.runId}-${e.sequence}`,
+    kind: e.kind === "failed" ? ("problem" as const) : e.kind === "log" ? ("fact" as const) : ("status" as const),
+    time: e.at,
+    title: e.message,
+  }));
 }

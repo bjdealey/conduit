@@ -162,3 +162,25 @@ supabase functions serve --env-file supabase/.env   # .env is gitignored; never 
   include the workspace TS the import map points to — verify with a first `functions deploy`).
 - **TODO(a360)** flags remain from the connector stage (endpoints/field shapes unverified
   against a live Control Room) — see the connector source.
+
+## The runner protocol
+
+`supabase/functions/runner` serves the four messages in `packages/domain/src/protocol.ts`:
+`register`, `heartbeat`, `claim`, `ingest`. Runners are **not** `authenticated` users and must
+never be given a user JWT — they present a shared secret instead:
+
+```bash
+supabase secrets set RUNNER_TOKEN="$(openssl rand -hex 32)"
+supabase functions deploy runner
+```
+
+A runner then posts to `/functions/v1/runner/<action>` with `x-runner-token`. Ingest is
+idempotent on `(run_id, sequence)`, so retrying a batch after a timeout is safe.
+
+**`claim` returns no work today.** Placement is decided by `pickRunner` in the control plane, but
+handing a run over needs an atomic claim-once so two runners can't take the same one. Until that
+lands, returning "nothing to do" is the honest answer rather than dispatching work nothing
+reconciles. Flagged `TODO(runner)` in the function.
+
+`0006` adds `runners` and `run_events` and publishes `run_events` to `supabase_realtime`, which is
+what lets the run viewer light up nodes as they happen instead of polling.

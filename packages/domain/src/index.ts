@@ -60,3 +60,27 @@ export {
   nextVersion,
   publishedVersion,
 } from "./version.ts";
+export type {
+  ClaimRequest,
+  ClaimResponse,
+  HeartbeatRequest,
+  HeartbeatResponse,
+  IngestRequest,
+  IngestResponse,
+  RegisterRejection,
+  RegisterRequest,
+  RegisterResponse,
+  RunEvent,
+  RunEventKind,
+} from "./protocol.ts";
+export {
+  MAX_EVENTS_PER_BATCH,
+  MISSED_HEARTBEATS_BEFORE_OFFLINE,
+  PROTOCOL_VERSION,
+  RUN_EVENT_KINDS,
+  SUPPORTED_PROTOCOL_VERSIONS,
+  isStale,
+  isSupportedProtocol,
+  isTerminal,
+  orderEvents,
+} from "./protocol.ts";

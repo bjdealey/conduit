@@ -8,6 +8,7 @@ import {
   newStep,
   nextRunId,
   testRun,
+  fakeRunnerEvents,
 } from "../builder";
 import { paletteGroups } from "../builder";
 import { EMPTY_WORKSPACE, type WorkspaceState } from "../workspace";
@@ -131,7 +132,20 @@ describe("test runs", () => {
     expect(placed).toBeDefined();
     // The reason is on the log, not just the placement — a choice nobody can read
     // is the same bottleneck in a different place.
-    expect(run.activity[1].body).toBeTruthy();
+    expect(run.activity[1].title).toContain(placed!.name);
+  });
+
+  it("emits the protocol's events rather than fabricating a log", () => {
+    // The fake is a fake *runner*, not a fake log: a real runner posts these same
+    // shapes to runner/ingest and the viewer needs no change.
+    const workflow = workflows[0];
+    const events = fakeRunnerEvents("run_test", workflow, "Placed on lightweight-1", "API-only");
+    expect(events[0].kind).toBe("started");
+    expect(events.filter((e) => e.kind === "step-started")).toHaveLength(workflow.steps.length);
+    // Sequences are unique and ascending, because the viewer orders on them.
+    const seqs = events.map((e) => e.sequence);
+    expect(new Set(seqs).size).toBe(seqs.length);
+    expect(seqs).toEqual([...seqs].sort((a, b) => a - b));
   });
 
   it("queues rather than inventing a runner when the pool can't take the work", () => {
