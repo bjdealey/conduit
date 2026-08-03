@@ -451,7 +451,7 @@ export function AutomationBuilder() {
 
         <DetailPane>
           <div className="scrollbar-none flex-1 overflow-y-auto px-6 py-6">
-            <div className="mx-auto flex max-w-2xl flex-col gap-4">
+            <div className="mx-auto flex max-w-3xl flex-col gap-4">
               {/* Title — the document's own header. */}
               <input
                 value={draft.name}
