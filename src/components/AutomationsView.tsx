@@ -12,6 +12,8 @@ import {
   Workflow,
 } from "lucide-react";
 import { useStore } from "../store";
+import { explainRequirements } from "@conduit/domain";
+import { PLATFORM_LABEL } from "../data/types";
 import type { Automation, AutomationStatus, Visibility } from "../data/types";
 import { folders as allFolders } from "../data/automations";
 import { Avatar } from "./Avatar";
@@ -35,7 +37,9 @@ function visibleAutomations(automations: Automation[], state: WorkspaceState): A
     (a) =>
       matchesQuery(state.query, [a.name, a.id, a.description, a.packages.join(" ")]) &&
       passesFilter(state, "status", a.status) &&
-      passesFilter(state, "visibility", a.visibility),
+      passesFilter(state, "visibility", a.visibility) &&
+      passesFilter(state, "platform", a.platform) &&
+      passesFilter(state, "migration", a.migration),
   );
 
   const { id, dir } = resolveSort(state, workspaceControls("automations", "")?.sorts ?? []);
@@ -414,7 +418,9 @@ function AutomationDetail({ automation, onSelectAutomation }: { automation: Auto
                 <Play size={14} strokeWidth={2} />
                 Run now
               </Button>
-              {role !== "user" && (
+              {/* Only a natively-authored flow can be opened here; a mirrored one
+                  lives on its own platform. */}
+              {role !== "user" && automation.platform === "conduit" && (
                 <Button
                   variant="outlined"
                   onClick={() => editAutomation(automation.id)}
@@ -433,6 +439,16 @@ function AutomationDetail({ automation, onSelectAutomation }: { automation: Auto
             <MetaRow label="Status">
               <AutomationStatusChip status={automation.status} />
             </MetaRow>
+            <MetaRow label="Runs on">
+              <span className="inline-flex items-center gap-1.5">
+                {PLATFORM_LABEL[automation.platform]}
+                {automation.platform !== "conduit" && (
+                  <span className="text-tertiary-foreground">· authored there, mirrored here</span>
+                )}
+              </span>
+            </MetaRow>
+            <MetaRow label="Migration">{automation.migration}</MetaRow>
+            <MetaRow label="Needs">{explainRequirements(automation.requirements)}</MetaRow>
             <MetaRow label="Owner">
               <span className="inline-flex items-center gap-1.5">
                 {owner && <Avatar member={owner} size={18} />}

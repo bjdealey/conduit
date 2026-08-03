@@ -8,6 +8,14 @@
 
 /* ------------------------------------------------------------------- schedules */
 
+/**
+ * A cadence that starts an automation.
+ *
+ * A schedule says *when*, never *where*. There is deliberately no target field: the
+ * distributor places each run on a runner that fits the automation's requirements at
+ * the moment it fires. Pinning work to a named machine here is the habit the platform
+ * exists to remove.
+ */
 export type Schedule = {
   id: string;
   automationId: string;
@@ -15,16 +23,14 @@ export type Schedule = {
   cadence: string;
   nextRun: string;
   lastRun: string;
-  /** Execution target (device/runner). */
-  target: string;
   enabled: boolean;
 };
 
 export const schedules: Schedule[] = [
-  { id: "sch_01", automationId: "aut_synthetic_login", cadence: "Every 5 minutes", nextRun: "in 2 min", lastRun: "4 minutes ago", target: "eu-runner-1", enabled: true },
-  { id: "sch_02", automationId: "aut_reset_audit", cadence: "Every 15 minutes", nextRun: "in 9 min", lastRun: "36 minutes ago", target: "prod-runner-2", enabled: true },
-  { id: "sch_03", automationId: "aut_payment_recon", cadence: "Hourly", nextRun: "in 24 min", lastRun: "an hour ago", target: "prod-runner-1", enabled: true },
-  { id: "sch_04", automationId: "aut_invoice_export", cadence: "Daily at 02:00 UTC", nextRun: "in 6 h", lastRun: "yesterday", target: "prod-runner-1", enabled: false },
+  { id: "sch_01", automationId: "aut_synthetic_login", cadence: "Every 5 minutes", nextRun: "in 2 min", lastRun: "4 minutes ago", enabled: true },
+  { id: "sch_02", automationId: "aut_reset_audit", cadence: "Every 15 minutes", nextRun: "in 9 min", lastRun: "36 minutes ago", enabled: true },
+  { id: "sch_03", automationId: "aut_payment_recon", cadence: "Hourly", nextRun: "in 24 min", lastRun: "an hour ago", enabled: true },
+  { id: "sch_04", automationId: "aut_invoice_export", cadence: "Daily at 02:00 UTC", nextRun: "in 6 h", lastRun: "yesterday", enabled: false },
 ];
 
 /* -------------------------------------------------------------- event triggers */

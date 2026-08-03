@@ -1,8 +1,10 @@
 import type { ReactNode } from "react";
 import {
+  ArrowRightLeft,
   ChartNoAxesColumn,
   CircleDashed,
   CircleUser,
+  Cpu,
   Globe,
   MoreHorizontal,
   Package,
@@ -14,7 +16,19 @@ import {
 } from "lucide-react";
 import type { View } from "../store";
 import type { SortDir } from "../lib/workspace";
-import { PRIORITIES, RUN_STATES, RUN_TRIGGERS, STATUSES, type Role, type RunState } from "./types";
+import {
+  MIGRATION_STATES,
+  PLATFORM_LABEL,
+  PRIORITIES,
+  RUN_STATES,
+  RUN_TRIGGERS,
+  STATUSES,
+  WORKFLOW_PLATFORMS,
+  type Role,
+  type RunState,
+} from "./types";
+import { RUNNER_CLASS_LABEL, RUNNER_CLASSES, RUNNER_STATES } from "@conduit/domain";
+import { RUNNER_STATE_ACCENT } from "../components/RunnersView";
 import { members } from "./issues";
 import { AUTOMATION_STATUS_ACCENT, PRIORITY_ACCENT, RUN_STATE_ACCENT, STATUS_ACCENT } from "../components/Badges";
 import { endUsers } from "./users";
@@ -85,8 +99,13 @@ const fromPalette =
   <T extends string>(id: T): FilterOption =>
     option(id, palette[id]);
 
-const ENVIRONMENT_ACCENT: Record<string, string> = { Healthy: "grass", Building: "amber", Degraded: "tomato" };
 const PLATFORM_USER_ACCENT: Record<string, string> = { Active: "grass", Invited: "amber", Suspended: "tomato" };
+const MIGRATION_ACCENT: Record<string, string> = {
+  Migrated: "grass",
+  Piloting: "blue",
+  "Not started": "gray",
+  "Won't move": "amber",
+};
 
 /* ------------------------------------------------------------------- per page */
 
@@ -154,6 +173,20 @@ const AUTOMATIONS: WorkspaceControls = {
         { id: "private", label: "Private" },
       ],
     },
+    // Both estates live in one library, so which platform runs a thing is a filter
+    // rather than a separate screen.
+    {
+      id: "platform",
+      label: "Platform",
+      icon: <Cpu {...dim} />,
+      options: WORKFLOW_PLATFORMS.map((p) => ({ id: p, label: PLATFORM_LABEL[p] })),
+    },
+    {
+      id: "migration",
+      label: "Migration",
+      icon: <ArrowRightLeft {...dim} />,
+      options: MIGRATION_STATES.map(fromPalette(MIGRATION_ACCENT)),
+    },
   ],
   sorts: [
     { id: "name", label: "Name", defaultDir: "asc" },
@@ -191,20 +224,26 @@ const USERS: WorkspaceControls = {
   ],
 };
 
-const ENVIRONMENTS: WorkspaceControls = {
-  search: "Search or filter environments…",
+const RUNNERS: WorkspaceControls = {
+  search: "Search or filter runners…",
   filters: [
     {
-      id: "status",
-      label: "Status",
+      id: "state",
+      label: "State",
       icon: <CircleDashed {...dim} />,
-      options: ["Healthy", "Building", "Degraded"].map(fromPalette(ENVIRONMENT_ACCENT)),
+      options: RUNNER_STATES.map(fromPalette(RUNNER_STATE_ACCENT)),
+    },
+    {
+      id: "class",
+      label: "Class",
+      icon: <Cpu {...dim} />,
+      options: RUNNER_CLASSES.map((c) => ({ id: c, label: RUNNER_CLASS_LABEL[c] })),
     },
   ],
   sorts: [
     { id: "name", label: "Name", defaultDir: "asc" },
-    { id: "events", label: "Events / min", defaultDir: "desc" },
-    { id: "surfaces", label: "Surfaces", defaultDir: "desc" },
+    { id: "runs", label: "Runs", defaultDir: "desc" },
+    { id: "state", label: "State", defaultDir: "asc" },
   ],
 };
 
@@ -301,8 +340,8 @@ export function workspaceControls(view: View, tab: string): WorkspaceControls | 
       return AUTOMATIONS;
     case "users":
       return USERS;
-    case "environments":
-      return ENVIRONMENTS;
+    case "runners":
+      return RUNNERS;
     case "surfaces":
       return SURFACES;
     case "builder":

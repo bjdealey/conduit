@@ -2,7 +2,7 @@ import { PanelRight } from "lucide-react";
 import { useStore, type View } from "../store";
 import { navItems } from "../data/nav";
 import { endUsers } from "../data/users";
-import { environments } from "../data/environments";
+import { runners } from "../data/runners";
 import { VIEW_MODES, CONTEXT_LABEL } from "../data/viewLayout";
 import { SETTINGS_PAGES, DEFAULT_SETTINGS_PAGE } from "../data/settings";
 import { Breadcrumb, type Crumb } from "./Breadcrumb";
@@ -15,7 +15,7 @@ import { Avatar } from "./Avatar";
  *  Switching to a non-list mode clears the open item so the board/grid shows (the
  *  detail returns only when you click into an item), matching the inbox. */
 function ViewModeSwitcher({ view }: { view: View }) {
-  const { layout, setLayout, select, selectUser, selectAutomation, selectEnvironment, selectRun } = useStore();
+  const { layout, setLayout, select, selectUser, selectAutomation, selectRunner, selectRun } = useStore();
   const modes = VIEW_MODES[view];
   if (!modes || modes.length < 2) return null;
   // Switching to the alternate layout clears every page's open item, so each page
@@ -24,7 +24,7 @@ function ViewModeSwitcher({ view }: { view: View }) {
     select(null);
     selectUser(null);
     selectAutomation(null);
-    selectEnvironment(null);
+    selectRunner(null);
     selectRun(null);
   };
   // First mode is always "list"; the second is the page's alternate. The selected
@@ -68,6 +68,7 @@ function InfoPaneToggle({ label }: { label: string }) {
 }
 
 const VIEW_LABEL: Record<Exclude<View, "inbox">, string> = {
+  home: "Home",
   builder: "Automation builder",
   activity: "Activity",
   automations: "Automations",
@@ -75,7 +76,7 @@ const VIEW_LABEL: Record<Exclude<View, "inbox">, string> = {
   users: "Users",
   administration: "Administration",
   surfaces: "Surfaces",
-  environments: "Environments",
+  runners: "Runners",
   settings: "Settings",
 };
 
@@ -92,8 +93,8 @@ export function Titlebar() {
     selectUser,
     selectedAutomationId,
     selectAutomation,
-    selectedEnvironmentId,
-    selectEnvironment,
+    selectedRunnerId,
+    selectRunner,
     selectedRunId,
     selectRun,
     runById,
@@ -110,9 +111,7 @@ export function Titlebar() {
   const openAutomation = selectedAutomationId
     ? automations.find((a) => a.id === selectedAutomationId) ?? null
     : null;
-  const openEnvironment = selectedEnvironmentId
-    ? environments.find((e) => e.id === selectedEnvironmentId) ?? null
-    : null;
+  const openRunner = selectedRunnerId ? runners.find((r) => r.id === selectedRunnerId) ?? null : null;
   // Only the Activity timeline opens a run full-pane; the list layout expands runs
   // in place, so a stale selection never leaks into its breadcrumb.
   const openRun =
@@ -163,11 +162,11 @@ export function Titlebar() {
     items = openRun
       ? [{ label: "Activity", onClick: () => selectRun(null) }, { label: openRun.id }]
       : [{ label: "Activity" }];
-  } else if (view === "environments") {
-    hasContext = !!openEnvironment;
-    items = openEnvironment
-      ? [{ label: "Environments", onClick: () => selectEnvironment(null) }, { label: openEnvironment.name }]
-      : [{ label: "Environments" }];
+  } else if (view === "runners") {
+    hasContext = !!openRunner;
+    items = openRunner
+      ? [{ label: "Runners", onClick: () => selectRunner(null) }, { label: openRunner.name }]
+      : [{ label: "Runners" }];
   } else if (subview) {
     const sub = navItems.find((n) => n.id === view)?.subpages?.find((s) => s.id === subview);
     items = [

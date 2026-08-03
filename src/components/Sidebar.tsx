@@ -1,9 +1,9 @@
 import { type ReactNode } from "react";
-import { Bell, Box, Inbox, Layers, Settings, ShieldCheck, SlidersHorizontal, Users, Workflow } from "lucide-react";
+import { Bell, Box, Cpu, House, Inbox, Settings, ShieldCheck, SlidersHorizontal, Users, Workflow } from "lucide-react";
 import { useStore, type View } from "../store";
 import { navItems } from "../data/nav";
 import { endUsers } from "../data/users";
-import { environments } from "../data/environments";
+import { runners } from "../data/runners";
 import { NavGroup } from "./NavGroup";
 import { OpenItem } from "./OpenItem";
 import { UserMenu } from "./UserMenu";
@@ -17,6 +17,7 @@ const navIconProps = { size: 20, strokeWidth: 1.7 };
 // Keyed by view so the rail can't miss one; the modes that aren't nav
 // destinations (Settings' full-screen rail, the builder) never render from here.
 const icons: Record<View, ReactNode> = {
+  home: <House {...navIconProps} />,
   builder: <Workflow {...navIconProps} />,
   activity: <Bell {...navIconProps} />,
   inbox: <Inbox {...navIconProps} />,
@@ -25,7 +26,7 @@ const icons: Record<View, ReactNode> = {
   users: <Users {...navIconProps} />,
   administration: <ShieldCheck {...navIconProps} />,
   surfaces: <Box {...navIconProps} />,
-  environments: <Layers {...navIconProps} />,
+  runners: <Cpu {...navIconProps} />,
   settings: <Settings {...navIconProps} />,
 };
 
@@ -62,8 +63,8 @@ export function Sidebar() {
         return automations.length;
       case "users":
         return endUsers.length;
-      case "environments":
-        return environments.length;
+      case "runners":
+        return runners.length;
       default:
         return undefined;
     }

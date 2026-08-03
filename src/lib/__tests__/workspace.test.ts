@@ -118,7 +118,7 @@ describe("workspace control descriptors", () => {
       ["inbox", ""],
       ["automations", ""],
       ["users", ""],
-      ["environments", ""],
+      ["runners", ""],
       ["surfaces", ""],
       ["builder", ""],
       ...(["In progress", "Historical", "Insights"] as const).map((t) => ["activity", t] as [never, string]),
@@ -223,7 +223,7 @@ describe("sort direction", () => {
   });
 
   it("declares a direction for every sort on every page, so chips never guess", () => {
-    for (const view of ["inbox", "activity", "automations", "users", "environments", "builder"] as const) {
+    for (const view of ["inbox", "activity", "automations", "users", "runners", "builder"] as const) {
       for (const sort of workspaceControls(view, "")?.sorts ?? []) {
         expect(sort.defaultDir, `${view}/${sort.id}`).toBeDefined();
         // Labels name the field; the arrow says which way it runs.

@@ -7,7 +7,12 @@
  * Fields describe the per-step form the builder renders; they're deliberately
  * shallow (text / number / choice), because this is a prototype of the authoring
  * surface, not an execution engine.
+ *
+ * Each action also declares what it needs from a runner (`requires`), which is what
+ * lets `requirementsForSteps` derive a flow's placement requirements from its content
+ * — the same way `packagesForSteps` derives its dependencies.
  */
+import { AUTH_MODELS, DEFAULT_REQUIREMENTS, type AuthModel, type WorkflowRequirements } from "@conduit/domain";
 
 /** One configurable input on an action. */
 export type ActionField = {
@@ -31,7 +36,19 @@ export type StepAction = {
   /** One line explaining what the step does, shown under the palette entry. */
   summary: string;
   fields: ActionField[];
+  /**
+   * What this action needs from a runner, so a flow's requirements can be derived
+   * from what it actually does rather than trusted to whoever filled the form in.
+   *
+   * A function when the need depends on configuration — a browser step only needs an
+   * interactive session when it's set to run headed, and pretending otherwise would
+   * route every browser flow onto the most expensive class in the pool.
+   */
+  requires?: NodeRequirement | ((config: Record<string, string>) => NodeRequirement);
 };
+
+/** The part of `WorkflowRequirements` an action can raise. */
+export type NodeRequirement = Partial<WorkflowRequirements>;
 
 const text = (id: string, label: string, placeholder?: string): ActionField => ({ id, label, kind: "text", placeholder });
 const choice = (id: string, label: string, options: string[]): ActionField => ({ id, label, kind: "choice", options });
@@ -49,6 +66,8 @@ export const ACTIONS: StepAction[] = [
       choice("engine", "Engine", ["Chromium", "Firefox", "WebKit"]),
       choice("mode", "Mode", ["Headless", "Headed"]),
     ],
+    // Headless browsers run anywhere; only a headed session needs an interactive one.
+    requires: (config) => (config.mode === "Headed" ? { ui: "headed" } : {}),
   },
   {
     id: "browser.goto",
@@ -108,6 +127,7 @@ export const ACTIONS: StepAction[] = [
     package: "billing-api",
     summary: "Read a set of records to work through.",
     fields: [text("source", "Source", "invoices"), text("filter", "Filter", "status = 'open'"), number("limit", "Limit", "500")],
+    requires: { auth: "api-key" },
   },
   {
     id: "ledger.reconcile",
@@ -115,6 +135,7 @@ export const ACTIONS: StepAction[] = [
     package: "ledger",
     summary: "Match authorised payments against ledger entries.",
     fields: [text("account", "Account", "merchant-eu"), choice("onMismatch", "On mismatch", ["Flag", "Fail run", "Ignore"])],
+    requires: { auth: "api-key" },
   },
 
   /* -------------------------------------------------------------------- output */
@@ -131,6 +152,7 @@ export const ACTIONS: StepAction[] = [
     package: "storage-s3",
     summary: "Write a file to object storage.",
     fields: [text("bucket", "Bucket", "conduit-archive"), text("path", "Path", "invoices/{{ date }}/")],
+    requires: { auth: "managed-identity" },
   },
   {
     id: "email.send",
@@ -138,6 +160,7 @@ export const ACTIONS: StepAction[] = [
     package: "email-ses",
     summary: "Send a templated email.",
     fields: [text("to", "To", "{{ user.email }}"), text("template", "Template", "welcome-v2"), text("subject", "Subject", "Welcome to Conduit")],
+    requires: { auth: "api-key" },
   },
   {
     id: "templates.render",
@@ -154,6 +177,7 @@ export const ACTIONS: StepAction[] = [
     package: "search",
     summary: "Rebuild an index and swap it in when it's ready.",
     fields: [text("index", "Index", "products"), choice("swap", "Swap", ["When healthy", "Immediately"])],
+    requires: { auth: "api-key" },
   },
   {
     id: "metrics.record",
@@ -204,6 +228,54 @@ export function packagesForSteps(steps: { actionId: string }[]): string[] {
     if (pkg && !seen.includes(pkg)) seen.push(pkg);
   }
   return seen;
+}
+
+/**
+ * How demanding each auth model is. Merging two steps keeps the more demanding of
+ * the two, because a flow that needs Windows-integrated auth anywhere needs a runner
+ * that can present it everywhere — there is one runner per run.
+ */
+const AUTH_RANK = new Map<AuthModel, number>(AUTH_MODELS.map((m, i) => [m, i]));
+
+/** The stricter of two auth models. */
+const strictestAuth = (a: AuthModel, b: AuthModel): AuthModel =>
+  (AUTH_RANK.get(b) ?? 0) > (AUTH_RANK.get(a) ?? 0) ? b : a;
+
+/**
+ * The requirements a flow's steps impose, derived from the actions they use — the
+ * floor beneath whatever the author declared. This is what keeps a workflow's
+ * placement honest: add a headed browser step and the flow becomes headed, whether or
+ * not anyone remembers to say so.
+ *
+ * Same contract as `packagesForSteps`: read the steps, derive the truth, don't ask.
+ */
+export function requirementsForSteps(steps: { actionId: string; config: Record<string, string> }[]): WorkflowRequirements {
+  let derived: WorkflowRequirements = { ...DEFAULT_REQUIREMENTS };
+  for (const step of steps) {
+    const action = BY_ID.get(step.actionId);
+    if (!action?.requires) continue;
+    const need = typeof action.requires === "function" ? action.requires(step.config) : action.requires;
+    derived = {
+      auth: need.auth ? strictestAuth(derived.auth, need.auth) : derived.auth,
+      ui: need.ui === "headed" ? "headed" : derived.ui,
+      platform: need.platform === "windows" ? "windows" : derived.platform,
+    };
+  }
+  return derived;
+}
+
+/** The declared requirements raised to the floor its steps impose. Never lower than
+ *  either, so an author can ask for more than the steps need but never for less. */
+export function effectiveRequirements(
+  declared: WorkflowRequirements,
+  steps: { actionId: string; config: Record<string, string> }[],
+): WorkflowRequirements {
+  const derived = requirementsForSteps(steps);
+  return {
+    auth: strictestAuth(declared.auth, derived.auth),
+    ui: declared.ui === "headed" || derived.ui === "headed" ? "headed" : "none",
+    platform: declared.platform === "windows" || derived.platform === "windows" ? "windows" : "any",
+  };
 }
 
 /** A one-line summary of a configured step, for the flow row ("chromium, headless"). */

@@ -1,4 +1,5 @@
-import { ACTIONS, actionById, actionsByPackage, defaultConfig, packagesForSteps, type StepAction } from "../data/actions";
+import { ACTIONS, actionById, actionsByPackage, defaultConfig, effectiveRequirements, packagesForSteps, type StepAction } from "../data/actions";
+import { DEFAULT_REQUIREMENTS, pickRunner, type Runner } from "@conduit/domain";
 import type { Automation, AutomationDraft, AutomationStep, Run } from "../data/types";
 import { workspaceControls } from "../data/workspaceControls";
 import { matchesQuery, ordered, passesFilter, resolveSort, type WorkspaceState } from "./workspace";
@@ -50,6 +51,9 @@ export function blankDraft(ownerId: string, folderId: string): AutomationDraft {
     visibility: "private",
     status: "Draft",
     ownerId,
+    platform: "conduit",
+    migration: "Migrated",
+    requirements: { ...DEFAULT_REQUIREMENTS },
     trigger: { kind: "Manual", detail: "Owner and admins" },
     steps: [],
     runCount: 0,
@@ -109,7 +113,9 @@ export function draftProblems(draft: AutomationDraft): string[] {
 /**
  * Commit a draft to the library: a new automation is appended with a generated
  * id, an existing one is replaced in place. `packages` is recomputed from the
- * steps, so an automation's dependencies always match what it actually does.
+ * steps, so an automation's dependencies always match what it actually does — and
+ * `requirements` is raised to the floor its steps impose, so a flow can never be
+ * placed on a runner that can't actually carry it.
  */
 export function commitDraft(
   automations: Automation[],
@@ -122,6 +128,7 @@ export function commitDraft(
     id,
     name: draft.name.trim() || "Untitled automation",
     packages: packagesForSteps(draft.steps),
+    requirements: effectiveRequirements(draft.requirements, draft.steps),
     updatedAgo: "just now",
   };
   return {
@@ -144,19 +151,29 @@ export function nextRunId(runs: Run[]): string {
  * a log that walks the flow — so the Activity stream shows what the builder just
  * launched instead of a placeholder.
  */
-export function testRun(automation: Automation, startedBy: string, runs: Run[]): Run {
+export function testRun(automation: Automation, startedBy: string, runs: Run[], pool: readonly Runner[]): Run {
   const id = nextRunId(runs);
+  // Placed, not assigned: the same distributor the scheduler uses picks the runner,
+  // and its reasoning is written into the log so the choice is inspectable.
+  const { runner, rationale } = pickRunner(automation.requirements, pool);
   return {
     id,
     automationId: automation.id,
-    state: "Running",
+    state: runner ? "Running" : "Queued",
     trigger: "Manual",
     startedBy,
     startedAt: "just now",
     duration: "2 s",
-    target: "prod-runner-1",
+    runnerId: runner?.id,
     activity: [
       { id: `${id}-1`, kind: "status", time: "just now", title: "Test run started from the builder" },
+      {
+        id: `${id}-p`,
+        kind: "fact",
+        time: "just now",
+        title: runner ? `Placed on ${runner.name}` : "Waiting for a runner",
+        body: rationale,
+      },
       ...automation.steps.map((step, i) => ({
         id: `${id}-s${i + 1}`,
         kind: "fact" as const,

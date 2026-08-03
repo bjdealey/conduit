@@ -1,4 +1,5 @@
-import type { ActivityEvent, Automation, Folder, Run } from "./types";
+import type { ActivityEvent, Automation, AutomationTrigger, Folder, MigrationState, Run } from "./types";
+import type { WorkflowRequirements } from "@conduit/domain";
 
 /**
  * Seed data for the automation library — the first-class entity. Automations live
@@ -16,6 +17,9 @@ export const folders: Folder[] = [
   { id: "pub-onboarding", name: "Onboarding", parentId: "pub-root", visibility: "public" },
   { id: "pub-monitoring", name: "Monitoring", parentId: "pub-root", visibility: "public" },
   { id: "pub-monitoring-synth", name: "Synthetics", parentId: "pub-monitoring", visibility: "public" },
+  // The estate mirrored from the incumbent Control Room. It sits in the same tree as
+  // native work on purpose — one library, two platforms, nothing to switch between.
+  { id: "pub-aa", name: "Automation Anywhere", parentId: "pub-root", visibility: "public" },
   // Private (owner-scoped) tree
   { id: "prv-root", name: "My automations", parentId: null, visibility: "private" },
   { id: "prv-drafts", name: "Drafts", parentId: "prv-root", visibility: "private" },
@@ -69,7 +73,7 @@ export const runs: Run[] = [
     startedBy: "Luke Shiels",
     startedAt: "1 minute ago",
     duration: "40 s",
-    target: "prod-runner-2",
+    runnerId: "rnr_lw_01",
     activity: [
       { id: "run_1045-1", kind: "status", time: "1 min ago", title: "Run started" },
       {
@@ -90,7 +94,7 @@ export const runs: Run[] = [
     startedBy: "Schedule · every 15m",
     startedAt: "36 minutes ago",
     duration: "48 s",
-    target: "prod-runner-2",
+    runnerId: "rnr_lw_01",
     issueId: 120,
     activity: runLog("run_1043", "fail", [
       {
@@ -110,7 +114,7 @@ export const runs: Run[] = [
     startedBy: "Schedule · every 15m",
     startedAt: "51 minutes ago",
     duration: "44 s",
-    target: "prod-runner-2",
+    runnerId: "rnr_lw_01",
     activity: runLog("run_1042", "ok"),
   },
   {
@@ -121,7 +125,7 @@ export const runs: Run[] = [
     startedBy: "Schedule · every 15m",
     startedAt: "21 minutes ago",
     duration: "45 s",
-    target: "prod-runner-2",
+    runnerId: "rnr_lw_01",
     activity: runLog("run_1044", "ok"),
   },
   {
@@ -132,7 +136,7 @@ export const runs: Run[] = [
     startedBy: "Schedule · every 15m",
     startedAt: "66 minutes ago",
     duration: "47 s",
-    target: "prod-runner-2",
+    runnerId: "rnr_lw_01",
     activity: runLog("run_1041", "ok"),
   },
   {
@@ -143,7 +147,7 @@ export const runs: Run[] = [
     startedBy: "Priya Fenn",
     startedAt: "2 minutes ago",
     duration: "2 min 10 s",
-    target: "prod-runner-1",
+    runnerId: "rnr_lw_02",
     activity: [
       { id: "run_1030-1", kind: "status", time: "2 min ago", title: "Run started" },
       { id: "run_1030-2", kind: "fact", time: "1 min ago", title: "Exporting invoices for 4,200 accounts" },
@@ -157,7 +161,7 @@ export const runs: Run[] = [
     startedBy: "Schedule · nightly",
     startedAt: "3 hours ago",
     duration: "6 min 40 s",
-    target: "prod-runner-1",
+    runnerId: "rnr_lw_02",
     activity: runLog("run_1029", "ok"),
   },
   {
@@ -168,7 +172,7 @@ export const runs: Run[] = [
     startedBy: "Schedule · nightly",
     startedAt: "4 hours ago",
     duration: "1 min 12 s",
-    target: "prod-runner-1",
+    runnerId: "rnr_lw_02",
     activity: runLog("run_1028", "fail"),
   },
   {
@@ -219,7 +223,7 @@ export const runs: Run[] = [
     startedBy: "Schedule · every 5m",
     startedAt: "4 minutes ago",
     duration: "11 s",
-    target: "eu-runner-1",
+    runnerId: "rnr_lw_03",
     activity: runLog("run_1019", "ok"),
   },
   {
@@ -230,7 +234,7 @@ export const runs: Run[] = [
     startedBy: "Schedule · every 5m",
     startedAt: "9 minutes ago",
     duration: "12 s",
-    target: "us-runner-1",
+    runnerId: "rnr_lw_04",
     activity: runLog("run_1018", "ok"),
   },
   {
@@ -241,7 +245,7 @@ export const runs: Run[] = [
     startedBy: "Schedule · every 5m",
     startedAt: "14 minutes ago",
     duration: "10 s",
-    target: "eu-runner-1",
+    runnerId: "rnr_lw_03",
     activity: runLog("run_1017", "ok"),
   },
   {
@@ -252,7 +256,7 @@ export const runs: Run[] = [
     startedBy: "Schedule · every 5m",
     startedAt: "19 minutes ago",
     duration: "31 s",
-    target: "us-runner-1",
+    runnerId: "rnr_lw_04",
     activity: runLog("run_1016", "fail"),
   },
   {
@@ -263,7 +267,7 @@ export const runs: Run[] = [
     startedBy: "Schedule · every 5m",
     startedAt: "24 minutes ago",
     duration: "11 s",
-    target: "eu-runner-1",
+    runnerId: "rnr_lw_03",
     activity: runLog("run_1015", "ok"),
   },
   {
@@ -274,7 +278,7 @@ export const runs: Run[] = [
     startedBy: "Schedule · every 5m",
     startedAt: "44 minutes ago",
     duration: "12 s",
-    target: "us-runner-1",
+    runnerId: "rnr_lw_04",
     activity: runLog("run_1014", "ok"),
   },
   {
@@ -285,7 +289,7 @@ export const runs: Run[] = [
     startedBy: "Schedule · every 5m",
     startedAt: "74 minutes ago",
     duration: "11 s",
-    target: "eu-runner-1",
+    runnerId: "rnr_lw_03",
     activity: runLog("run_1013", "ok"),
   },
   {
@@ -296,7 +300,7 @@ export const runs: Run[] = [
     startedBy: "Schedule · every 5m",
     startedAt: "2 hours ago",
     duration: "13 s",
-    target: "us-runner-1",
+    runnerId: "rnr_lw_04",
     activity: runLog("run_1012", "ok"),
   },
   {
@@ -317,7 +321,7 @@ export const runs: Run[] = [
     startedBy: "Schedule · hourly",
     startedAt: "63 minutes ago",
     duration: "3 min 20 s",
-    target: "prod-runner-3",
+    runnerId: "rnr_wsa_01",
     activity: runLog("run_1004", "ok"),
   },
   {
@@ -328,7 +332,7 @@ export const runs: Run[] = [
     startedBy: "Schedule · hourly",
     startedAt: "2 hours ago",
     duration: "3 min 5 s",
-    target: "prod-runner-3",
+    runnerId: "rnr_wsa_01",
     activity: runLog("run_1003", "ok"),
   },
   {
@@ -345,6 +349,51 @@ export const runs: Run[] = [
 
 /* ------------------------------------------------------------------- automations */
 
+/**
+ * An automation mirrored from a connected platform by its connector.
+ *
+ * We show it, observe its runs, and track where it sits in the move onto Conduit —
+ * but its flow is authored on its own platform, so `steps` and `packages` are empty
+ * rather than invented. That emptiness is the honest signal that this row is a
+ * reflection of somewhere else, and it's what the builder checks before offering to
+ * edit anything.
+ */
+function mirrored(
+  id: string,
+  name: string,
+  description: string,
+  ownerId: string,
+  requirements: WorkflowRequirements,
+  migration: MigrationState,
+  stats: { runCount: number; successRate: number; lastRunAt: string; trigger: AutomationTrigger },
+): Automation {
+  return {
+    id,
+    name,
+    description,
+    folderId: "pub-aa",
+    visibility: "public",
+    status: "Active",
+    ownerId,
+    platform: "automation-anywhere",
+    migration,
+    requirements,
+    trigger: stats.trigger,
+    steps: [],
+    runCount: stats.runCount,
+    successRate: stats.successRate,
+    lastRunAt: stats.lastRunAt,
+    updatedAgo: "—",
+    packages: [],
+    references: [],
+  };
+}
+
+const schedule = (detail: string): AutomationTrigger => ({ kind: "Schedule", detail });
+const headed: WorkflowRequirements = { auth: "none", ui: "headed", platform: "windows" };
+const windowsAuth: WorkflowRequirements = { auth: "windows-integrated", ui: "none", platform: "windows" };
+const apiFirst = (auth: WorkflowRequirements["auth"]): WorkflowRequirements => ({ auth, ui: "none", platform: "any" });
+
 export const automations: Automation[] = [
   {
     id: "aut_reset_audit",
@@ -355,6 +404,9 @@ export const automations: Automation[] = [
     visibility: "public",
     status: "Active",
     ownerId: "ls",
+    platform: "conduit",
+    migration: "Migrated",
+    requirements: { auth: "oauth-client-credentials", ui: "none", platform: "any" },
     trigger: { kind: "Schedule", detail: "Every 15 minutes" },
     steps: [
       { id: "stp_ra_1", actionId: "browser.open", config: { engine: "Chromium", mode: "Headless" } },
@@ -379,6 +431,9 @@ export const automations: Automation[] = [
     visibility: "public",
     status: "Active",
     ownerId: "pf",
+    platform: "conduit",
+    migration: "Migrated",
+    requirements: { auth: "managed-identity", ui: "none", platform: "any" },
     trigger: { kind: "Schedule", detail: "Daily at 02:00 UTC" },
     steps: [
       { id: "stp_ie_1", actionId: "records.query", config: { source: "invoices", filter: "status = 'open'", limit: "500" } },
@@ -400,6 +455,9 @@ export const automations: Automation[] = [
     visibility: "public",
     status: "Active",
     ownerId: "ps",
+    platform: "conduit",
+    migration: "Migrated",
+    requirements: { auth: "api-key", ui: "none", platform: "any" },
     trigger: { kind: "Event", detail: "user.signup" },
     steps: [
       { id: "stp_we_1", actionId: "templates.render", config: { template: "verification-email", data: "user, token" } },
@@ -420,6 +478,9 @@ export const automations: Automation[] = [
     visibility: "public",
     status: "Active",
     ownerId: "jk",
+    platform: "conduit",
+    migration: "Migrated",
+    requirements: { auth: "none", ui: "none", platform: "any" },
     trigger: { kind: "Schedule", detail: "Every 5 minutes" },
     steps: [
       { id: "stp_sl_1", actionId: "browser.open", config: { engine: "Chromium", mode: "Headless" } },
@@ -443,6 +504,9 @@ export const automations: Automation[] = [
     visibility: "public",
     status: "Active",
     ownerId: "jk",
+    platform: "conduit",
+    migration: "Migrated",
+    requirements: { auth: "windows-integrated", ui: "none", platform: "windows" },
     trigger: { kind: "Schedule", detail: "Hourly" },
     steps: [
       { id: "stp_pr_1", actionId: "records.query", config: { source: "payments", filter: "authorised_at > now() - 1h", limit: "500" } },
@@ -464,6 +528,9 @@ export const automations: Automation[] = [
     visibility: "private",
     status: "Draft",
     ownerId: "pf",
+    platform: "conduit",
+    migration: "Piloting",
+    requirements: { auth: "api-key", ui: "none", platform: "any" },
     trigger: { kind: "Manual", detail: "Owner and admins" },
     steps: [
       { id: "stp_ir_1", actionId: "search.reindex", config: { index: "products", swap: "When healthy" } },
@@ -476,4 +543,22 @@ export const automations: Automation[] = [
     packages: ["search", "assertions"],
     references: [],
   },
+
+  /* ----------------------------------------------- mirrored from Automation Anywhere
+     The incumbent estate, read through the A360 connector. Its shape is the argument:
+     mostly headed and Windows-bound today, with a shrinking band of workloads blocked
+     only by Windows-integrated auth. Home reads the split straight off these rows
+     rather than asserting it. */
+  mirrored("aut_aa_vendor_onboarding", "Vendor onboarding", "Keys new vendor records into the finance desktop client and files the approval pack.", "ls", headed, "Not started", { runCount: 3120, successRate: 0.91, lastRunAt: "12 minutes ago", trigger: schedule("Weekdays at 07:00") }),
+  mirrored("aut_aa_claims_keying", "Claims keying", "Rekeys scanned claims into the legacy claims terminal. No API path exists.", "jk", headed, "Won't move", { runCount: 18244, successRate: 0.88, lastRunAt: "3 minutes ago", trigger: schedule("Every 10 minutes") }),
+  mirrored("aut_aa_statement_pack", "Statement pack assembly", "Drives the reporting client to assemble and print monthly statement packs.", "pf", headed, "Not started", { runCount: 640, successRate: 0.93, lastRunAt: "an hour ago", trigger: schedule("Monthly on the 1st") }),
+  mirrored("aut_aa_pricing_upload", "Pricing sheet upload", "Uploads pricing workbooks through the supplier portal UI.", "ps", headed, "Not started", { runCount: 1490, successRate: 0.86, lastRunAt: "26 minutes ago", trigger: schedule("Daily at 06:00") }),
+  mirrored("aut_aa_stock_count", "Stock count reconciliation", "Reconciles counted stock against the warehouse desktop system.", "jk", headed, "Won't move", { runCount: 2210, successRate: 0.9, lastRunAt: "2 hours ago", trigger: schedule("Nightly at 23:00") }),
+  mirrored("aut_aa_credit_review", "Credit review packet", "Assembles credit review packets from the underwriting client.", "ls", headed, "Not started", { runCount: 880, successRate: 0.94, lastRunAt: "4 hours ago", trigger: schedule("Weekly on Monday") }),
+  mirrored("aut_aa_timesheet_post", "Timesheet posting", "Posts approved timesheets through the payroll desktop app.", "ps", headed, "Not started", { runCount: 5030, successRate: 0.96, lastRunAt: "38 minutes ago", trigger: schedule("Daily at 18:00") }),
+  // Blocked only by the auth model — these become API-eligible the moment their target
+  // app finishes moving to Entra, which is the compounding the vision is betting on.
+  mirrored("aut_aa_hr_starter", "HR starter setup", "Creates starter records in the internal HR web app, which still authenticates as the logged-in Windows user.", "pf", windowsAuth, "Piloting", { runCount: 1204, successRate: 0.97, lastRunAt: "18 minutes ago", trigger: schedule("Hourly") }),
+  mirrored("aut_aa_asset_register", "Asset register sync", "Syncs the internal asset register, currently behind Windows-integrated auth.", "jk", windowsAuth, "Not started", { runCount: 970, successRate: 0.95, lastRunAt: "an hour ago", trigger: schedule("Every 4 hours") }),
+  mirrored("aut_aa_fx_rates", "FX rate refresh", "Pulls daily FX rates from a vendor API. Already API-shaped — ready to move.", "ps", apiFirst("api-key"), "Not started", { runCount: 730, successRate: 0.99, lastRunAt: "5 hours ago", trigger: schedule("Daily at 05:00") }),
 ];
