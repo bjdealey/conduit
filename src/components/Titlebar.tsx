@@ -128,10 +128,14 @@ export function Titlebar() {
     : null;
   const openRunner = selectedRunnerId ? runners.find((r) => r.id === selectedRunnerId) ?? null : null;
   // A folder's trail is its ancestry, so the breadcrumb walks back up the library
-  // tree the same way the tree walks down it. An open file gets the same trail,
-  // with the file itself as the last (inert) crumb.
+  // tree the same way the tree walks down it. Whatever is open gets that trail —
+  // a workflow and a file are in the tree too, and "Workflows › Bulk invoice
+  // export" told you nothing about where it lives.
   const openFile = selectedFileId ? files.find((f) => f.id === selectedFileId) ?? null : null;
-  const folderCrumbs = folderTrail(folders, selectedFolderId ?? openFile?.folderId ?? "");
+  const folderCrumbs = folderTrail(
+    folders,
+    selectedFolderId ?? openFile?.folderId ?? openWorkflow?.folderId ?? "",
+  );
   // Only the Activity timeline opens a run full-pane; the list layout expands runs
   // in place, so a stale selection never leaks into its breadcrumb.
   const openRun =
@@ -159,7 +163,7 @@ export function Titlebar() {
     // one inert, so whatever is open is the only dead label.
     const trail = folderCrumbs.map((f) => ({ label: f.name, onClick: () => selectFolder(f.id) }));
     items = openWorkflow
-      ? [{ label: "Workflows", onClick: () => selectWorkflow(null) }, { label: openWorkflow.name }]
+      ? [{ label: "Workflows", onClick: () => selectWorkflow(null) }, ...trail, { label: openWorkflow.name }]
       : openFile
         ? [{ label: "Workflows", onClick: () => selectFile(null) }, ...trail, { label: openFile.name }]
         : trail.length > 0
