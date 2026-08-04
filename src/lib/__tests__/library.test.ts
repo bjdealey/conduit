@@ -3,14 +3,19 @@ import {
   countUnder,
   createFile,
   createFolder,
+  countUnderAll,
   deleteNode,
+  deleteNodes,
   extensionOf,
   freeName,
   kindOfFile,
   moveNode,
+  moveNodes,
   moveTargets,
+  sharedMoveTargets,
   nextId,
   renameNode,
+  withoutCovered,
   type LibraryNode,
   type LibraryTree,
 } from "../library";
@@ -240,5 +245,76 @@ describe("the seed tree", () => {
       expect(home, `${f.name} has no folder`).toBeDefined();
       expect(f.visibility).toBe(home!.visibility);
     }
+  });
+});
+
+describe("bulk edits", () => {
+  it("drops nodes already covered by a selected folder", () => {
+    // Selecting Monitoring *and* something inside it: the folder's cascade
+    // already covers the child, so acting on both would touch it twice.
+    const kept = withoutCovered(tree(), [folder("pub-monitoring"), folder("pub-monitoring-synth"), workflow("wf_reset_audit")]);
+    expect(kept.map((n) => n.id)).toEqual(["pub-monitoring"]);
+    // Unrelated siblings all survive.
+    expect(withoutCovered(tree(), [folder("pub-billing"), file("fil_1")]).map((n) => n.id)).toEqual([
+      "pub-billing",
+      "fil_1",
+    ]);
+  });
+
+  it("moves what it can and reports the rest, without losing the good ones", () => {
+    const result = moveNodes(tree(), [file("fil_2"), workflow(mirrored.id), file("fil_1")], {
+      kind: "folder",
+      id: "pub-onboarding",
+    });
+    expect(result.moved).toBe(2);
+    expect(result.refusals).toHaveLength(1);
+    expect(result.refusals[0].reason).toMatch(/mirrored from another platform/);
+    // The two that could move really did.
+    for (const id of ["fil_1", "fil_2"]) {
+      expect(result.tree.files.find((f) => f.id === id)!.folderId).toBe("pub-onboarding");
+    }
+  });
+
+  it("applies in sequence, so a collision between two moved siblings is caught", () => {
+    // Two files with the same name can't both land in one folder.
+    const clashing = treeOf(renameNode(tree(), file("fil_1"), "same.md"));
+    const both = treeOf(renameNode(clashing, file("fil_8"), "same.md"));
+    const result = moveNodes(both, [file("fil_1"), file("fil_8")], { kind: "folder", id: "pub-onboarding" });
+    expect(result.moved).toBe(1);
+    expect(result.refusals[0].reason).toMatch(/already there/);
+  });
+
+  it("deletes a whole selection, cascades included", () => {
+    const result = deleteNodes(tree(), [folder("pub-billing"), file("fil_1")]);
+    expect(result.refusals).toEqual([]);
+    expect(result.tree.folders.find((f) => f.id === "pub-billing")).toBeUndefined();
+    expect(result.tree.files.find((f) => f.id === "fil_1")).toBeUndefined();
+    // Billing's contents went with the folder.
+    expect(result.tree.workflows.filter((w) => w.folderId === "pub-billing")).toEqual([]);
+  });
+
+  it("counts the whole cascade once, not once per selected node", () => {
+    const both = countUnderAll(tree(), [folder("pub-monitoring"), folder("pub-monitoring-synth")]);
+    // Synthetics is inside Monitoring, so it must not be tallied twice.
+    expect(both).toEqual(countUnder(tree(), folder("pub-monitoring")));
+  });
+
+  it("offers only destinations every selected node can reach", () => {
+    const shared = sharedMoveTargets(tree(), [folder("pub-monitoring"), file("fil_2")]);
+    const ids = shared.flatMap((t) => (t.kind === "folder" ? [t.id] : []));
+    // Monitoring can't move into itself or its subtree, so neither is shared…
+    expect(ids).not.toContain("pub-monitoring");
+    expect(ids).not.toContain("pub-monitoring-synth");
+    // …and a root is folder-only, so a selection holding a file offers none.
+    expect(shared.some((t) => t.kind === "root")).toBe(false);
+    // Everything offered is accepted by every member.
+    for (const target of shared) {
+      expect(moveNode(tree(), folder("pub-monitoring"), target).ok).toBe(true);
+      expect(moveNode(tree(), file("fil_2"), target).ok).toBe(true);
+    }
+  });
+
+  it("offers nothing for a selection that can't be edited at all", () => {
+    expect(sharedMoveTargets(tree(), [workflow(mirrored.id)])).toEqual([]);
   });
 });

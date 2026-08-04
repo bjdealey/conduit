@@ -15,11 +15,14 @@ import { files as seedFiles } from "./data/files";
 import type { Workflow, WorkflowDraft, Folder, Issue, LibraryFile, Member, Priority, Role, Run, Status } from "./data/types";
 import {
   countUnder as countUnderNode,
+  countUnderAll as countUnderAllNodes,
   createFile,
   createFolder,
   deleteNode as deleteInTree,
+  deleteNodes as deleteManyInTree,
   freeName,
   moveNode as moveInTree,
+  moveNodes as moveManyInTree,
   renameNode as renameInTree,
   type CreateResult,
   type EditResult,
@@ -176,6 +179,30 @@ type Store = {
   /** What deleting a node would take with it — the folder's whole subtree, not
    *  just the row. */
   countUnder: (node: LibraryNode) => { folders: number; workflows: number; files: number };
+  /* ---- selecting several rows -------------------------------------------
+     The tree keeps two separate ideas, because they answer different questions.
+     `treeSelection` is what a bulk action would act on; the `selected*Id` fields
+     above are what the detail pane is showing. A plain click sets both, a
+     modifier-click changes only the selection, and the row's info button changes
+     only what's open — so a row can be inspected without disturbing a selection
+     you spent several clicks building. */
+  treeSelection: LibraryNode[];
+  setTreeSelection: (nodes: LibraryNode[]) => void;
+  /** Open a node in the detail pane *without* touching the selection — the row's
+   *  info button. It wins over the selection summary while it lasts, because
+   *  otherwise the one case the button exists for (reading a row without losing a
+   *  selection you spent several clicks building) is the case it can't serve.
+   *  Changing the selection ends it. */
+  peekNode: (node: LibraryNode) => void;
+  peeking: boolean;
+  /** Everything a bulk delete would take, counted once even when the selection
+   *  holds both a folder and something inside it. */
+  countUnderAll: (nodes: LibraryNode[]) => { folders: number; workflows: number; files: number };
+  /** Move / delete a whole selection. Returns how many went through and why each
+   *  of the rest didn't — partial success is normal, and losing the successes
+   *  because one node was mirrored would be the wrong trade. */
+  moveNodes: (nodes: LibraryNode[], target: MoveTarget) => { moved: number; refusals: { name: string; reason: string }[] };
+  deleteNodes: (nodes: LibraryNode[]) => { moved: number; refusals: { name: string; reason: string }[] };
   /** Which branches are open. Persisted, because a tree that re-expands itself on
    *  every reload is a tree you re-collapse on every reload. Keyed by folder id,
    *  plus `vis:public` / `vis:private` for the two section headers. */
@@ -287,6 +314,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(seedWorkflows[0]?.id ?? null);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
+  const [treeSelection, setTreeSelectionState] = useState<LibraryNode[]>(
+    seedWorkflows[0] ? [{ kind: "workflow", id: seedWorkflows[0].id }] : [],
+  );
+  const [peeking, setPeeking] = useState(false);
   // Which branches are open. Nothing stored yet means everything open — the shape
   // of the library is the first thing worth seeing.
   const [expanded, setExpandedState] = useState<Set<string>>(() => {
@@ -474,6 +505,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setFiles(result.tree.files);
     appendAudit(record);
     return null;
+  };
+
+  /** Write a whole batch at once, snapshotting first so undo takes the batch back
+   *  as a unit rather than one node at a time — a bulk delete you can only undo
+   *  in pieces is not much of an undo. */
+  const applyBulk = (
+    next: LibraryTree,
+    record: { category: AuditCategory; action: string; target: string; detail?: string },
+  ) => {
+    setUndoStack({
+      label: `${record.action.charAt(0).toUpperCase()}${record.action.slice(1)} ${record.target}`,
+      tree,
+      selection: { workflow: selectedWorkflowId, folder: selectedFolderId, file: selectedFileId },
+    });
+    setFolders(next.folders);
+    setWorkflows(next.workflows);
+    setFiles(next.files);
+    appendAudit(record);
   };
 
   /** The label a node is known by in the trail — read before the edit, since a
@@ -723,6 +772,61 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       });
     },
     countUnder: (node) => countUnderNode(tree, node),
+    treeSelection,
+    setTreeSelection: (nodes) => {
+      // Choosing what's selected is choosing what the pane answers about, so it
+      // ends a peek.
+      setPeeking(false);
+      setTreeSelectionState(nodes);
+    },
+    peeking,
+    peekNode: (node) => {
+      setPeeking(true);
+      if (node.kind === "folder") {
+        setSelectedFolderId(node.id);
+        setSelectedWorkflowId(null);
+        setSelectedFileId(null);
+      } else if (node.kind === "workflow") {
+        setSelectedWorkflowId(node.id);
+        setSelectedFolderId(null);
+        setSelectedFileId(null);
+      } else {
+        setSelectedFileId(node.id);
+        setSelectedWorkflowId(null);
+        setSelectedFolderId(null);
+      }
+    },
+    countUnderAll: (nodes) => countUnderAllNodes(tree, nodes),
+    moveNodes: (nodes, target) => {
+      const result = moveManyInTree(tree, nodes, target);
+      if (result.moved > 0) {
+        applyBulk(result.tree, {
+          category: "lifecycle",
+          action: "moved",
+          target: `${result.moved} item${result.moved === 1 ? "" : "s"}`,
+          detail:
+            target.kind === "root"
+              ? `to the top of ${target.visibility === "public" ? "Public" : "Private"}`
+              : `into ${folders.find((f) => f.id === target.id)?.name ?? target.id}`,
+        });
+      }
+      return { moved: result.moved, refusals: result.refusals };
+    },
+    deleteNodes: (nodes) => {
+      const under = countUnderAllNodes(tree, nodes);
+      const result = deleteManyInTree(tree, nodes);
+      if (result.moved > 0) {
+        applyBulk(result.tree, {
+          category: "governance",
+          action: "deleted",
+          target: `${result.moved} item${result.moved === 1 ? "" : "s"}`,
+          detail: `${under.folders} folder${under.folders === 1 ? "" : "s"}, ${under.workflows} workflow${under.workflows === 1 ? "" : "s"}, ${under.files} file${under.files === 1 ? "" : "s"}`,
+        });
+        for (const node of nodes) forgetNode(node);
+        setTreeSelectionState([]);
+      }
+      return { moved: result.moved, refusals: result.refusals };
+    },
     isExpanded: (id) => expanded.has(id),
     toggleExpanded: (id) => {
       const next = new Set(expanded);

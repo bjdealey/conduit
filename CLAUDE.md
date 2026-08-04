@@ -600,6 +600,27 @@ written that way and silently did nothing: StrictMode's double invocation ran th
 first pass set the ref, the second pass saw it set and skipped the update — and React keeps the
 second pass. It's a `useLayoutEffect` keyed on `[isOpen, openTo]` now.
 
+**Multi-select, and the two ideas it forced apart.** The tree now keeps `treeSelection` (what a bulk
+action would act on) separately from the `selected*Id` fields (what the detail pane is showing). They
+were one thing; they can't be, because the row's **info button** opens a row *without* touching the
+selection — the whole point being to read something without losing a selection that took several
+clicks to build. A plain click sets both, a ⌘/Ctrl-click only the selection, the info button only the
+open item. `peeking` marks the third case and outranks the selection summary in both the pane and the
+breadcrumb, or the button couldn't serve the one case it exists for.
+- Shift-click and Shift+Arrow take a range **in `visibleRows` order** — the same single source the
+  arrow keys use, so the range is what the eye sees between the two rows.
+- The two facts compose visually rather than ranking: selection is the fill, the open row is the
+  leading bar. A plain click sets both, so the ordinary single-selection case looks exactly as before.
+- **A menu opened on a selected row acts on the whole selection** (`Move 2 items to…`), and its
+  trigger says so. Right-clicking one of four selected rows and getting an action that touches only
+  that one is a good way to delete the wrong three.
+- `withoutCovered` drops nodes already covered by a selected folder — the cascade reaches them
+  anyway, and acting twice turns "3 moved" into "3 moved, 2 refused because they no longer exist".
+- Bulk edits apply **in sequence over the accumulating tree**, so a collision between two moved
+  siblings is caught rather than allowed. Partial success is normal and reported: losing the
+  successes because one node was mirrored would be the wrong trade. `sharedMoveTargets` is the
+  intersection, so a batch never offers somewhere only half of it could go.
+
 **Still seed-backed.** Edits live in React state: they survive navigation, not a reload — except the
 expansion set, which is persisted. The persistence path is the same one the library's reads will take
 (PostgREST/Edge Functions), and the rules in `src/lib/library.ts` are the ones a server would have to

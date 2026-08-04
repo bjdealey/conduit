@@ -20,6 +20,8 @@ import {
   Globe,
   Link2,
   Lock,
+  Info,
+  Layers,
   MoreHorizontal,
   Package,
   Pencil,
@@ -48,6 +50,7 @@ import {
   kindOfFile,
   moveTargets,
   readOnlyReason,
+  sharedMoveTargets,
   type LibraryNode,
   type LibraryTree,
   type MoveTarget,
@@ -135,10 +138,23 @@ type TreeCtx = {
   commitRename: (node: LibraryNode, name: string) => void;
   move: (node: LibraryNode, target: MoveTarget) => void;
   remove: (node: LibraryNode) => void;
+  moveMany: (nodes: LibraryNode[], target: MoveTarget) => void;
+  removeMany: (nodes: LibraryNode[]) => void;
+  countUnderAll: (nodes: LibraryNode[]) => { folders: number; workflows: number; files: number };
   createFolder: (target: MoveTarget) => void;
   createFile: (folderId: string, extension: string) => void;
   newWorkflowIn: (folderId: string) => void;
   countUnder: (node: LibraryNode) => { folders: number; workflows: number; files: number };
+  /** The multi-selection: what a bulk action would act on. Distinct from what the
+   *  detail pane is showing, so the info button can open a row without disturbing
+   *  a selection that took several clicks to build. */
+  selection: LibraryNode[];
+  isSelected: (id: string) => boolean;
+  /** A click on a row, carrying its modifiers: plain replaces the selection,
+   *  ctrl/cmd toggles one row, shift takes the range from the anchor. */
+  clickRow: (id: string, modifiers: { meta: boolean; shift: boolean }) => void;
+  /** Open a node in the detail pane without touching the selection. */
+  peek: (node: LibraryNode) => void;
   /** The hovered row, held here rather than per-row so it is single by
    *  construction: two rows cannot each believe they are hovered, which is what
    *  made two of them light up at once. */
@@ -190,6 +206,7 @@ function TreeRow({
   onSelect,
   trailing,
   menu,
+  info,
   droppable = false,
 }: {
   id: string;
@@ -207,6 +224,8 @@ function TreeRow({
   onSelect: () => void;
   trailing?: ReactNode;
   menu?: ReactNode;
+  /** Opens this row in the detail pane without changing the selection. */
+  info?: ReactNode;
   /** Whether a drag may land here (folders and the section headers). */
   droppable?: boolean;
 }) {
@@ -235,9 +254,15 @@ function TreeRow({
   // without this the highlight drops off the one row you are demonstrably acting
   // on. Hover and an open menu can't be on different rows anyway — the menu's
   // dismissal overlay covers the tree while it is open.
+  // Two independent facts, composed rather than ranked: `selected` is what a bulk
+  // action would touch (the fill), `active` is what the detail pane is showing
+  // (the leading bar). A plain click sets both, so the ordinary single-selection
+  // case looks exactly as it did; the info button sets only the second, and a
+  // ctrl-click only the first.
+  const selected = node !== undefined && ctx.isSelected(id);
   const background = isOver
     ? "var(--blue-a3)"
-    : active
+    : selected
       ? "var(--color-component-active)"
       : hovered || menuOpen
         ? "var(--color-transparent-hover)"
@@ -248,7 +273,8 @@ function TreeRow({
       role="treeitem"
       aria-label={label}
       aria-level={depth + 1}
-      aria-selected={active}
+      aria-selected={node !== undefined ? selected : undefined}
+      aria-current={active ? "true" : undefined}
       aria-expanded={expandable ? open : undefined}
       tabIndex={ctx.cursorId === id ? 0 : -1}
       data-tree-row={id}
@@ -277,8 +303,16 @@ function TreeRow({
       // Only clear if this row is still the hovered one — leave/enter can arrive
       // in either order when the pointer crosses a boundary.
       onMouseLeave={() => ctx.unhoverRow(id)}
-      onClick={() => {
+      onClick={(e) => {
         ctx.setCursor(id);
+        if (node && (e.metaKey || e.ctrlKey || e.shiftKey)) {
+          // A modifier-click is about the selection, never about opening or
+          // toggling: shift-clicking a folder to extend a range must not also
+          // collapse it.
+          ctx.clickRow(id, { meta: e.metaKey || e.ctrlKey, shift: e.shiftKey });
+          return;
+        }
+        if (node) ctx.clickRow(id, { meta: false, shift: false });
         onSelect();
       }}
       onContextMenu={(e) => {
@@ -346,7 +380,14 @@ function TreeRow({
         // pane, and the status and owner are worth more at rest than an action
         // nobody is reaching for yet. Reaching for it swaps them.
         <span className="flex shrink-0 items-center gap-1.5 pr-0.5">
-          {revealed && menu ? menu : trailing}
+          {revealed && menu ? (
+            <>
+              {info}
+              {menu}
+            </>
+          ) : (
+            trailing
+          )}
         </span>
       )}
     </div>
@@ -416,18 +457,25 @@ function nodeLabel(tree: LibraryTree, node: LibraryNode): string {
  *  that always fail teaches nothing — the reason does. */
 function RowMenu({ node, ctx }: { node: LibraryNode; ctx: TreeCtx }) {
   const { tree } = ctx;
-  const name = nodeLabel(tree, node);
   const readOnly = readOnlyReason(tree, node);
+  // A menu opened on a row that is part of a multi-selection acts on the whole
+  // selection: right-clicking one of four selected rows and getting an action
+  // that touches only that one is a good way to delete the wrong three.
+  const batch = ctx.isSelected(node.id) && ctx.selection.length > 1 ? ctx.selection : [node];
+  const many = batch.length > 1;
+  const name = many ? `${batch.length} items` : nodeLabel(tree, node);
 
   const panel = (id: string, go: (next: string) => void): MenuPanel => {
-    if (readOnly) return { heading: "Read-only", note: readOnly, items: [] };
+    if (readOnly && !many) return { heading: "Read-only", note: readOnly, items: [] };
 
     if (id === "move") {
+      const targets = many ? sharedMoveTargets(tree, batch) : moveTargets(tree, node);
       return {
         heading: `Move ${name}`,
+        note: many ? "Only somewhere every selected item can go." : undefined,
         onBack: () => go("root"),
         scroll: true,
-        items: moveTargets(tree, node).map((target) => ({
+        items: targets.map((target) => ({
           id: target.kind === "root" ? `root:${target.visibility}` : target.id,
           label: targetLabel(tree, target),
           detail:
@@ -435,28 +483,50 @@ function RowMenu({ node, ctx }: { node: LibraryNode; ctx: TreeCtx }) {
               ? folderPath(tree.folders, target.id).split(" / ").slice(0, -1).join(" / ") || "top level"
               : undefined,
           icon: <FolderIcon size={14} strokeWidth={1.8} />,
-          onSelect: () => ctx.move(node, target),
+          onSelect: () => (many ? ctx.moveMany(batch, target) : ctx.move(node, target)),
         })),
       };
     }
 
     if (id === "delete") {
-      const under = ctx.countUnder(node);
+      const under = many ? ctx.countUnderAll(batch) : ctx.countUnder(node);
+      const cascades = many || node.kind === "folder";
       return {
         heading: `Delete ${name}`,
-        note:
-          node.kind === "folder"
-            ? `${under.folders} folder${under.folders === 1 ? "" : "s"}, ${under.workflows} workflow${under.workflows === 1 ? "" : "s"} and ${under.files} file${under.files === 1 ? "" : "s"} go with it.`
-            : "This can't be undone from anywhere but the undo bar.",
+        note: cascades
+          ? `${under.folders} folder${under.folders === 1 ? "" : "s"}, ${under.workflows} workflow${under.workflows === 1 ? "" : "s"} and ${under.files} file${under.files === 1 ? "" : "s"} go with it.`
+          : "This can't be undone from anywhere but the undo bar.",
         onBack: () => go("root"),
         items: [
-          { id: "confirm", label: "Delete", icon: <Trash2 size={14} strokeWidth={1.8} />, danger: true, onSelect: () => ctx.remove(node) },
+          {
+            id: "confirm",
+            label: "Delete",
+            icon: <Trash2 size={14} strokeWidth={1.8} />,
+            danger: true,
+            onSelect: () => (many ? ctx.removeMany(batch) : ctx.remove(node)),
+          },
           { id: "cancel", label: "Cancel", icon: <X size={14} strokeWidth={1.8} />, onSelect: () => {} },
         ],
       };
     }
 
     const items: ActionItem[] = [];
+    if (many) {
+      // Rename and "new here" are single-row acts; a batch offers only the two
+      // things that mean something over a set.
+      items.push(
+        { id: "move", label: `Move ${name} to…`, icon: <ArrowUpRight size={14} strokeWidth={1.8} />, keepOpen: true, onSelect: () => go("move") },
+        {
+          id: "delete",
+          label: `Delete ${name}`,
+          icon: <Trash2 size={14} strokeWidth={1.8} />,
+          danger: true,
+          keepOpen: true,
+          onSelect: () => go("delete"),
+        },
+      );
+      return { heading: `${batch.length} selected`, items };
+    }
     if (node.kind === "folder") {
       items.push(
         {
@@ -523,6 +593,29 @@ function RowMenu({ node, ctx }: { node: LibraryNode; ctx: TreeCtx }) {
   );
 }
 
+/** Opens a row in the detail pane without selecting it.
+ *
+ *  The point is the multi-selection: once several rows are selected, clicking one
+ *  to read it would throw the selection away. This reads it and leaves the
+ *  selection alone — the pane's breadcrumb says which row you're looking at, and
+ *  the row takes the leading bar without the selection fill. */
+function InfoButton({ label, onOpen }: { label: string; onOpen: () => void }) {
+  return (
+    <button
+      type="button"
+      tabIndex={-1}
+      aria-label={`Show ${label}`}
+      onClick={(e) => {
+        e.stopPropagation();
+        onOpen();
+      }}
+      className="focusable flex size-6 items-center justify-center rounded-md text-tertiary-foreground transition-colors hover:bg-transparent-hover hover:text-primary-foreground"
+    >
+      <Info size={14} strokeWidth={1.8} />
+    </button>
+  );
+}
+
 /* ------------------------------------------------------------------- tree rows */
 
 /** A selectable workflow leaf: type icon, name, then status and owner trailing.
@@ -568,6 +661,7 @@ function WorkflowLeaf({
           {owner && <Avatar member={owner} size={18} />}
         </>
       }
+      info={<InfoButton label={workflow.name} onOpen={() => ctx.peek(node)} />}
       menu={ctx.editable ? <RowMenu node={node} ctx={ctx} /> : undefined}
     />
   );
@@ -605,6 +699,7 @@ function FileLeaf({
       open={false}
       onSelect={onSelect}
       trailing={owner ? <Avatar member={owner} size={18} /> : undefined}
+      info={<InfoButton label={file.name} onOpen={() => ctx.peek(node)} />}
       menu={ctx.editable ? <RowMenu node={node} ctx={ctx} /> : undefined}
     />
   );
@@ -673,6 +768,7 @@ function FolderBranch({
         open={open}
         onSelect={() => onSelectFolder(folderId)}
         droppable
+        info={<InfoButton label={folder.name} onOpen={() => ctx.peek(node)} />}
         menu={ctx.editable ? <RowMenu node={node} ctx={ctx} /> : undefined}
       />
       <Reveal open={open} role="group">
@@ -808,6 +904,10 @@ function WorkflowLibrary({
   const [cursorId, setCursorId] = useState<string | null>(null);
   const [treeFocused, setTreeFocused] = useState(false);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  // Where a shift-range measures from. Set by every plain or toggling click, so
+  // shift always extends from the last row you touched rather than from whatever
+  // the detail pane happens to be showing.
+  const [anchorId, setAnchorId] = useState<string | null>(null);
   const [menuFor, setMenuFor] = useState<{ id: string; panel: string } | null>(null);
   const [dragging, setDragging] = useState<LibraryNode | null>(null);
   const [dropOn, setDropOn] = useState<string | null>(null);
@@ -849,10 +949,30 @@ function WorkflowLibrary({
     row.kind === "root" ? null : { kind: row.kind, id: row.id };
 
   const openRow = (row: TreeRowInfo) => {
-    if (row.kind === "root") store.toggleExpanded(row.id);
+    if (row.kind === "root") return store.toggleExpanded(row.id);
+    // Opening from the keyboard means the same thing as a plain click, selection
+    // included — otherwise Enter would show you a row the bulk actions don't
+    // think you picked.
+    store.setTreeSelection([{ kind: row.kind, id: row.id }]);
+    setAnchorId(row.id);
     if (row.kind === "folder") clickFolder(row.id);
     if (row.kind === "workflow") onSelect(row.id);
     if (row.kind === "file") onSelectFile(row.id);
+  };
+
+  /** Extend the selection from the anchor to a row, for Shift+Arrow. */
+  const extendTo = (id: string) => {
+    const from = rows.findIndex((r) => r.id === (anchorId ?? cursorId));
+    const to = rows.findIndex((r) => r.id === id);
+    if (from === -1 || to === -1) return;
+    if (!anchorId) setAnchorId(rows[from].id);
+    const [lo, hi] = from <= to ? [from, to] : [to, from];
+    store.setTreeSelection(
+      rows
+        .slice(lo, hi + 1)
+        .filter((r) => r.kind !== "root")
+        .map((r) => ({ kind: r.kind, id: r.id }) as LibraryNode),
+    );
   };
 
   const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -864,11 +984,12 @@ function WorkflowLibrary({
 
     switch (e.key) {
       case "ArrowDown":
+      case "ArrowUp": {
         e.preventDefault();
-        return focusRow(rowAfter(rows, row.id, 1));
-      case "ArrowUp":
-        e.preventDefault();
-        return focusRow(rowAfter(rows, row.id, -1));
+        const next = rowAfter(rows, row.id, e.key === "ArrowDown" ? 1 : -1);
+        if (e.shiftKey && next) extendTo(next);
+        return focusRow(next);
+      }
       case "ArrowRight":
         e.preventDefault();
         if (row.expandable && !row.expanded) return store.expand(row.id);
@@ -879,6 +1000,14 @@ function WorkflowLibrary({
         e.preventDefault();
         if (row.expandable && row.expanded) return store.toggleExpanded(row.id);
         return focusRow(row.parentId);
+      case "Escape":
+        // Back to one row — a multi-selection you can't put down is one you have
+        // to click your way out of.
+        if (store.treeSelection.length > 1) {
+          e.preventDefault();
+          store.setTreeSelection(node ? [node] : []);
+        }
+        return;
       case "Home":
         e.preventDefault();
         return focusRow(rows[0]?.id ?? null);
@@ -929,6 +1058,17 @@ function WorkflowLibrary({
     onSelectFolder(id);
   };
 
+  /** Report a batch honestly: what went through, and the first reason the rest
+   *  didn't. Silently dropping the refusals would make a partial move look total. */
+  const afterBatch = (moved: number, refusals: { name: string; reason: string }[]) => {
+    if (moved > 0) setUndoDismissed(false);
+    setRefusal(
+      refusals.length === 0
+        ? null
+        : `${moved} moved. ${refusals.length} couldn't be: ${refusals[0].reason}${refusals.length > 1 ? ` (and ${refusals.length - 1} more)` : ""}`,
+    );
+  };
+
   const afterEdit = (reason: string | null) => {
     setRefusal(reason);
     if (reason === null) setUndoDismissed(false);
@@ -968,6 +1108,16 @@ function WorkflowLibrary({
       if (reason === null && target.kind === "folder") store.expand(target.id);
     },
     remove: (node) => afterEdit(store.deleteNode(node)),
+    moveMany: (nodes, target) => {
+      const { moved, refusals } = store.moveNodes(nodes, target);
+      afterBatch(moved, refusals);
+      if (moved > 0 && target.kind === "folder") store.expand(target.id);
+    },
+    removeMany: (nodes) => {
+      const { moved, refusals } = store.deleteNodes(nodes);
+      afterBatch(moved, refusals);
+    },
+    countUnderAll: store.countUnderAll,
     createFolder: (target) => {
       setRefusal(null);
       const made = store.newFolder(target);
@@ -991,6 +1141,41 @@ function WorkflowLibrary({
     hoveredId,
     hoverRow: setHoveredId,
     unhoverRow: (id) => setHoveredId((current) => (current === id ? null : current)),
+    selection: store.treeSelection,
+    isSelected: (id) => store.treeSelection.some((n) => n.id === id),
+    clickRow: (id, modifiers) => {
+      const row = rows.find((r) => r.id === id);
+      if (!row || row.kind === "root") return;
+      const node: LibraryNode = { kind: row.kind, id: row.id };
+
+      if (modifiers.shift && anchorId) {
+        // Everything between the anchor and here, in the order the rows are
+        // drawn — which is why `visibleRows` is the one source of that order.
+        const from = rows.findIndex((r) => r.id === anchorId);
+        const to = rows.indexOf(row);
+        if (from !== -1) {
+          const [lo, hi] = from <= to ? [from, to] : [to, from];
+          store.setTreeSelection(
+            rows
+              .slice(lo, hi + 1)
+              .filter((r) => r.kind !== "root")
+              .map((r) => ({ kind: r.kind, id: r.id }) as LibraryNode),
+          );
+          return;
+        }
+      }
+      if (modifiers.meta) {
+        setAnchorId(id);
+        const already = store.treeSelection.some((n) => n.id === id);
+        store.setTreeSelection(
+          already ? store.treeSelection.filter((n) => n.id !== id) : [...store.treeSelection, node],
+        );
+        return;
+      }
+      setAnchorId(id);
+      store.setTreeSelection([node]);
+    },
+    peek: store.peekNode,
     cursorId,
     treeFocused,
     setCursor: setCursorId,
@@ -1764,6 +1949,135 @@ function FileDetail({
   );
 }
 
+/* --------------------------------------------------------- selection summary */
+
+/**
+ * What the detail pane shows while several rows are selected.
+ *
+ * It isn't a preview of any one of them — it's the answer to "what would a bulk
+ * action touch", which is the only question a multi-selection raises. The tally
+ * counts the whole cascade, so a selected folder is reported by what it holds
+ * rather than as one row, and anything read-only is named up front rather than
+ * discovered when the move half-fails.
+ */
+function SelectionDetail({
+  selection,
+  onOpen,
+}: {
+  selection: LibraryNode[];
+  onOpen: (node: LibraryNode) => void;
+}) {
+  const { folders, workflows, files, countUnderAll } = useStore();
+  const tree: LibraryTree = { folders, workflows, files };
+  const under = countUnderAll(selection);
+  const blocked = selection
+    .map((node) => ({ node, reason: readOnlyReason(tree, node) }))
+    .filter((r) => r.reason !== null);
+
+  const nameOf = (node: LibraryNode) => nodeLabel(tree, node) || node.id;
+  const iconOf = (node: LibraryNode) =>
+    node.kind === "folder" ? (
+      <FolderIcon size={14} strokeWidth={1.8} />
+    ) : node.kind === "workflow" ? (
+      <span style={{ color: WORKFLOW_ROW_ICON.tone }}>{WORKFLOW_ROW_ICON.icon}</span>
+    ) : (
+      <span style={{ color: FILE_ICON[kindOfFile(nameOf(node))].tone }}>
+        {FILE_ICON[kindOfFile(nameOf(node))].icon}
+      </span>
+    );
+
+  return (
+    <>
+      <DetailPane>
+        <div className="scrollbar-none flex-1 overflow-y-auto px-6 py-6">
+          <div className="mx-auto flex max-w-3xl flex-col gap-8">
+            <div className="grid grid-cols-3 gap-3">
+              <StatTile label="Selected" value={num(selection.length)} sub="rows in the tree" />
+              <StatTile
+                label="Workflows"
+                value={num(under.workflows)}
+                sub={under.folders > 1 ? `across ${under.folders} folders` : "in the selection"}
+              />
+              <StatTile label="Files" value={num(under.files)} sub="configs and documents" />
+            </div>
+
+            {blocked.length > 0 && (
+              <p className="rounded-xl px-3 py-2 text-body-sm" style={{ background: "var(--amber-a3)", color: "var(--amber-a11)" }}>
+                {blocked.length} of these {blocked.length === 1 ? "is" : "are"} mirrored from another
+                platform and can't be moved or deleted here. The rest still can — a batch reports what
+                went through and what didn't.
+              </p>
+            )}
+
+            <section className="flex flex-col gap-3">
+              <div className="flex flex-col gap-0.5">
+                <h3 className="text-body-base font-medium text-primary-foreground">In the selection</h3>
+                <span className="text-body-sm text-tertiary-foreground">
+                  A folder here brings everything beneath it. Open any row to leave the selection intact.
+                </span>
+              </div>
+              <div className="flex flex-col gap-1">
+                {selection.map((node) => {
+                  const reason = readOnlyReason(tree, node);
+                  return (
+                    <ContentRow
+                      key={node.id}
+                      icon={iconOf(node)}
+                      title={nameOf(node)}
+                      sub={
+                        node.kind === "folder"
+                          ? folderPath(folders, node.id)
+                          : reason
+                            ? "Mirrored — read-only here"
+                            : node.kind === "workflow"
+                              ? "Workflow"
+                              : FILE_ICON[kindOfFile(nameOf(node))].label
+                      }
+                      onOpen={() => onOpen(node)}
+                    />
+                  );
+                })}
+              </div>
+            </section>
+          </div>
+        </div>
+      </DetailPane>
+
+      <ContextPane>
+        <div className="flex flex-col gap-6 px-6 py-6">
+          <div className="flex flex-col gap-4">
+            <div className="flex size-12 items-center justify-center rounded-xl bg-component text-secondary-foreground">
+              <Layers size={22} strokeWidth={1.7} />
+            </div>
+            <div className="flex flex-col gap-2">
+              <h2 className="font-sans font-medium text-heading-4 text-primary-foreground">
+                {selection.length} selected
+              </h2>
+              <p className="text-body-base text-secondary-foreground">
+                Use a row's menu to move or delete the whole selection. Shift-click for a range,
+                {" "}
+                {"\u2318"}/Ctrl-click to add one, Escape to drop back to one.
+              </p>
+            </div>
+          </div>
+
+          <div className="h-px w-full" style={{ background: "var(--color-border-default)" }} />
+
+          <div className="flex flex-col gap-1">
+            <MetaRow label="Rows">{num(selection.length)}</MetaRow>
+            <MetaRow label="Folders">{num(under.folders)}</MetaRow>
+            <MetaRow label="Workflows">{num(under.workflows)}</MetaRow>
+            <MetaRow label="Files">{num(under.files)}</MetaRow>
+            <MetaRow label="Read-only">
+              {blocked.length === 0 ? <span className="text-tertiary-foreground">None</span> : num(blocked.length)}
+            </MetaRow>
+          </div>
+        </div>
+      </ContextPane>
+    </>
+  );
+}
+
 /* ------------------------------------------------------------------------ view */
 
 /* ------------------------------------------------------------------- board mode */
@@ -1861,6 +2175,9 @@ export function WorkflowsView() {
     selectedFileId,
     selectFile,
     expand,
+    treeSelection,
+    peeking,
+    peekNode,
     controls,
   } = useStore();
   const state = controls("workflows");
@@ -1921,7 +2238,20 @@ export function WorkflowsView() {
         selectedFileId={selectedFileId}
         onSelectFile={selectFile}
       />
-      {selected ? (
+      {treeSelection.length > 1 && !peeking ? (
+        // Several rows selected: the pane answers "what would a bulk action
+        // touch" rather than previewing one of them. Opening a row from the list
+        // leaves the selection intact — that is what the info button is for too.
+        <SelectionDetail
+          selection={treeSelection}
+          // Opening from the summary is a peek too — the list says the selection
+          // stays intact, so it had better.
+          onOpen={(node) => {
+            if (node.kind === "folder") expand(node.id);
+            peekNode(node);
+          }}
+        />
+      ) : selected ? (
         <WorkflowDetail workflow={selected} onSelectWorkflow={selectWorkflow} />
       ) : selectedFolder ? (
         <FolderDetail

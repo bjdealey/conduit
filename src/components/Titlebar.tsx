@@ -107,6 +107,9 @@ export function Titlebar() {
     expand,
     selectedFileId,
     selectFile,
+    treeSelection,
+    setTreeSelection,
+    peeking,
     folders,
     files,
     selectedRunnerId,
@@ -159,7 +162,9 @@ export function Titlebar() {
       ? [{ label: "Users", onClick: () => selectUser(null) }, { label: openUser.name }]
       : [{ label: "Users" }];
   } else if (view === "workflows") {
-    hasContext = !!openWorkflow || !!openFile || folderCrumbs.length > 0;
+    hasContext = treeSelection.length > 1 || !!openWorkflow || !!openFile || folderCrumbs.length > 0;
+    // A peek is what the pane is showing, so it outranks the selection summary here too.
+    const showingSelection = treeSelection.length > 1 && !peeking;
     // Every ancestor is a crumb you can climb to; the Breadcrumb renders the last
     // one inert, so whatever is open is the only dead label.
     // Climbing to an ancestor reveals it in the tree as well as opening it — the
@@ -171,7 +176,15 @@ export function Titlebar() {
         selectFolder(f.id);
       },
     }));
-    items = openWorkflow
+    items = showingSelection
+      ? // A multi-selection is what the pane is showing, so it is what the trail
+        // should name — otherwise the breadcrumb keeps announcing a single row
+        // that is no longer what you are looking at.
+        [
+          { label: "Workflows", onClick: () => setTreeSelection([]) },
+          { label: `${treeSelection.length} selected` },
+        ]
+      : openWorkflow
       ? [{ label: "Workflows", onClick: () => selectWorkflow(null) }, ...trail, { label: openWorkflow.name }]
       : openFile
         ? [{ label: "Workflows", onClick: () => selectFile(null) }, ...trail, { label: openFile.name }]
