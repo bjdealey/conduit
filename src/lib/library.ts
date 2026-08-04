@@ -344,6 +344,98 @@ export function deleteNode(tree: LibraryTree, node: LibraryNode): EditResult {
   return { ok: true, tree: { ...tree, files: tree.files.filter((f) => f.id !== node.id) } };
 }
 
+/* ------------------------------------------------------------------ in bulk */
+
+/** What a bulk edit did: the tree it produced, and the reason each node it
+ *  couldn't touch was refused. Partial success is the normal case — a selection
+ *  spanning a mirrored workflow shouldn't cost you the rest of the move. */
+export type BulkResult = { tree: LibraryTree; moved: number; refusals: { name: string; reason: string }[] };
+
+/**
+ * Nodes with no selected ancestor.
+ *
+ * Acting on a folder already acts on everything beneath it, so a selection
+ * holding both a folder and its contents would move the child twice or delete it
+ * and then fail to find it. Dropping the covered ones is not a tidy-up: it is the
+ * difference between "3 items moved" and "3 items moved, 2 refused because they
+ * no longer exist".
+ */
+export function withoutCovered(tree: LibraryTree, nodes: LibraryNode[]): LibraryNode[] {
+  const folders = nodes.filter((n) => n.kind === "folder");
+  const covered = new Set<string>();
+  for (const folder of folders) {
+    for (const id of subtreeIds(tree.folders, folder.id)) {
+      if (id !== folder.id) covered.add(id);
+      for (const w of tree.workflows) if (w.folderId === id) covered.add(w.id);
+      for (const f of tree.files) if (f.folderId === id) covered.add(f.id);
+    }
+    for (const w of tree.workflows) if (w.folderId === folder.id) covered.add(w.id);
+    for (const f of tree.files) if (f.folderId === folder.id) covered.add(f.id);
+  }
+  return nodes.filter((n) => !covered.has(n.id));
+}
+
+/** Move every node that can be moved, and say why the rest couldn't. Applied in
+ *  sequence over the accumulating tree, so each edit sees the last one's result —
+ *  a name collision between two moved siblings is caught, not silently allowed. */
+export function moveNodes(tree: LibraryTree, nodes: LibraryNode[], target: MoveTarget): BulkResult {
+  let current = tree;
+  let moved = 0;
+  const refusals: { name: string; reason: string }[] = [];
+  for (const node of withoutCovered(tree, nodes)) {
+    const name = nodeName(current, node) ?? node.id;
+    const result = moveNode(current, node, target);
+    if (result.ok) {
+      current = result.tree;
+      moved += 1;
+    } else {
+      refusals.push({ name, reason: result.reason });
+    }
+  }
+  return { tree: current, moved, refusals };
+}
+
+/** Delete every node that can be deleted, and say why the rest couldn't. */
+export function deleteNodes(tree: LibraryTree, nodes: LibraryNode[]): BulkResult {
+  let current = tree;
+  let moved = 0;
+  const refusals: { name: string; reason: string }[] = [];
+  for (const node of withoutCovered(tree, nodes)) {
+    const name = nodeName(current, node) ?? node.id;
+    const result = deleteNode(current, node);
+    if (result.ok) {
+      current = result.tree;
+      moved += 1;
+    } else {
+      refusals.push({ name, reason: result.reason });
+    }
+  }
+  return { tree: current, moved, refusals };
+}
+
+/** Everything a bulk delete would take: the selection's own rows plus every
+ *  subtree under a selected folder, counted once. */
+export function countUnderAll(tree: LibraryTree, nodes: LibraryNode[]): { folders: number; workflows: number; files: number } {
+  const total = { folders: 0, workflows: 0, files: 0 };
+  for (const node of withoutCovered(tree, nodes)) {
+    const under = countUnder(tree, node);
+    total.folders += under.folders;
+    total.workflows += under.workflows;
+    total.files += under.files;
+  }
+  return total;
+}
+
+/** Destinations legal for *every* node in a selection — the intersection, so a
+ *  bulk move never offers somewhere only half of them could go. */
+export function sharedMoveTargets(tree: LibraryTree, nodes: LibraryNode[]): MoveTarget[] {
+  const live = withoutCovered(tree, nodes);
+  if (live.length === 0) return [];
+  const key = (t: MoveTarget) => (t.kind === "root" ? `root:${t.visibility}` : t.id);
+  const [first, ...rest] = live.map((n) => moveTargets(tree, n));
+  return first.filter((t) => rest.every((set) => set.some((other) => key(other) === key(t))));
+}
+
 /* ---------------------------------------------------------------------- create */
 
 /** The next free id for a prefix, e.g. "fld_4". Derived from what's already
