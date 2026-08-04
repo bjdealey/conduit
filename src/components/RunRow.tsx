@@ -32,10 +32,11 @@ function placementOf(run: Run, requirements: Parameters<typeof pickRunner>[0] | 
  *  contexts (Activity) to surface the workflow name; omit it inside a single
  *  workflow's history. */
 export function RunRow({ run, showWorkflow = false }: { run: Run; showWorkflow?: boolean }) {
-  const { select, setView, workflowById } = useStore();
+  const { select, setView, workflowById, isMobile } = useStore();
   const [open, setOpen] = useState(false);
   const workflow = showWorkflow ? workflowById(run.workflowId) : undefined;
   const placement = placementOf(run, workflowById(run.workflowId)?.requirements);
+  const timing = `${run.startedAt} · ${run.duration}`;
 
   return (
     <div className="flex flex-col border-border-default border-b-[0.5px]">
@@ -50,17 +51,37 @@ export function RunRow({ run, showWorkflow = false }: { run: Run; showWorkflow?:
           className="shrink-0 text-tertiary-foreground transition-transform"
           style={{ transform: open ? "rotate(90deg)" : "none" }}
         />
-        <span className="w-20 shrink-0 font-departure-mono text-[0.7rem] text-tertiary-foreground">{run.id}</span>
-        <RunStateChip state={run.state} />
-        {showWorkflow ? (
-          <span className="flex min-w-0 flex-1 items-center gap-1.5">
-            <WorkflowIcon size={13} strokeWidth={1.8} className="shrink-0 text-tertiary-foreground" />
-            <span className="truncate text-body-sm text-primary-foreground">{workflow?.name ?? run.workflowId}</span>
-          </span>
-        ) : (
-          <span className="min-w-0 flex-1 truncate text-body-sm text-secondary-foreground">{run.startedBy}</span>
+        {/* Six columns across 390px is six unreadable columns, so on a phone the
+            id, the placement and the timing drop to a second line under the name.
+            Nothing is dropped: the placement is the one line that distinguishes
+            this from a device list, and the id is how a run is talked about. */}
+        {!isMobile && (
+          <span className="w-20 shrink-0 font-departure-mono text-[0.7rem] text-tertiary-foreground">{run.id}</span>
         )}
-        {placement && (
+        <RunStateChip state={run.state} />
+        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+          {showWorkflow ? (
+            <span className="flex min-w-0 items-center gap-1.5">
+              <WorkflowIcon size={13} strokeWidth={1.8} className="shrink-0 text-tertiary-foreground" />
+              <span className="truncate text-body-sm text-primary-foreground">{workflow?.name ?? run.workflowId}</span>
+            </span>
+          ) : (
+            <span className="min-w-0 truncate text-body-sm text-secondary-foreground">{run.startedBy}</span>
+          )}
+          {isMobile && (
+            <span className="flex flex-wrap items-center gap-x-2 font-departure-mono text-[0.65rem] text-tertiary-foreground">
+              <span>{run.id}</span>
+              {placement && (
+                <span className="inline-flex items-center gap-1" title={placement.rationale}>
+                  <Cpu size={11} strokeWidth={1.8} />
+                  {placement.label}
+                </span>
+              )}
+              <span>{timing}</span>
+            </span>
+          )}
+        </span>
+        {!isMobile && placement && (
           <span
             title={placement.rationale}
             className="inline-flex shrink-0 items-center gap-1 font-departure-mono text-[0.65rem] text-tertiary-foreground"
@@ -69,9 +90,9 @@ export function RunRow({ run, showWorkflow = false }: { run: Run; showWorkflow?:
             {placement.label}
           </span>
         )}
-        <span className="shrink-0 font-departure-mono text-[0.65rem] text-tertiary-foreground">
-          {run.startedAt} · {run.duration}
-        </span>
+        {!isMobile && (
+          <span className="shrink-0 font-departure-mono text-[0.65rem] text-tertiary-foreground">{timing}</span>
+        )}
       </button>
       {open && (
         <div className="px-4 pb-4 pt-1">

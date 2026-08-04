@@ -625,3 +625,82 @@ breadcrumb, or the button couldn't serve the one case it exists for.
 expansion set, which is persisted. The persistence path is the same one the library's reads will take
 (PostgREST/Edge Functions), and the rules in `src/lib/library.ts` are the ones a server would have to
 enforce too.
+
+## Implemented so far — stage 10: the phone shell
+
+One breakpoint, two shells. Verified in a real browser at 390×844 (Chromium, iPhone 13 emulation),
+light and dark: no page errors, no horizontal overflow on any view, 252 tests pass, and the desktop
+shell is unchanged at 1440×900.
+
+**One breakpoint, written twice, kept in step.** `MOBILE_MAX_PX = 767` in `src/lib/responsive.ts`
+and the `@media (max-width: 767px)` block in `app.css`. Structure is a React decision (which nav
+renders, which pane is on screen), scaling is a CSS one; neither language can do the other's half.
+Anything wider is the desktop shell, which already has controls for having less room.
+- `useIsMobile()` is live — rotating a phone or dragging a window narrow swaps shells with no reload.
+- `isMobileNow()` is the synchronous read, for `useState` initialisers that must be right on the
+  *first* paint. **On a phone nothing starts open**: the seeded first-row selections (`selectedId`,
+  `selectedWorkflowId`, `selectedUserId`, `selectedRunnerId`, `treeSelection`) are desktop-only, or
+  Workflows would land you inside the first workflow instead of on the library.
+
+**Bottom bar, not a rail** (`BottomNav.tsx`, `MOBILE_BAR` in `data/nav`). The rail costs 56px of a
+390px screen permanently and puts its destinations furthest from the thumb. Four destinations plus
+"More"; the rest live in the overflow sheet with search, the account row and the theme switch.
+- `splitDestinations` is pure and tested. It runs on the **already gated** list, so a destination the
+  tier or capability set hides never takes a slot — and a named-but-hidden item doesn't leave a gap.
+- "More" carries the active state when the open view is in the overflow (or is the builder), so the
+  bar never claims nothing is open.
+- Icons moved to `data/navIcons.tsx` and are shared with the rail. Two records would drift.
+
+**Drill-in belongs to the layout primitives, not the views.** `<SplitView mobile={selected ?
+"detail" : "list"}>` is the whole declaration; `Pane`, `DetailPane` and `EmptyDetail` read it from
+context. The hidden half is **not rendered**, so a 200-row list isn't sitting in the DOM under the
+detail. Thirteen views each inventing this is thirteen answers to keep in step.
+- A view with no drill (a board, a dashboard) declares nothing and keeps every pane on both shells.
+- Activity declares `mobile="detail"` unconditionally: its leading pane is a *scoping* rail, not a
+  list you drill into, and the runs are what the page is for.
+- `viewMode()` returns the first mode on a phone. Every alternate (board, grid, timeline, diagram)
+  is multi-column by definition. The preference is kept, not cleared.
+
+**The context pane becomes a bottom sheet** (`Sheet.tsx`, portalled to `<body>` — the panes it opens
+over are clipping scroll boxes several levels deep, and z-index does not survive `overflow: hidden`).
+Same titlebar toggle, same `infoPaneOpen` flag, but **the phone's state is never persisted and always
+starts closed**, and it closes on navigation and on a shell swap — a modal that outlives what opened
+it is a dialog nobody opened. `contextLabel` is one string for the toggle and the sheet title.
+
+**The builder still works on a phone.** The flow is the screen; `PaletteBody` was split out of
+`Palette` so the catalogue can live in a sheet opened from the footer's "Add step", and selecting a
+step opens the configuration sheet — otherwise tapping a step does nothing you can see, and the one
+thing the builder is for has no way in.
+
+**Back is one tap to the section, not one level up the trail.** The phone breadcrumb collapses to
+where you are plus an arrow firing the **first** clickable crumb. Climbing a folder at a time would
+land you on a series of folder details you never asked for; where a trail is two crumbs long the two
+readings are the same crumb anyway.
+
+**A folder tap only toggles on a phone.** The tree *is* the screen there, so opening a folder would
+replace it — and browsing two levels down would be impossible, because every tap out of the tree is
+a tap out of the tree. A folder is a container you look inside; a workflow or a file is where you go.
+Its detail is still one tap up the breadcrumb from anything filed in it.
+
+**No hover means no hover-revealed controls.** Tree rows show their metadata *and* their menu
+together rather than swapping one for the other; the peek button isn't among them, because a tap on
+the row is already the way in. Rail tooltips and flyouts are `display: none`.
+
+**Rows that were columns become two lines.** A run row is six columns and an issue row five; at
+390px the one column that must survive (the name) is the one that truncates. Both keep everything —
+id, placement, timing, priority, reach — on a second line under the title.
+
+⚠️ **A grid item's automatic minimum size is its content, not zero.** Home's panels sized their
+implicit column to their widest row, so the page laid out ~600px wide inside a 390px screen with the
+right-hand side simply cut off — and `scrollWidth` still read 390, so nothing scrolled to reveal it.
+`min-w-0` on the item is the fix. This also bit every desktop window narrower than the `lg`
+breakpoint, where that column is implicit rather than declared.
+
+**Tab strips scroll sideways** rather than wrapping or clipping — a tab you cannot reach is a section
+of the page you cannot reach. Settings needs it most: its pages navigate from the sidebar rail, which
+the phone shell doesn't mount, so `SettingsContent` renders the same strip to reach them at all.
+
+**Type scales from one place.** The mobile block raises `--font-scale-03/04/05` (13→14px body-sm,
+15→16px body-base — also the size iOS uses to decide whether to zoom a focused input). Headings are
+untouched: already large, and scaling them costs more of the screen than it buys. Tap targets follow:
+`.tap-target` is 44px, tree rows 42px, bar items 56px, sheet rows 48px.

@@ -269,6 +269,7 @@ nav[data-expanded="false"] .rail-fade-collapsed {
 .my-2              { margin-top: 0.5rem;   margin-bottom: 0.5rem; }
 .ml-1\.5           { margin-left: 0.375rem; }
 .-ml-1             { margin-left: -0.25rem; }
+.-ml-2             { margin-left: -0.5rem; }
 .-mx-1             { margin-left: -0.25rem; margin-right: -0.25rem; }
 .-mx-2             { margin-left: -0.5rem;  margin-right: -0.5rem; }
 .pb-5              { padding-bottom: 1.25rem; }
@@ -281,6 +282,7 @@ nav[data-expanded="false"] .rail-fade-collapsed {
 
 /* Activity screen (run stream, insights, timeline). */
 .pl-4              { padding-left: 1rem; }
+.gap-x-2           { column-gap: 0.5rem; }
 .gap-x-5           { column-gap: 1.25rem; }
 .gap-y-1           { row-gap: 0.25rem; }
 /* Insights' KPI row goes 4-up once there's room. */
@@ -402,4 +404,249 @@ nav[data-expanded="false"] .rail-fade-collapsed {
 }
 @media (prefers-reduced-motion: reduce) {
   .pop-in { animation: none; }
+}
+
+/* =============================================================================
+   The phone shell
+   -----------------------------------------------------------------------------
+   Structure — which nav renders, which pane is on screen — is a React decision
+   and lives in `src/lib/responsive.ts` (`useIsMobile`) and the layout primitives.
+   What lives here is everything CSS is better at: the chrome that only the phone
+   has, and the scaling of type and targets.
+
+   The breakpoint is written twice, once in each language, and the two must agree:
+   767px here and `MOBILE_MAX_PX` there. Anything wider is the desktop shell,
+   which already has controls for having less room (it collapses the rail and the
+   context pane).
+   ============================================================================= */
+
+/* ---- chrome the phone has and the desktop doesn't ------------------------- */
+
+/* Bottom bar. Shell-coloured like the rail it replaces — it is chrome, not part
+   of the content panel — with a hairline above it and the home-indicator inset
+   added below the row rather than inside it, so the buttons keep their height on
+   a device that has one and lose nothing on a device that doesn't. */
+.bottom-nav {
+  display: flex;
+  align-items: stretch;
+  flex-shrink: 0;
+  background: var(--color-shell);
+  border-top: 0.5px solid var(--color-border-default);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  position: relative;
+  z-index: 30;
+}
+.bottom-nav-item {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  /* 56px of touch target, comfortably past the 44px floor, before the safe-area
+     inset the bar adds underneath it. */
+  height: 56px;
+  border-radius: 10px;
+  color: var(--color-tertiary-foreground);
+  transition: color 0.15s ease;
+}
+.bottom-nav-item[data-active="true"] {
+  color: var(--color-brand-solid);
+}
+.bottom-nav-glyph {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.bottom-nav-badge {
+  position: absolute;
+  top: -5px;
+  right: -9px;
+}
+.bottom-nav-label {
+  font-size: 0.68rem;
+  line-height: 1;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The active destination gets a weight change as well as the brand colour: at the
+   bottom edge of a screen held at an angle, colour alone is easy to miss. */
+.bottom-nav-item[data-active="true"] .bottom-nav-label {
+  font-weight: 600;
+}
+
+/* Bottom sheet — the navigation overflow, and every view's context pane. Fixed to
+   the viewport because it is portalled to <body> (see Sheet.tsx): the panes it
+   opens over are clipping scroll boxes several levels deep, and z-index does not
+   survive `overflow: hidden`. */
+.sheet-root {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+}
+.sheet-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgb(0 0 0 / 0.4);
+  animation: sheet-fade 0.18s ease both;
+}
+.sheet-panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--color-page);
+  border-top: 0.5px solid var(--color-border-default);
+  border-radius: 16px 16px 0 0;
+  box-shadow: var(--s-popover);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  outline: none;
+  animation: sheet-rise 0.22s cubic-bezier(0, 0, 0.2, 1) both;
+}
+.sheet-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  padding: 14px 10px 10px 16px;
+  border-bottom: 0.5px solid var(--color-border-default);
+}
+/* The grab handle, centred over the header rather than stacked above it — a row
+   of its own would cost 20px of a panel that is already capped at 80vh. */
+.sheet-grip {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--color-border-strong);
+}
+.sheet-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 48px;
+  padding: 0 12px;
+  border-radius: 10px;
+  transition: background-color 0.15s ease;
+}
+.sheet-row:hover {
+  background: var(--color-transparent-hover);
+}
+.sheet-row[data-active="true"] {
+  background: var(--color-component-active);
+}
+.sheet-footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  padding: 12px 16px;
+  border-top: 0.5px solid var(--color-border-default);
+}
+@keyframes sheet-rise {
+  from { transform: translateY(100%); }
+  to   { transform: none; }
+}
+@keyframes sheet-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sheet-panel,
+  .sheet-backdrop { animation: none; }
+}
+
+/* A control sized for a thumb rather than a cursor. 44px is the smallest target
+   both platform guidelines call reliable; the app's own icon buttons are 28px,
+   which is right beside a pointer and wrong under a finger. */
+.tap-target {
+  width: 44px;
+  height: 44px;
+}
+
+/* ---- what changes at phone width ------------------------------------------ */
+
+@media (max-width: 767px) {
+  /* The content panel goes edge to edge: the inset frame is a desktop luxury that
+     costs a 390px screen ~5% of its width. */
+  .app-shell-mobile {
+    padding: 0;
+  }
+
+  /* Type. The app's body sizes are 13px and 15px — correct at a desk, small in
+     the hand, and a 15px input is below the 16px iOS uses to decide whether to
+     zoom the page on focus. Raising the two body steps (and the two smallest
+     label steps with them) scales every screen from one place, which is why the
+     app reads as small rather than as thirteen views each needing attention.
+     The heading steps are untouched: they are already large, and scaling them
+     too would just cost more of the screen. */
+  :root {
+    --font-scale-03: 0.8125rem;  /* micro labels: 12px → 13px */
+    --font-scale-04: 0.875rem;   /* text-body-sm: 13px → 14px */
+    --font-scale-05: 1rem;       /* text-body-base: 15px → 16px */
+  }
+
+  /* Library tree rows: 32px is a comfortable pointer target and a poor thumb one.
+     Height rather than min-height, because the row's leading selection bar is an
+     inset box-shadow that has to reach the full height either way. */
+  .tree-row {
+    height: 2.625rem;
+  }
+  /* The expander is the only way to open a folder on a phone (a tap on the row
+     toggles it, a tap on a workflow opens it), so it stops being a 16px glyph
+     beside the icon and becomes a target of its own. */
+  .tree-chevron {
+    width: 2rem;
+    height: 2rem;
+    margin-left: -0.375rem;
+    margin-right: -0.125rem;
+  }
+
+  /* Three KPI tiles across 342px of usable width is ~98px each, most of it
+     padding: the labels wrap mid-word and the numbers lose the line they sit on.
+     Two-up costs a row and keeps them readable. `grid-cols-2` is left alone —
+     it already fits, and pushing it to one column would make every stat a screen
+     of its own. */
+  .grid-cols-3 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* The Manage and Administration tables sit in an `overflow-auto` scroller and
+     declare this so their six columns don't crush. That is still the right answer
+     on a phone — the table scrolls sideways inside the page rather than the page
+     scrolling sideways — but 720px against 390px is two full screens of drag, so
+     the floor comes down to roughly one. */
+  .min-w-\[720px\] {
+    min-width: 560px;
+  }
+
+  /* Settings rows stack rather than sitting label-beside-control: the 160px label
+     column and its 32px gutter leave ~150px for the control, which is narrower
+     than the role switcher, the email field or the workspace URL need. */
+  .settings-row {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .settings-row > div:first-child {
+    width: auto;
+    padding-top: 0;
+  }
+
+  /* Hover-only affordances are dead weight on a touch screen — there is no hover,
+     so these either never appear or appear stuck after a tap. */
+  .rail-tooltip,
+  .rail-flyout {
+    display: none;
+  }
 }

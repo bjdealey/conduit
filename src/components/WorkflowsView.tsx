@@ -130,6 +130,9 @@ type TreeCtx = {
   slice?: TreeSlice;
   /** Whether the signed-in tier may edit the library at all. */
   editable: boolean;
+  /** Whether the tree is being read on a phone — where there is no hover to
+   *  reveal a row's controls with, and a tap on a row is the way into it. */
+  isMobile: boolean;
   isExpanded: (id: string) => boolean;
   toggle: (id: string) => void;
   renamingId: string | null;
@@ -350,7 +353,7 @@ function TreeRow({
           e.stopPropagation();
           ctx.toggle(id);
         }}
-        className="flex size-4 shrink-0 items-center justify-center rounded text-tertiary-foreground transition-colors hover:text-primary-foreground"
+        className="tree-chevron flex size-4 shrink-0 items-center justify-center rounded text-tertiary-foreground transition-colors hover:text-primary-foreground"
         style={{ visibility: expandable ? "visible" : "hidden" }}
       >
         <ChevronRight size={13} strokeWidth={2} style={{ transform: open ? "rotate(90deg)" : "none" }} />
@@ -380,7 +383,17 @@ function TreeRow({
         // pane, and the status and owner are worth more at rest than an action
         // nobody is reaching for yet. Reaching for it swaps them.
         <span className="flex shrink-0 items-center gap-1.5 pr-0.5">
-          {revealed && menu ? (
+          {/* A touch screen has nothing to reveal *on*, so a phone shows the
+              metadata and the menu together rather than swapping one for the
+              other. The peek button isn't among them: it exists to open a row
+              without disturbing a multi-selection, and on a phone the tap on the
+              row is the way in. */}
+          {ctx.isMobile ? (
+            <>
+              {trailing}
+              {menu}
+            </>
+          ) : revealed && menu ? (
             <>
               {info}
               {menu}
@@ -1053,9 +1066,16 @@ function WorkflowLibrary({
   // the first revealed, which is what a folder does in every other tree. Selecting
   // still happens either way, so the detail pane follows the click regardless of
   // which direction the branch went.
+  //
+  // On a phone it only toggles. There the tree *is* the screen and a selection
+  // replaces it, so opening a folder would swap the tree for that folder's detail
+  // — and browsing two levels down would be impossible, because every tap out of
+  // the tree is a tap out of the tree. A folder is a container you look inside;
+  // a workflow or a file is the thing you go to. Its detail is still one tap up
+  // the breadcrumb from anything filed in it.
   const clickFolder = (id: string) => {
     store.toggleExpanded(id);
-    onSelectFolder(id);
+    if (!store.isMobile) onSelectFolder(id);
   };
 
   /** Report a batch honestly: what went through, and the first reason the rest
@@ -1089,6 +1109,7 @@ function WorkflowLibrary({
     tree,
     slice,
     editable: store.allowed("author"),
+    isMobile: store.isMobile,
     isExpanded,
     toggle: (id) => store.toggleExpanded(id),
     renamingId,
@@ -2224,8 +2245,14 @@ export function WorkflowsView() {
     );
   }
 
+  // What the detail pane is showing, if anything — which on a phone is also
+  // whether the library tree or the opened thing is the screen. A multi-selection
+  // counts: its summary is what the pane answers with, so it is a destination.
+  const showingDetail =
+    (treeSelection.length > 1 && !peeking) || !!selected || !!selectedFolder || !!selectedFile;
+
   return (
-    <SplitView>
+    <SplitView mobile={showingDetail ? "detail" : "list"}>
       <WorkflowLibrary
         workflows={visible}
         files={visibleFiles}

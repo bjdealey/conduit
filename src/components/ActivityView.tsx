@@ -725,15 +725,20 @@ export function ActivityView() {
   // breadcrumb ("Activity / run_1045") goes back to the lanes.
   if (openRun) {
     return (
-      <SplitView>
+      <SplitView mobile="detail">
         <RunDetail run={openRun} />
         {incidents}
       </SplitView>
     );
   }
 
+  // The sources rail scopes the stream; it isn't a list you drill into, and the
+  // runs are what the page is for. So the phone gets the stream, always, and
+  // narrows it from the workspace header's search and filters instead. (The
+  // incidents pane is a ContextPane, so it becomes the sheet behind the titlebar
+  // toggle wherever it appears.)
   return (
-    <SplitView>
+    <SplitView mobile="detail">
       {!timeline && (
         <ActivitySources
           groups={sources}

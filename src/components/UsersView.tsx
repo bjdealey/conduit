@@ -507,7 +507,7 @@ export function UsersView() {
   }
 
   return (
-    <SplitView>
+    <SplitView mobile={user ? "detail" : "list"}>
       <UsersList users={users} narrowed={narrowed} selectedId={selectedUserId} onSelect={selectUser} />
       {user ? <UserDetail user={user} /> : <EmptyDetail>Select a user.</EmptyDetail>}
     </SplitView>

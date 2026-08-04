@@ -4,6 +4,7 @@ import { Background } from "./components/Background";
 import { LoginScreen } from "./components/LoginScreen";
 import { CommandPalette } from "./components/CommandPalette";
 import { Sidebar } from "./components/Sidebar";
+import { BottomNav } from "./components/BottomNav";
 import { SettingsContent } from "./components/SettingsPanel";
 import { Titlebar } from "./components/Titlebar";
 import { Inbox } from "./components/Inbox";
@@ -41,9 +42,10 @@ function InboxView() {
   }
 
   // List layout: the grouped inbox, the activity detail, and the issue's details
-  // in the shared right-hand context pane.
+  // in the shared right-hand context pane. On a phone those are three steps
+  // rather than three columns — the inbox is the screen until you open an issue.
   return (
-    <SplitView>
+    <SplitView mobile={selected ? "detail" : "list"}>
       <Inbox issues={visible} />
       {selected ? <IssueDetail issue={selected} /> : <EmptyDetail>Select an issue from the inbox.</EmptyDetail>}
     </SplitView>
@@ -115,7 +117,7 @@ function ShellBackdrop() {
 }
 
 function Workspace({ morph }: { morph: Morph | null }) {
-  const { bordersEnabled } = useStore();
+  const { bordersEnabled, isMobile } = useStore();
   const grown = morph?.grown ?? false;
   const animating = morph?.animating ?? false;
   const rect = morph ? (grown ? morph.target : morph.source) : null;
@@ -153,16 +155,29 @@ function Workspace({ morph }: { morph: Morph | null }) {
     ? { opacity: grown ? 1 : 0, transition: animating ? "opacity 0.4s ease 0.1s" : "none" }
     : undefined;
 
+  // Two shells, one tree. On a phone the rail is replaced by a bottom bar (nearer
+  // the thumb, and not costing 56px of a 390px screen), and the content panel
+  // goes edge to edge: the inset frame is a desktop luxury that costs a phone
+  // ~5% of its width and every rounded corner of its content.
   return (
     <div
-      className={"relative flex h-full w-full p-2.5 " + (bordersEnabled ? "borders-on" : "")}
+      className={
+        "relative flex h-full w-full " +
+        (isMobile ? "app-shell-mobile flex-col " : "p-2.5 ") +
+        (bordersEnabled ? "borders-on" : "")
+      }
       style={{ zIndex: 1, background: "transparent" }}
     >
-      <div className="flex shrink-0" style={sidebarStyle}>
-        <Sidebar />
-      </div>
+      {!isMobile && (
+        <div className="flex shrink-0" style={sidebarStyle}>
+          <Sidebar />
+        </div>
+      )}
       <main
-        className="content-panel ml-2.5 flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border-border-default border-[0.5px] bg-page shadow-default"
+        className={
+          "content-panel flex min-w-0 flex-1 flex-col overflow-hidden bg-page " +
+          (isMobile ? "" : "ml-2.5 rounded-2xl border-border-default border-[0.5px] shadow-default")
+        }
         style={mainStyle}
       >
         <div className="flex min-h-0 min-w-0 flex-1 flex-col" style={innerStyle}>
@@ -171,6 +186,11 @@ function Workspace({ morph }: { morph: Morph | null }) {
           <Body />
         </div>
       </main>
+      {isMobile && (
+        <div style={sidebarStyle}>
+          <BottomNav />
+        </div>
+      )}
     </div>
   );
 }
