@@ -96,6 +96,7 @@ export function ActionMenu({
   trigger: triggerContent,
   panel,
   align = "left",
+  tabbable = true,
   open,
   openTo,
   onOpenChange,
@@ -107,6 +108,10 @@ export function ActionMenu({
   /** Build the panel showing now. `go` swaps panels without closing. */
   panel: (id: string, go: (next: string) => void) => MenuPanel;
   align?: "left" | "right";
+  /** Whether the trigger is its own tab stop. False inside a roving-tabindex
+   *  widget like the library tree, where the row is the tab stop and the menu is
+   *  reached with Shift+F10 — otherwise every revealed row costs two stops. */
+  tabbable?: boolean;
   /** Controlled open state, for a menu opened from somewhere else (a right-click). */
   open?: boolean;
   /** Which panel to show when it opens — so a Delete shortcut can land straight
@@ -197,6 +202,7 @@ export function ActionMenu({
       <button
         ref={trigger}
         type="button"
+        tabIndex={tabbable ? undefined : -1}
         aria-label={label}
         aria-haspopup="menu"
         aria-expanded={isOpen}
@@ -213,7 +219,25 @@ export function ActionMenu({
         placement &&
         createPortal(
         <>
-          <span className="fixed inset-0" style={{ zIndex: 40 }} onClick={() => setOpen(false)} />
+          {/* The dismissal overlay. `stopPropagation` is load-bearing: this lives in
+              a portal, and a React portal propagates events through the *React*
+              tree rather than the DOM one — so without it, the click that closes
+              the menu also reaches whatever the menu is mounted inside, which in
+              the library tree meant dismissing a menu silently collapsed the
+              folder it belonged to. */}
+          <span
+            className="fixed inset-0"
+            style={{ zIndex: 40 }}
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpen(false);
+            }}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setOpen(false);
+            }}
+          />
           <span
             ref={panelBox}
             role="menu"
