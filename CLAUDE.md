@@ -505,6 +505,18 @@ overlay therefore needs `stopPropagation`: without it the click that closes a me
 row the menu is mounted inside, so dismissing a folder's menu silently collapsed the folder. The
 panel had it; the overlay didn't. Anything portalled out of an interactive parent has this problem.
 
+**Selection and hover must never share a colour.** They did, so the selected row and the row under
+the pointer were indistinguishable — two rows reading as hovered at once. Selection is now a stronger
+fill *plus* a brand bar down its leading edge (through `--row-ring`, so it composes with the focus
+ring); hover is the faint fill alone. The bar is what actually carries it: the two fills differ by 6%
+in light mode but only 2% in dark, so tone alone would be a distinction that disappears for half the
+users.
+
+**Hover lives in `WorkflowLibrary`, not per row** (`hoveredId` in the tree context), so it is single
+by construction — two rows cannot each believe they are hovered. The `…` follows the same rule: the
+pointer wins when it is in the tree, and the focused cursor row shows it only when no row is hovered,
+so the keyboard still gets the affordance without a second row lighting up beside the mouse.
+
 **An open menu keeps its row lit** (`menuOpen` feeds the row background, and opening a menu moves the
 keyboard cursor to that row). The panel is portalled out of the row, so the pointer leaves the row the
 instant it reaches the menu — without this the highlight drops off the one row you are demonstrably

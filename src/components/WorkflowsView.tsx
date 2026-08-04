@@ -139,8 +139,19 @@ type TreeCtx = {
   createFile: (folderId: string, extension: string) => void;
   newWorkflowIn: (folderId: string) => void;
   countUnder: (node: LibraryNode) => { folders: number; workflows: number; files: number };
+  /** The hovered row, held here rather than per-row so it is single by
+   *  construction: two rows cannot each believe they are hovered, which is what
+   *  made two of them light up at once. */
+  hoveredId: string | null;
+  hoverRow: (id: string) => void;
+  unhoverRow: (id: string) => void;
   /** The keyboard cursor — exactly one row is tabbable at a time. */
   cursorId: string | null;
+  /** Whether focus is inside the tree. The cursor row only reveals its menu when
+   *  it is: otherwise the selected row would permanently swap its status and
+   *  owner for a "…" nobody is reaching for, and two rows would read as
+   *  interacted-with at once. */
+  treeFocused: boolean;
   setCursor: (id: string) => void;
   /** One menu is open at a time, which is also what a menu *should* mean. */
   menuFor: { id: string; panel: string } | null;
@@ -199,20 +210,38 @@ function TreeRow({
   /** Whether a drag may land here (folders and the section headers). */
   droppable?: boolean;
 }) {
-  const [hovered, setHovered] = useState(false);
+  const hovered = ctx.hoveredId === id;
   const renaming = ctx.renamingId === id;
   const menuOpen = ctx.menuFor?.id === id;
-  const revealed = hovered || ctx.cursorId === id || menuOpen;
+  // The pointer wins over the keyboard cursor when both are in play: whatever is
+  // under the mouse is the thing you are about to act on. With no pointer in the
+  // tree, the focused cursor row shows it instead, so the keyboard is never left
+  // without the affordance.
+  const revealed =
+    menuOpen || (ctx.hoveredId ? hovered : ctx.treeFocused && ctx.cursorId === id);
   const isDropTarget = droppable && ctx.dragging !== null && ctx.dropIds.has(id);
   const isOver = isDropTarget && ctx.dropOn === id;
   const dragged = ctx.dragging !== null && node !== undefined && ctx.dragging.id === node.id;
 
-  // An open menu keeps its row lit. The panel is portalled out of the row, so the
-  // pointer leaves the row the moment it reaches the menu — without this the
-  // highlight drops off the one row you are demonstrably acting on, and the
-  // rename or delete you pick appears to come from nowhere.
-  const background =
-    isOver ? "var(--blue-a3)" : active || hovered || menuOpen ? "var(--color-transparent-hover)" : undefined;
+  // Selection and hover must never look the same, or two rows read as hovered at
+  // once — one because the pointer is on it, one because it is open. Hover is the
+  // faint fill; selection is a stronger fill *plus* a brand bar down its leading
+  // edge. The bar is what actually carries it: the two fills differ by 6% in light
+  // mode but only 2% in dark, so tone alone would be a distinction that quietly
+  // disappears for half the users.
+  //
+  // An open menu reads as hover, not as selection: the panel is portalled out of
+  // the row, so the pointer leaves the row the moment it reaches the menu, and
+  // without this the highlight drops off the one row you are demonstrably acting
+  // on. Hover and an open menu can't be on different rows anyway — the menu's
+  // dismissal overlay covers the tree while it is open.
+  const background = isOver
+    ? "var(--blue-a3)"
+    : active
+      ? "var(--color-component-active)"
+      : hovered || menuOpen
+        ? "var(--color-transparent-hover)"
+        : undefined;
 
   return (
     <div
@@ -244,8 +273,10 @@ function TreeRow({
         e.preventDefault();
         ctx.onDrop(id);
       }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      onMouseEnter={() => ctx.hoverRow(id)}
+      // Only clear if this row is still the hovered one — leave/enter can arrive
+      // in either order when the pointer crosses a boundary.
+      onMouseLeave={() => ctx.unhoverRow(id)}
       onClick={() => {
         ctx.setCursor(id);
         onSelect();
@@ -262,12 +293,18 @@ function TreeRow({
           paddingLeft: 6 + depth * 14,
           background,
           opacity: dragged ? 0.4 : 1,
-          // A legal destination outlines itself the moment a drag starts, so where
-          // something *can* go is visible before you go hunting for it. It goes
-          // through a custom property rather than `boxShadow` so the focus ring
-          // (also a box-shadow, see `.tree-row` in app.css) can compose with it
-          // instead of one silently replacing the other.
-          "--row-ring": isDropTarget && !isOver ? "inset 0 0 0 1px var(--blue-a6)" : undefined,
+          // The row's inset decoration, whichever it currently wants: a legal drop
+          // destination outlines itself the moment a drag starts, so where
+          // something *can* go is visible before you go hunting for it; otherwise
+          // the selected row carries its leading bar. It goes through a custom
+          // property rather than `boxShadow` so the focus ring (also a box-shadow,
+          // see `.tree-row` in app.css) composes with it instead of one silently
+          // replacing the other.
+          "--row-ring": isDropTarget && !isOver
+            ? "inset 0 0 0 1px var(--blue-a6)"
+            : active
+              ? "inset 2px 0 0 0 var(--color-brand-solid)"
+              : undefined,
         } as CSSProperties
       }
     >
@@ -769,6 +806,8 @@ function WorkflowLibrary({
   const [refusal, setRefusal] = useState<string | null>(null);
   const [undoDismissed, setUndoDismissed] = useState(true);
   const [cursorId, setCursorId] = useState<string | null>(null);
+  const [treeFocused, setTreeFocused] = useState(false);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [menuFor, setMenuFor] = useState<{ id: string; panel: string } | null>(null);
   const [dragging, setDragging] = useState<LibraryNode | null>(null);
   const [dropOn, setDropOn] = useState<string | null>(null);
@@ -949,7 +988,11 @@ function WorkflowLibrary({
     },
     newWorkflowIn: (folderId) => store.newWorkflow(folderId),
     countUnder: store.countUnder,
+    hoveredId,
+    hoverRow: setHoveredId,
+    unhoverRow: (id) => setHoveredId((current) => (current === id ? null : current)),
     cursorId,
+    treeFocused,
     setCursor: setCursorId,
     menuFor,
     openMenu: (id, panel = "root") => setMenuFor({ id, panel }),
@@ -1004,6 +1047,11 @@ function WorkflowLibrary({
         aria-label="Library tree"
         aria-multiselectable={false}
         onKeyDown={onKeyDown}
+        // focusin/focusout bubble, so these fire for whichever row holds focus.
+        // Moving between rows fires blur then focus in one tick and React batches
+        // them, so the flag doesn't flicker on the way past.
+        onFocus={() => setTreeFocused(true)}
+        onBlur={() => setTreeFocused(false)}
         className="scrollbar-none flex-1 overflow-y-auto px-2 py-2"
       >
         {narrowed && nothingShowing ? (
