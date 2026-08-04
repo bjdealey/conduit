@@ -61,6 +61,73 @@ describe("visibleRows", () => {
   });
 });
 
+describe("visibleRows, flat layout", () => {
+  const flat = { ...openAll, layout: "list" as const };
+
+  it("keeps the two estates and drops every folder row", () => {
+    const rows = visibleRows(tree, flat);
+    expect(rows.filter((r) => r.kind === "folder")).toEqual([]);
+    expect(rows.filter((r) => r.kind === "root").map((r) => r.id)).toEqual(["vis:public", "vis:private"]);
+  });
+
+  it("hangs every leaf directly off its estate, one level down", () => {
+    const rows = visibleRows(tree, flat);
+    const leaves = rows.filter((r) => r.kind !== "root");
+    expect(leaves.every((r) => r.depth === 1)).toBe(true);
+    expect(new Set(leaves.map((r) => r.parentId))).toEqual(new Set(["vis:public", "vis:private"]));
+  });
+
+  it("files a leaf under the estate its folder belongs to", () => {
+    const rows = visibleRows(tree, flat);
+    const publicIds = new Set(rows.filter((r) => r.parentId === "vis:public").map((r) => r.id));
+    const inPublic = (folderId: string) =>
+      seedFolders.find((f) => f.id === folderId)?.visibility === "public";
+    for (const w of seedWorkflows) expect(publicIds.has(w.id)).toBe(inPublic(w.folderId));
+    for (const f of seedFiles) expect(publicIds.has(f.id)).toBe(inPublic(f.folderId));
+  });
+
+  it("shows everything, however deeply it was filed", () => {
+    const rows = visibleRows(tree, flat);
+    const ids_ = new Set(ids(rows));
+    // Three levels down in the tree, top level here.
+    expect(ids_.has(seedWorkflows.find((w) => w.folderId === "pub-monitoring-synth")!.id)).toBe(true);
+    expect(rows.filter((r) => r.kind !== "root")).toHaveLength(seedWorkflows.length + seedFiles.length);
+  });
+
+  it("keeps workflows ahead of files, and each in the order it was given", () => {
+    const rows = visibleRows(tree, flat).filter((r) => r.parentId === "vis:public");
+    expect(rows.map((r) => r.kind).lastIndexOf("workflow")).toBe(rows.map((r) => r.kind).indexOf("file") - 1);
+    // The workspace header's sort governs the incoming order; a flat list that
+    // re-sorted would be the one place that control does nothing.
+    const reversed = { ...tree, workflows: [...seedWorkflows].reverse() };
+    const first = visibleRows(reversed, flat).find((r) => r.kind === "workflow");
+    expect(first!.id).toBe([...seedWorkflows].reverse().find((w) => w.folderId.startsWith("pub"))!.id);
+  });
+
+  it("collapses to the two headers, and says whether they hold anything", () => {
+    const rows = visibleRows(tree, { expanded: () => false, layout: "list" });
+    expect(ids(rows)).toEqual(["vis:public", "vis:private"]);
+    expect(rows.every((r) => r.expandable)).toBe(true);
+
+    const bare = visibleRows({ ...tree, workflows: [], files: [] }, { expanded: () => false, layout: "list" });
+    expect(bare.every((r) => !r.expandable)).toBe(true);
+  });
+
+  it("respects a search's slice, same as the tree does", () => {
+    const one = seedWorkflows[0];
+    const slice = { folders: new Set<string>(), workflows: new Set([one.id]), files: new Set<string>() };
+    const rows = visibleRows(tree, { ...flat, slice });
+    expect(rows.filter((r) => r.kind !== "root").map((r) => r.id)).toEqual([one.id]);
+  });
+
+  it("lists nothing whose folder has gone, rather than guessing an estate", () => {
+    // A leaf pointing at a folder that isn't there belongs to neither estate; the
+    // alternative — defaulting — files someone's work into the public tree.
+    const orphaned = { ...tree, workflows: [...seedWorkflows, { ...seedWorkflows[0], id: "wf_orphan", folderId: "gone" }] };
+    expect(ids(visibleRows(orphaned, flat))).not.toContain("wf_orphan");
+  });
+});
+
 describe("narrowTree", () => {
   const empty = { folders: new Set<string>(), workflows: new Set<string>(), files: new Set<string>() };
 
