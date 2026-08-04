@@ -46,6 +46,7 @@ import { WORKFLOW_STATUS_ACCENT, WorkflowStatusChip } from "./Badges";
 import { RunRow } from "./RunRow";
 import { minutesAgo, num } from "../lib/format";
 import { childFolders, folderPath, subtreeIds, workflowsUnder } from "../lib/folders";
+import { shortcutFor } from "../lib/keys";
 import {
   kindOfFile,
   moveTargets,
@@ -518,7 +519,13 @@ function RowMenu({ node, ctx }: { node: LibraryNode; ctx: TreeCtx }) {
             danger: true,
             onSelect: () => (many ? ctx.removeMany(batch) : ctx.remove(node)),
           },
-          { id: "cancel", label: "Cancel", icon: <X size={14} strokeWidth={1.8} />, onSelect: () => {} },
+          {
+            id: "cancel",
+            label: "Cancel",
+            shortcut: shortcutFor("dismiss"),
+            icon: <X size={14} strokeWidth={1.8} />,
+            onSelect: () => {},
+          },
         ],
       };
     }
@@ -532,6 +539,9 @@ function RowMenu({ node, ctx }: { node: LibraryNode; ctx: TreeCtx }) {
         {
           id: "delete",
           label: `Delete ${name}`,
+          // Del on a row inside the selection opens exactly this confirm, so the
+          // hint is as true of the batch as it is of a single row.
+          shortcut: shortcutFor("delete"),
           icon: <Trash2 size={14} strokeWidth={1.8} />,
           danger: true,
           keepOpen: true,
@@ -571,12 +581,18 @@ function RowMenu({ node, ctx }: { node: LibraryNode; ctx: TreeCtx }) {
       );
     }
     items.push(
-      { id: "rename", label: "Rename", detail: "F2", icon: <Pencil size={14} strokeWidth={1.8} />, onSelect: () => ctx.startRename(node.id) },
+      {
+        id: "rename",
+        label: "Rename",
+        shortcut: shortcutFor("rename"),
+        icon: <Pencil size={14} strokeWidth={1.8} />,
+        onSelect: () => ctx.startRename(node.id),
+      },
       { id: "move", label: "Move to…", icon: <ArrowUpRight size={14} strokeWidth={1.8} />, keepOpen: true, onSelect: () => go("move") },
       {
         id: "delete",
         label: "Delete",
-        detail: "Del",
+        shortcut: shortcutFor("delete"),
         icon: <Trash2 size={14} strokeWidth={1.8} />,
         danger: true,
         keepOpen: true,
@@ -957,6 +973,32 @@ function WorkflowLibrary({
     wantFocus.current = true;
     setCursorId(id);
   };
+
+  // A rename ends by unmounting its input, and the focus of an unmounted element
+  // falls to <body> — which drops the keyboard out of the tree, so the arrow keys
+  // and Del that worked a moment ago now go nowhere. Put it back on the row,
+  // whichever way the edit ended. Now that the menu advertises F2, a shortcut that
+  // strands you is a shortcut the menu shouldn't be offering.
+  //
+  // Only when nothing else claimed focus: a rename also ends by clicking away, and
+  // yanking focus back out of whatever you clicked would be worse than the fall.
+  const wasRenaming = useRef<string | null>(null);
+  useEffect(() => {
+    if (renamingId) return void (wasRenaming.current = renamingId);
+    const id = wasRenaming.current;
+    wasRenaming.current = null;
+    if (!id) return;
+    // Next frame, not this one. Clicking away unmounts the input during `focusout`,
+    // which is *before* the browser has focused what was clicked — so right now
+    // `activeElement` reads as <body> whether the rename ended by Escape or by a
+    // click elsewhere, and the two are indistinguishable. A frame later it isn't.
+    const frame = requestAnimationFrame(() => {
+      if (document.activeElement !== document.body) return;
+      treeBox.current?.querySelector<HTMLElement>(`[data-tree-row="${CSS.escape(id)}"]`)?.focus();
+      setCursorId(id);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [renamingId]);
 
   const nodeOf = (row: TreeRowInfo): LibraryNode | null =>
     row.kind === "root" ? null : { kind: row.kind, id: row.id };
