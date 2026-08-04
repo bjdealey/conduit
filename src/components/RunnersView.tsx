@@ -337,7 +337,7 @@ export function RunnersView() {
   }
 
   return (
-    <SplitView>
+    <SplitView mobile={runner ? "detail" : "list"}>
       <RunnerList list={list} narrowed={narrowed} selectedId={selectedRunnerId} onSelect={selectRunner} />
       {runner ? <RunnerDetail runner={runner} /> : <EmptyDetail>Select a runner.</EmptyDetail>}
     </SplitView>

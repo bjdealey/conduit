@@ -264,7 +264,7 @@ export function ReviewView() {
   }
 
   return (
-    <SplitView>
+    <SplitView mobile={selected ? "detail" : "list"}>
       <Pane width={PANE_WIDTH.list}>
         <div className="scrollbar-none flex-1 overflow-y-auto px-2 py-2">
           {inQueue.length === 0 ? (

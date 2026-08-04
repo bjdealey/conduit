@@ -49,6 +49,8 @@ import {
   type Workflow as DomainWorkflow,
 } from "@conduit/domain";
 import { EMPTY_WORKSPACE, type FilterOp, type SortDir, type WorkspaceState } from "./lib/workspace";
+import { isMobileNow, useIsMobile } from "./lib/responsive";
+import { CONTEXT_LABEL } from "./data/viewLayout";
 import { isSupabaseConfigured } from "./lib/supabase";
 import { getWorkflows, getCapabilities, getNodeTypes } from "./lib/api";
 import { seedConnectedWorkflows } from "./data/toDomain";
@@ -251,10 +253,20 @@ type Store = {
    *  modes (`VIEW_MODES`) — e.g. "list" or, for the alternate, "board"/"grid". */
   viewMode: (v: View) => string;
   /** Whether the right-hand context ("more info") pane is shown. Toggled from the
-   *  titlebar and shared by every view that has one. Persisted. */
+   *  titlebar and shared by every view that has one. Persisted on desktop; on a
+   *  phone it drives a bottom sheet and starts closed every time, because a sheet
+   *  that restores itself over the content is a dialog nobody opened. */
   infoPaneOpen: boolean;
   setInfoPaneOpen: (on: boolean) => void;
   toggleInfoPane: () => void;
+  /** What the current view's context pane holds ("Profile", "Configuration"…).
+   *  One label for the titlebar's toggle and the phone's sheet title, so the
+   *  control and the thing it opens agree. */
+  contextLabel: string;
+  /** Whether the viewport is phone-sized. Drives the shell swap: the bottom bar
+   *  instead of the sidebar rail, and one pane at a time instead of two or three.
+   *  Live — rotating a phone or resizing a window switches shells. */
+  isMobile: boolean;
   workspaces: Workspace[];
   workspace: Workspace;
   setWorkspaceId: (id: string) => void;
@@ -298,7 +310,17 @@ type Store = {
 
 const StoreContext = createContext<Store | null>(null);
 
+/** The opening selection for a list/detail view.
+ *
+ *  On desktop the first row is pre-opened, so a page never lands on an empty
+ *  detail pane beside a full list. On a phone that same default would land you
+ *  *inside* the first workflow rather than on the library — the list is the page
+ *  there, and a detail is somewhere you go. Read synchronously so the very first
+ *  paint is already right; correcting it after mount would flash the detail. */
+const openOnDesktop = <T,>(value: T | null): T | null => (isMobileNow() ? null : value);
+
 export function StoreProvider({ children }: { children: ReactNode }) {
+  const isMobile = useIsMobile();
   const [issues, setIssues] = useState<Issue[]>(seedIssues);
   // The library and its run history are editable in the prototype: the builder
   // writes workflows, and a test run appends to the stream.
@@ -309,13 +331,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [files, setFiles] = useState<LibraryFile[]>(seedFiles);
   const [runs, setRuns] = useState<Run[]>(seedRuns);
   const [draft, setDraft] = useState<WorkflowDraft | null>(null);
-  const [selectedId, setSelectedId] = useState<number | null>(seedIssues[0]?.id ?? null);
-  const [selectedUserId, setSelectedUserId] = useState<string | null>(endUsers[0]?.id ?? null);
-  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(seedWorkflows[0]?.id ?? null);
+  const [selectedId, setSelectedId] = useState<number | null>(() => openOnDesktop(seedIssues[0]?.id ?? null));
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(() =>
+    openOnDesktop(endUsers[0]?.id ?? null),
+  );
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(() =>
+    openOnDesktop(seedWorkflows[0]?.id ?? null),
+  );
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
-  const [treeSelection, setTreeSelectionState] = useState<LibraryNode[]>(
-    seedWorkflows[0] ? [{ kind: "workflow", id: seedWorkflows[0].id }] : [],
+  const [treeSelection, setTreeSelectionState] = useState<LibraryNode[]>(() =>
+    seedWorkflows[0] && !isMobileNow() ? [{ kind: "workflow", id: seedWorkflows[0].id }] : [],
   );
   const [peeking, setPeeking] = useState(false);
   // Which branches are open. Nothing stored yet means everything open — the shape
@@ -343,7 +369,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     | null
   >(null);
-  const [selectedRunnerId, setSelectedRunnerId] = useState<string | null>(runners[0]?.id ?? null);
+  const [selectedRunnerId, setSelectedRunnerId] = useState<string | null>(() =>
+    openOnDesktop(runners[0]?.id ?? null),
+  );
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [controlState, setControlState] = useState<Partial<Record<View, WorkspaceState>>>({});
   const [sectionTabs, setSectionTabs] = useState<Partial<Record<View, string>>>({});
@@ -357,7 +385,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
   // Global layout preference (list vs each page's board/grid alternate).
   const [layout, setLayoutState] = useState<"list" | "alt">(() => (read("layout", "list") === "alt" ? "alt" : "list"));
-  const [infoPaneOpen, setInfoPaneState] = useState(() => read("info-pane", "on") !== "off");
+  // Desktop: a persisted preference about a column. Phone: a sheet over the
+  // content, which starts closed whatever the desktop preference is.
+  const [infoPaneOpen, setInfoPaneState] = useState(() => !isMobileNow() && read("info-pane", "on") !== "off");
   const [workspaceId, setWorkspaceId] = useState(workspaces[0].id);
   const [openIds, setOpenIds] = useState<number[]>(selectedId != null ? [selectedId] : []);
 
@@ -427,6 +457,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     applyBrand(palette.accent);
   }, [palette.accent]);
+
+  // The context pane is a column on desktop and a modal sheet on a phone, and a
+  // modal must not outlive what opened it: navigating with it open — or dragging
+  // a desktop window narrow while it is showing — would land you on a new screen
+  // behind a dialog you never opened.
+  useEffect(() => {
+    if (isMobile) setInfoPaneState(false);
+  }, [isMobile, view]);
 
   const memberIndex = useMemo(() => new Map(members.map((m) => [m.id, m])), []);
 
@@ -881,19 +919,29 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     viewMode: (v) => {
       const modes = VIEW_MODES[v];
       if (!modes || modes.length === 0) return "list";
+      // A phone has room for one presentation, and it is the first one: every
+      // alternate here (board, grid, timeline, diagram) is multi-column by
+      // definition. The preference isn't cleared, just not honoured — it comes
+      // back the moment there is width for it.
+      if (isMobile) return modes[0].id;
       return layout === "list" ? modes[0].id : modes[1]?.id ?? modes[0].id;
     },
     infoPaneOpen,
+    // Only the desktop pane's state is a preference worth keeping. Persisting the
+    // phone's sheet would carry "open" back to the desktop — and back to the next
+    // phone visit, where it would reopen over whatever you navigated to.
     setInfoPaneOpen: (on) => {
       setInfoPaneState(on);
-      write("info-pane", on ? "on" : "off");
+      if (!isMobile) write("info-pane", on ? "on" : "off");
     },
     toggleInfoPane: () =>
       setInfoPaneState((prev) => {
         const next = !prev;
-        write("info-pane", next ? "on" : "off");
+        if (!isMobile) write("info-pane", next ? "on" : "off");
         return next;
       }),
+    contextLabel: CONTEXT_LABEL[view] ?? "Details",
+    isMobile,
     workspaces,
     workspace: workspaces.find((w) => w.id === workspaceId) ?? workspaces[0],
     setWorkspaceId,

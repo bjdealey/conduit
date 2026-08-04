@@ -1,7 +1,6 @@
-import { type ReactNode } from "react";
-import { Bell, Box, ClipboardCheck, ScrollText, Cpu, House, Inbox, Settings, ShieldCheck, SlidersHorizontal, Users, Workflow as WorkflowIcon } from "lucide-react";
 import { useStore, type View } from "../store";
 import { navItems } from "../data/nav";
+import { navIcons } from "../data/navIcons";
 import { endUsers } from "../data/users";
 import { runners } from "../data/runners";
 import { NavGroup } from "./NavGroup";
@@ -12,25 +11,9 @@ import { ThemeToggle } from "./ThemeToggle";
 import { SidebarSearch } from "./SidebarSearch";
 import { SettingsBack, SettingsNav } from "./SettingsRail";
 
-const navIconProps = { size: 20, strokeWidth: 1.7 };
-
-// Keyed by view so the rail can't miss one; the modes that aren't nav
-// destinations (Settings' full-screen rail, the builder) never render from here.
-const icons: Record<View, ReactNode> = {
-  audit: <ScrollText {...navIconProps} />,
-  review: <ClipboardCheck {...navIconProps} />,
-  home: <House {...navIconProps} />,
-  builder: <WorkflowIcon {...navIconProps} />,
-  activity: <Bell {...navIconProps} />,
-  inbox: <Inbox {...navIconProps} />,
-  workflows: <WorkflowIcon {...navIconProps} />,
-  manage: <SlidersHorizontal {...navIconProps} />,
-  users: <Users {...navIconProps} />,
-  administration: <ShieldCheck {...navIconProps} />,
-  surfaces: <Box {...navIconProps} />,
-  runners: <Cpu {...navIconProps} />,
-  settings: <Settings {...navIconProps} />,
-};
+// Shared with the phone's bottom bar (`data/navIcons`), so a destination can't
+// end up with two different glyphs on the two shells.
+const icons = navIcons(20);
 
 /** Left navigation rail. Items switch the main view. The expand/collapse control
  *  lives in the main content header (SidebarToggle) and drives `sidebarExpanded`

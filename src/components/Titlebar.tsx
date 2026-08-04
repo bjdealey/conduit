@@ -1,4 +1,4 @@
-import { PanelRight } from "lucide-react";
+import { Info, PanelRight } from "lucide-react";
 import { useStore, type View } from "../store";
 import { navItems } from "../data/nav";
 import { endUsers } from "../data/users";
@@ -55,20 +55,27 @@ function ViewModeSwitcher({ view }: { view: View }) {
 /** Show/hide the right-hand context pane. Consistent across every view that has
  *  one; the label reflects what that view's pane holds. */
 function InfoPaneToggle({ label }: { label: string }) {
-  const { infoPaneOpen, toggleInfoPane } = useStore();
+  const { infoPaneOpen, toggleInfoPane, isMobile } = useStore();
+  // On a phone this opens the pane as a bottom sheet rather than revealing a
+  // column, so it gets a thumb-sized target and a glyph that isn't a diagram of a
+  // layout the phone doesn't have.
   return (
     <button
       type="button"
       onClick={toggleInfoPane}
       aria-pressed={infoPaneOpen}
+      aria-label={infoPaneOpen ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
       title={infoPaneOpen ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
-      className="pressable focusable flex size-7 items-center justify-center rounded-md transition-colors hover:bg-transparent-hover"
+      className={
+        "pressable focusable flex items-center justify-center rounded-md transition-colors hover:bg-transparent-hover " +
+        (isMobile ? "tap-target" : "size-7")
+      }
       style={{
         background: infoPaneOpen ? "var(--color-transparent-hover)" : "transparent",
         color: infoPaneOpen ? "var(--color-primary-foreground)" : "var(--color-tertiary-foreground)",
       }}
     >
-      <PanelRight size={16} strokeWidth={1.8} />
+      {isMobile ? <Info size={20} strokeWidth={1.8} /> : <PanelRight size={16} strokeWidth={1.8} />}
     </button>
   );
 }
@@ -95,6 +102,7 @@ export function Titlebar() {
   const {
     view,
     subview,
+    isMobile,
     dataSource,
     selected,
     select,
@@ -231,22 +239,28 @@ export function Titlebar() {
   }
 
   const readiness = readinessOfView(view, dataSource);
-  const showSwitcher = (VIEW_MODES[view]?.length ?? 0) > 1;
+  // The phone shell drops the two controls that describe the desktop layout: the
+  // rail it toggles isn't mounted, and the list/board switch offers a second
+  // multi-column presentation on a screen that has room for one. The readiness
+  // chip goes too — a claim about the surface, worth its width only when there is
+  // width to spare. Everything they control is still reachable from the sheet or
+  // the view itself.
+  const showSwitcher = !isMobile && (VIEW_MODES[view]?.length ?? 0) > 1;
   const showInfoToggle = hasContext && !!CONTEXT_LABEL[view];
-  const showSubscribers = view === "inbox" && !!selected;
+  const showSubscribers = !isMobile && view === "inbox" && !!selected;
 
   return (
     <header
       className="flex shrink-0 items-center gap-2 border-border-default border-b-[0.5px] px-4"
-      style={{ height: 56 }}
+      style={{ height: isMobile ? 52 : 56 }}
     >
-      <SidebarToggle />
+      {!isMobile && <SidebarToggle />}
       <Breadcrumb items={items} />
       {/* What this screen actually is. The vision names scheduling, credentials and
           multi-user auth as roadmap, and the app draws all three convincingly — so
           each surface says so rather than letting a complete-looking screen imply a
           promise nobody made. */}
-      {readiness !== "prototype" && (
+      {!isMobile && readiness !== "prototype" && (
         <span title={READINESS_META[readiness].blurb} className="inline-flex">
           <Chip tone={READINESS_META[readiness].tone} dot={false}>
             {READINESS_META[readiness].label}

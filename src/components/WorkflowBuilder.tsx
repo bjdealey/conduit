@@ -26,6 +26,7 @@ import {
 } from "../lib/builder";
 import { isNarrowed } from "../lib/workspace";
 import { SplitView, Pane, DetailPane, ContextPane, PANE_WIDTH } from "./layout/SplitView";
+import { Sheet } from "./Sheet";
 import { Avatar } from "./Avatar";
 import { Chip } from "./Chip";
 import { Button } from "./Button";
@@ -134,84 +135,91 @@ function ActionInput({ field, value, onChange }: { field: ActionField; value: st
 
 /* ------------------------------------------------------------------- palette */
 
-/** Left column: the actions a flow can be built from. The workspace header's
- *  search, Package filter, and sort decide what's in `groups` — sorting by name
- *  flattens the package grouping into one alphabetical list. */
-function Palette({
-  groups,
-  narrowed,
-  onAdd,
-  onAddBranch,
-}: {
+type PaletteProps = {
   groups: PaletteGroup[];
   narrowed: boolean;
   onAdd: (actionId: string) => void;
   onAddBranch: () => void;
-}) {
+};
+
+/** The catalogue of actions a flow can be built from. The workspace header's
+ *  search, Package filter, and sort decide what's in `groups` — sorting by name
+ *  flattens the package grouping into one alphabetical list.
+ *
+ *  Unwrapped, because it has two homes: a fixed-width left column on desktop, and
+ *  a sheet on a phone. The column is a desktop idea; adding a step isn't. */
+function PaletteBody({ groups, narrowed, onAdd, onAddBranch }: PaletteProps) {
+  return (
+    <div className="scrollbar-none flex-1 overflow-y-auto px-2 py-2">
+      {/* Control flow isn't a package, so it sits above the catalogue rather than
+          inside it — a conditional is something the builder does, not something a
+          node type provides. */}
+      <button
+        type="button"
+        onClick={onAddBranch}
+        className="focusable mb-2 flex w-full flex-col gap-0.5 rounded-lg px-3 py-2 text-left transition-colors hover:bg-transparent-hover"
+      >
+        <span className="flex items-center gap-2">
+          <Split size={14} strokeWidth={1.8} className="shrink-0 text-tertiary-foreground" />
+          <span className="min-w-0 flex-1 truncate text-body-sm text-primary-foreground">Add a condition</span>
+          <Plus size={13} strokeWidth={2} className="shrink-0 text-tertiary-foreground" />
+        </span>
+        <span className="text-[0.72rem] leading-tight text-tertiary-foreground">
+          Branch the flow on a value from an earlier step.
+        </span>
+      </button>
+      {groups.length === 0 && (
+        <p className="px-3 py-6 text-center text-body-sm text-tertiary-foreground">
+          {narrowed ? "No actions match the current search or filter." : "No actions available."}
+        </p>
+      )}
+      {groups.map((group) => (
+        <section key={group.package ?? "all"} className="mb-2">
+          {group.package && (
+            <header className="flex items-center gap-2 px-3 py-2">
+              <Package size={13} strokeWidth={1.8} className="text-tertiary-foreground" />
+              <span className="font-departure-mono text-[0.72rem] text-secondary-foreground">{group.package}</span>
+            </header>
+          )}
+          <div className="flex flex-col gap-0.5">
+            {group.actions.map((action) => (
+              <button
+                key={action.id}
+                type="button"
+                onClick={() => onAdd(action.id)}
+                className="focusable group flex w-full flex-col gap-0.5 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-transparent-hover"
+              >
+                <span className="flex items-center gap-2">
+                  <span className="min-w-0 flex-1 truncate text-body-sm text-primary-foreground">{action.label}</span>
+                  {/* Surfaced but unbuilt — the node interface holds it, the step
+                      doesn't execute yet. */}
+                  {action.readiness === "roadmap" && (
+                    <Chip tone="gray" mono dot={false} className="shrink-0">
+                      roadmap
+                    </Chip>
+                  )}
+                  {!group.package && (
+                    <span className="shrink-0 font-departure-mono text-[0.65rem] text-tertiary-foreground">
+                      {action.package}
+                    </span>
+                  )}
+                  <Plus size={13} strokeWidth={2} className="shrink-0 text-tertiary-foreground" />
+                </span>
+                <span className="text-[0.72rem] leading-tight text-tertiary-foreground">{action.summary}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+/** The catalogue as the builder's left column. */
+function Palette(props: PaletteProps) {
   return (
     <Pane width={PANE_WIDTH.list}>
-      <div className="scrollbar-none flex-1 overflow-y-auto px-2 py-2">
-        {/* Control flow isn't a package, so it sits above the catalogue rather than
-            inside it — a conditional is something the builder does, not something a
-            node type provides. */}
-        <button
-          type="button"
-          onClick={onAddBranch}
-          className="focusable mb-2 flex w-full flex-col gap-0.5 rounded-lg px-3 py-2 text-left transition-colors hover:bg-transparent-hover"
-        >
-          <span className="flex items-center gap-2">
-            <Split size={14} strokeWidth={1.8} className="shrink-0 text-tertiary-foreground" />
-            <span className="min-w-0 flex-1 truncate text-body-sm text-primary-foreground">Add a condition</span>
-            <Plus size={13} strokeWidth={2} className="shrink-0 text-tertiary-foreground" />
-          </span>
-          <span className="text-[0.72rem] leading-tight text-tertiary-foreground">
-            Branch the flow on a value from an earlier step.
-          </span>
-        </button>
-        {groups.length === 0 && (
-          <p className="px-3 py-6 text-center text-body-sm text-tertiary-foreground">
-            {narrowed ? "No actions match the current search or filter." : "No actions available."}
-          </p>
-        )}
-        {groups.map((group) => (
-          <section key={group.package ?? "all"} className="mb-2">
-            {group.package && (
-              <header className="flex items-center gap-2 px-3 py-2">
-                <Package size={13} strokeWidth={1.8} className="text-tertiary-foreground" />
-                <span className="font-departure-mono text-[0.72rem] text-secondary-foreground">{group.package}</span>
-              </header>
-            )}
-            <div className="flex flex-col gap-0.5">
-              {group.actions.map((action) => (
-                <button
-                  key={action.id}
-                  type="button"
-                  onClick={() => onAdd(action.id)}
-                  className="focusable group flex w-full flex-col gap-0.5 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-transparent-hover"
-                >
-                  <span className="flex items-center gap-2">
-                    <span className="min-w-0 flex-1 truncate text-body-sm text-primary-foreground">{action.label}</span>
-                    {/* Surfaced but unbuilt — the node interface holds it, the step
-                        doesn't execute yet. */}
-                    {action.readiness === "roadmap" && (
-                      <Chip tone="gray" mono dot={false} className="shrink-0">
-                        roadmap
-                      </Chip>
-                    )}
-                    {!group.package && (
-                      <span className="shrink-0 font-departure-mono text-[0.65rem] text-tertiary-foreground">
-                        {action.package}
-                      </span>
-                    )}
-                    <Plus size={13} strokeWidth={2} className="shrink-0 text-tertiary-foreground" />
-                  </span>
-                  <span className="text-[0.72rem] leading-tight text-tertiary-foreground">{action.summary}</span>
-                </button>
-              ))}
-            </div>
-          </section>
-        ))}
-      </div>
+      <PaletteBody {...props} />
     </Pane>
   );
 }
@@ -564,9 +572,22 @@ function FlowDiagram({ draft, selection, onSelect, onMove, onRemove }: FlowProps
 /* ------------------------------------------------------------------- builder */
 
 export function WorkflowBuilder() {
-  const { draft, updateDraft, saveDraft, testRunDraft, closeBuilder, memberById, controls, viewMode, nodeTypes } =
-    useStore();
+  const {
+    draft,
+    updateDraft,
+    saveDraft,
+    testRunDraft,
+    closeBuilder,
+    memberById,
+    controls,
+    viewMode,
+    nodeTypes,
+    isMobile,
+    setInfoPaneOpen,
+  } = useStore();
   const [selection, setSelection] = useState<Selection>({ kind: "workflow" });
+  // The phone's palette: a sheet, opened from the footer. See `PaletteBody`.
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   if (!draft) return null;
 
@@ -591,15 +612,27 @@ export function WorkflowBuilder() {
    */
   const addTarget = selectedStep?.kind === "branch" ? { branchId: selectedStep.id, arm: "then" as const } : null;
 
+  /** Select something in the flow.
+   *
+   *  On a phone the configuration column is a bottom sheet rather than a column,
+   *  so selecting has to open it: otherwise tapping a step does nothing you can
+   *  see, and the one thing the builder is for — configuring a step — has no way
+   *  in. Selecting the workflow itself doesn't, since its fields are the header. */
+  const select = (next: Selection) => {
+    setSelection(next);
+    setPaletteOpen(false);
+    if (isMobile && next.kind !== "workflow") setInfoPaneOpen(true);
+  };
+
   const addStep = (actionId: string) => {
     const step = newStep(actionId, draft.steps);
     updateDraft({ steps: addStepTo(draft.steps, addTarget, step) });
-    setSelection({ kind: "step", id: step.id });
+    select({ kind: "step", id: step.id });
   };
   const addBranch = () => {
     const step = newBranch(draft.steps);
     updateDraft({ steps: addStepTo(draft.steps, addTarget, step) });
-    setSelection({ kind: "step", id: step.id });
+    select({ kind: "step", id: step.id });
   };
   const patchStep = (id: string, config: Record<string, string>) =>
     updateDraft({ steps: updateStep(draft.steps, id, (s) => (s.kind === "action" ? { ...s, config } : s)) });
@@ -613,15 +646,25 @@ export function WorkflowBuilder() {
   const flow: FlowProps = {
     draft,
     selection,
-    onSelect: setSelection,
+    onSelect: select,
     onMove: (id, direction) => updateDraft({ steps: moveStep(draft.steps, id, direction) }),
     onRemove: deleteStep,
   };
+  const palette = { groups, narrowed: isNarrowed(state), onAdd: addStep, onAddBranch: addBranch };
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <SplitView>
-        <Palette groups={groups} narrowed={isNarrowed(state)} onAdd={addStep} onAddBranch={addBranch} />
+      {/* The flow is the screen on a phone; the catalogue arrives as a sheet from
+          the footer's "Add step", and the configuration column as the sheet behind
+          the titlebar's info toggle. */}
+      <SplitView mobile="detail">
+        {isMobile ? (
+          <Sheet open={paletteOpen} onClose={() => setPaletteOpen(false)} title="Add a step">
+            <PaletteBody {...palette} />
+          </Sheet>
+        ) : (
+          <Palette {...palette} />
+        )}
 
         <DetailPane>
           <div className="scrollbar-none flex-1 overflow-y-auto px-6 py-6">
@@ -734,16 +777,26 @@ export function WorkflowBuilder() {
       </SplitView>
 
       {/* --------------------------------------------------------------- footer */}
-      <div className="flex shrink-0 items-center gap-3 border-border-default border-t-[0.5px] px-4 py-2.5">
+      <div className="flex shrink-0 flex-wrap items-center gap-3 border-border-default border-t-[0.5px] px-4 py-2.5">
         <span className="text-body-sm text-tertiary-foreground">
           {problems.length > 0
             ? problems[0]
             : `${draft.steps.length} step${draft.steps.length === 1 ? "" : "s"} · ${packages.length} package${packages.length === 1 ? "" : "s"}`}
         </span>
         <div className="ml-auto flex items-center gap-2">
-          <Button variant="ghost" onClick={closeBuilder}>
-            Cancel
-          </Button>
+          {/* The phone's way into the catalogue. Cancel goes with it: the titlebar
+              breadcrumb already leads back to the library, and three buttons plus a
+              fourth do not fit across 390px. */}
+          {isMobile ? (
+            <Button variant="outlined" onClick={() => setPaletteOpen(true)}>
+              <Plus size={14} strokeWidth={2} />
+              Add step
+            </Button>
+          ) : (
+            <Button variant="ghost" onClick={closeBuilder}>
+              Cancel
+            </Button>
+          )}
           <Button
             variant="outlined"
             onClick={testRunDraft}

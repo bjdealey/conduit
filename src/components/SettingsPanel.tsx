@@ -5,6 +5,7 @@ import { currentUser } from "../data/user";
 import { Switch } from "./Switch";
 import { DataTable, type Column } from "./DataTable";
 import { Button } from "./Button";
+import { TabStrip } from "./TabStrip";
 import { SETTINGS_PAGES, DEFAULT_SETTINGS_PAGE } from "../data/settings";
 import { ROLES, ROLE_BLURB, ROLE_LABEL, type Workflow } from "@conduit/domain";
 
@@ -17,9 +18,12 @@ function Divider() {
 }
 
 /** Label-left / control-right settings row. */
+/** Label beside its control. On a phone the two stack instead: a 160px label
+ *  column and a 32px gutter leave ~150px for the control itself, which is less
+ *  than a role switcher or an email field needs. See `.settings-row` in app.css. */
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex gap-8 py-5">
+    <div className="settings-row flex gap-8 py-5">
       <div className="w-40 shrink-0 pt-1.5">
         <span className="text-body-sm font-medium text-primary-foreground">{label}</span>
       </div>
@@ -461,12 +465,26 @@ const PLACEHOLDER_HINTS: Record<string, string> = {
 /** The settings pages, rendered in the main content panel (below the existing
  *  breadcrumb titlebar). The rail shows the settings nav; this shows the page. */
 export function SettingsContent() {
-  const { subview } = useStore();
+  const { subview, openSubview, isMobile } = useStore();
   const pageId = subview ?? DEFAULT_SETTINGS_PAGE;
   const page = SETTINGS_PAGES.find((p) => p.id === pageId) ?? SETTINGS_PAGES[0];
 
+  // Settings navigates from the sidebar rail, which the phone shell doesn't
+  // mount — so without this every settings page but the first is unreachable
+  // there. A scrolling tab strip is the same control the tabbed pages already
+  // use, and it puts the seven pages in the one row a phone has for them.
+  const nav = isMobile ? (
+    <TabStrip
+      ariaLabel="Settings"
+      segments={SETTINGS_PAGES.map((p) => ({ id: p.id, label: p.label }))}
+      value={pageId}
+      onChange={(id) => openSubview("settings", id)}
+    />
+  ) : null;
+
   return (
     <div key={pageId} className="animate-in fade-in-0 duration-200 ease-out flex min-h-0 min-w-0 flex-1 flex-col">
+      {nav}
       {pageId === "profile" ? (
         <ProfilePage />
       ) : pageId === "workspace" ? (

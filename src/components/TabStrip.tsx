@@ -30,7 +30,11 @@ export function TabStrip({
   children?: ReactNode;
 }) {
   return (
-    <div className="flex shrink-0 items-center gap-1 border-border-default border-b-[0.5px] px-3 py-2">
+    // The strip scrolls sideways rather than wrapping or clipping: five tabs plus
+    // a trailing control is wider than a phone, and a tab you cannot reach is a
+    // section of the page you cannot reach. `scrollbar-none` because the bar is
+    // 36px tall and a scrollbar in it would be most of that.
+    <div className="scrollbar-none flex shrink-0 items-center gap-1 overflow-x-auto border-border-default border-b-[0.5px] px-3 py-2">
       <SegmentedControl variant="ghost" ariaLabel={ariaLabel} segments={segments} value={value} onChange={onChange} />
       {children}
     </div>

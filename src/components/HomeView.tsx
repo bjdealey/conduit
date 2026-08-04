@@ -56,7 +56,12 @@ const MIGRATION_ACCENT: Record<MigrationState, string> = {
 
 function Section({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
   return (
-    <section className="flex flex-col gap-3">
+    // `min-w-0`, because a grid item's automatic minimum size is its content, not
+    // zero: without it the widest row in a panel sizes the whole column, and the
+    // page renders ~600px wide inside a 390px screen with the right-hand side
+    // simply cut off. The same applies to any window narrower than the `lg`
+    // breakpoint, where this column is implicit rather than declared.
+    <section className="flex min-w-0 flex-col gap-3">
       <div className="flex flex-col gap-0.5">
         <h3 className="text-body-base font-medium text-primary-foreground">{title}</h3>
         {hint && <p className="text-body-sm text-tertiary-foreground">{hint}</p>}
