@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@conduit/domain": ["packages/domain/src/index.ts"],
+      "@conduit/runtime": ["packages/runtime/src/index.ts"]
+    },
+    // The runner is the one artefact here that *is* a host: it reads files, an
+    // environment, and a process's exit code. Everything it imports stays host-free,
+    // which is what tsconfig.packages.json's empty `types` enforces next door.
+    "types": ["node"]
+  },
+  "include": ["runner"]
+}

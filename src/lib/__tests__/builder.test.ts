@@ -7,8 +7,8 @@ import {
   moveStep,
   newStep,
   nextRunId,
-  testRun,
-  fakeRunnerEvents,
+  startedRun,
+  runEventsToActivity,
   addStepTo,
   findStep,
   removeStep,
@@ -120,50 +120,65 @@ describe("saving a draft", () => {
   });
 });
 
-describe("test runs", () => {
+describe("starting a run", () => {
   it("continues the run numbering", () => {
     expect(nextRunId([{ id: "run_1045" }, { id: "run_1002" }] as never)).toBe("run_1046");
     expect(nextRunId([])).toBe("run_1001");
   });
 
-  it("starts in flight, manually triggered, with a log that walks the flow", () => {
+  it("starts queued, manually triggered, carrying the placement and nothing else", () => {
     const workflow = workflows[0];
-    const run = testRun(workflow, "Keith Kennedy", runs, runners);
-    expect(run).toMatchObject({ state: "Running", trigger: "Manual", startedBy: "Keith Kennedy", startedAt: "just now" });
+    const run = startedRun(workflow, "Keith Kennedy", runs, runners);
+    expect(run).toMatchObject({ state: "Queued", trigger: "Manual", startedBy: "Keith Kennedy", startedAt: "just now" });
     expect(run.workflowId).toBe(workflow.id);
-    // One log line per step, after the "started" and placement lines.
-    expect(run.activity).toHaveLength(workflow.steps.length + 2);
-    expect(run.activity[2].title).toBe(`1. ${actionById(flattenSteps(workflow.steps)[0].actionId)?.label}`);
+    // Exactly one line: where it is going, and why. Everything else in the log is
+    // reported by the engine as it happens — nothing here has happened yet, and the
+    // step-by-step log this used to fabricate was a description of the flow, not of
+    // a run.
+    expect(run.activity).toHaveLength(1);
   });
 
   it("places the run through the distributor and records why", () => {
     const workflow = workflows[0];
-    const run = testRun(workflow, "Keith Kennedy", runs, runners);
+    const run = startedRun(workflow, "Keith Kennedy", runs, runners);
     const placed = runners.find((r) => r.id === run.runnerId);
     expect(placed).toBeDefined();
     // The reason is on the log, not just the placement — a choice nobody can read
     // is the same bottleneck in a different place.
-    expect(run.activity[1].title).toContain(placed!.name);
+    expect(run.activity[0].title).toContain(placed!.name);
   });
 
-  it("emits the protocol's events rather than fabricating a log", () => {
-    // The fake is a fake *runner*, not a fake log: a real runner posts these same
-    // shapes to runner/ingest and the viewer needs no change.
-    const workflow = workflows[0];
-    const events = fakeRunnerEvents("run_test", workflow, "Placed on lightweight-1", "API-only");
-    expect(events[0].kind).toBe("started");
-    expect(events.filter((e) => e.kind === "step-started")).toHaveLength(workflow.steps.length);
-    // Sequences are unique and ascending, because the viewer orders on them.
-    const seqs = events.map((e) => e.sequence);
-    expect(new Set(seqs).size).toBe(seqs.length);
-    expect(seqs).toEqual([...seqs].sort((a, b) => a - b));
-  });
-
-  it("queues rather than inventing a runner when the pool can't take the work", () => {
+  it("names no runner when the pool can't take the work", () => {
     const headedOnly = { ...workflows[0], requirements: { auth: "none", ui: "headed", platform: "windows" } as const };
-    const run = testRun(headedOnly, "Keith Kennedy", runs, []);
-    expect(run.state).toBe("Queued");
+    const run = startedRun(headedOnly, "Keith Kennedy", runs, []);
     expect(run.runnerId).toBeUndefined();
+    expect(run.activity[0].title).toContain("Waiting for a runner");
+  });
+});
+
+describe("run events, rendered", () => {
+  const event = (sequence: number, kind: "started" | "step-finished" | "failed", message: string) => ({
+    runId: "run_x",
+    sequence,
+    kind,
+    message,
+    at: new Date().toISOString(),
+  });
+
+  it("maps each protocol kind onto the timeline's vocabulary", () => {
+    const rendered = runEventsToActivity([
+      event(1, "started", "Run started"),
+      event(2, "step-finished", "GET https://api.test → 200"),
+      event(3, "failed", "Run failed — expected 200, got 500"),
+    ]);
+    expect(rendered.map((a) => a.kind)).toEqual(["status", "fact", "problem"]);
+    expect(rendered.map((a) => a.id)).toEqual(["run_x-1", "run_x-2", "run_x-3"]);
+  });
+
+  it("turns the runner's ISO clock into the labels every other surface reads", () => {
+    // The runner stamps ISO because that is the only sane thing to send between
+    // machines; the timeline reads "just now" / "4 min ago" everywhere else.
+    expect(runEventsToActivity([event(1, "started", "Run started")])[0].time).toBe("just now");
   });
 });
 
@@ -384,9 +399,4 @@ describe("conditionals", () => {
     expect(findStep(flow, "nope")).toBeUndefined();
   });
 
-  it("logs every step that would execute, including nested ones", () => {
-    const workflow = { ...workflows[0], steps: [branch("b1", [newStep("http.request", [])])] };
-    const events = fakeRunnerEvents("run_x", workflow, "Placed", "why");
-    expect(events.filter((e) => e.kind === "step-started")).toHaveLength(1);
-  });
 });

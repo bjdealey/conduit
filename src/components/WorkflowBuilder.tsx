@@ -24,6 +24,8 @@ import {
   updateStep,
   type PaletteGroup,
 } from "../lib/builder";
+import { unexecutableSteps } from "../lib/execution";
+import { isExecutable } from "@conduit/runtime";
 import { isNarrowed } from "../lib/workspace";
 import { SplitView, Pane, DetailPane, ContextPane, PANE_WIDTH } from "./layout/SplitView";
 import { Sheet } from "./Sheet";
@@ -196,6 +198,14 @@ function PaletteBody({ groups, narrowed, onAdd, onAddBranch }: PaletteProps) {
                   {action.readiness === "roadmap" && (
                     <Chip tone="gray" mono dot={false} className="shrink-0">
                       roadmap
+                    </Chip>
+                  )}
+                  {/* Built, authorable, and nothing in the pool executes it yet.
+                      Distinct from `roadmap`, which is a node type nobody has built —
+                      and worth saying here, because a flow only finds out at the step. */}
+                  {action.readiness !== "roadmap" && !isExecutable(action.id) && (
+                    <Chip tone="gray" mono dot={false} className="shrink-0">
+                      no runner
                     </Chip>
                   )}
                   {!group.package && (
@@ -601,6 +611,9 @@ export function WorkflowBuilder() {
   const owner = memberById(draft.ownerId);
   const selectedStep = selection.kind === "step" ? findStep(draft.steps, selection.id) ?? null : null;
   const packages = packagesForSteps(draft.steps);
+  // Node types in this flow that no runner executes yet. Not a `problem`: it doesn't
+  // stop the flow being saved, and the node may well be executable by the time it runs.
+  const unrunnable = unexecutableSteps(draft.steps);
 
   /**
    * Where a new step lands.
@@ -783,6 +796,13 @@ export function WorkflowBuilder() {
             ? problems[0]
             : `${draft.steps.length} step${draft.steps.length === 1 ? "" : "s"} · ${packages.length} package${packages.length === 1 ? "" : "s"}`}
         </span>
+        {/* Said before the run, not after: a test run reaching one of these stops
+            there, and finding that out from a failed run is a worse way to learn it. */}
+        {problems.length === 0 && unrunnable.length > 0 && (
+          <span className="text-body-sm" style={{ color: "var(--amber-a11)" }}>
+            {unrunnable.join(", ")} {unrunnable.length === 1 ? "has" : "have"} no runner — a test run stops there
+          </span>
+        )}
         <div className="ml-auto flex items-center gap-2">
           {/* The phone's way into the catalogue. Cancel goes with it: the titlebar
               breadcrumb already leads back to the library, and three buttons plus a
@@ -851,6 +871,13 @@ function StepConfig({
           <span className="text-body-sm" style={{ color: "var(--amber-a11)" }}>
             This node type is declared but not yet executable. It's here to show the interface holds
             an AI step without reshaping the runtime or the canvas.
+          </span>
+        )}
+        {action.readiness !== "roadmap" && !isExecutable(action.id) && (
+          <span className="text-body-sm" style={{ color: "var(--amber-a11)" }}>
+            No runner executes this node type yet. Stage 1 runs the headless, API-first set — HTTP
+            calls, assertions, values, conditionals — so a run reaching this step stops there and
+            says so, rather than skipping it.
           </span>
         )}
         <span className="mt-1 inline-flex w-fit items-center gap-1.5 rounded-md bg-component px-1.5 py-0.5 font-departure-mono text-[0.65rem] text-tertiary-foreground">

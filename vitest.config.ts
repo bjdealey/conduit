@@ -11,10 +11,18 @@ export default defineConfig({
       "@conduit/connector-sdk": fileURLToPath(
         new URL("./packages/connector-sdk/src/index.ts", import.meta.url),
       ),
+      "@conduit/runtime": fileURLToPath(new URL("./packages/runtime/src/index.ts", import.meta.url)),
     },
   },
   test: {
     environment: "node",
-    include: ["packages/**/*.test.ts", "connectors/**/*.test.ts", "src/**/*.test.ts"],
+    include: [
+      "packages/**/*.test.ts",
+      "connectors/**/*.test.ts",
+      "src/**/*.test.ts",
+      // The runner is the execution plane's host process; its tests drive a real
+      // local HTTP server, which is the only way to prove a flow ran end to end.
+      "runner/**/*.test.ts",
+    ],
   },
 });

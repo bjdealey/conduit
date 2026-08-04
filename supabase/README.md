@@ -18,6 +18,11 @@ supabase/
     0002_bots.sql                  # workflows domain cache (+ RLS: authenticated read)
     0003_vault.sql                 # Vault + service-role-only RPCs (read/write/metadata/delete)
     0004_cron_sync.sql             # pg_cron → sync every 15 min (reads URL+token from Vault)
+    0005_rename_bots_to_workflows.sql  # one word for the central object
+    0006_runners_and_run_events.sql    # the execution plane's footprint + Realtime
+    0007_node_types.sql            # the builder palette, as rows
+    0008_runs_and_claim.sql        # runs + app_claim_run (atomic hand-out)
+    0009_run_lifecycle.sql         # app_enqueue_run / app_finish_run / requeue-abandoned cron
   functions/
     import_map.json             # maps @conduit/* to the workspace TS + npm:@supabase/supabase-js
     _shared/                    # service client, Vault client, registry loader, auth guard
@@ -25,6 +30,10 @@ supabase/
     sync/                       # pull → normalise → upsert workflows (cron + on-demand)
     capabilities/               # union of enabled connectors' declared capabilities
     health/                     # per-instance health probes
+    workflows/                  # service-role read of the workflows cache (domain models)
+    node-types/                 # the builder palette (ACTIONS is the fallback)
+    runner/                     # the runner protocol: register · heartbeat · claim · ingest
+    runs/                       # trigger a run (POST) and read one (GET)
 ```
 
 The functions consume the same `packages/*` and `connectors/*` TypeScript the tests use, via
@@ -158,8 +167,14 @@ supabase functions serve --env-file supabase/.env   # .env is gitignored; never 
   `deno check supabase/functions/**/*.ts` on your machine.
 - **TODO(supabase)** flags in-tree: `pg_net` availability + Edge Function URL shape for cron
   (`0004_cron_sync.sql`); the admin role claim source (`_shared/auth.ts`); stale-workflow pruning
-  in `sync`; and the production import-map bundling assumption (the deploy bundler must
+  in `sync`; the trigger gate on `runs` (admin-or-service today, the `trigger` permission once Auth
+  is wired); and the production import-map bundling assumption (the deploy bundler must
   include the workspace TS the import map points to — verify with a first `functions deploy`).
+- ⚠️ **What "not executed in CI here" costs.** `runner/index.ts` shipped importing a
+  `methodNotAllowed` that did not exist and calling `json(body, status)` with the arguments
+  reversed — it could never have booted. Both were found and fixed while wiring the run loop.
+  Run `deno check supabase/functions/**/*.ts` before every deploy; nothing else in this repo
+  will catch it.
 - **TODO(a360)** flags remain from the connector stage (endpoints/field shapes unverified
   against a live Control Room) — see the connector source.
 
@@ -192,3 +207,46 @@ wind down during a spike is exactly the wrong answer.
 
 `0006` adds `runners` and `run_events` and publishes `run_events` to `supabase_realtime`, which is
 what lets the run viewer light up nodes as they happen instead of polling.
+
+### Queuing and finishing a run
+
+`0008` built the middle of a run's life; `0009` builds both ends, because until it a run could
+never be queued and never stopped being `running`.
+
+- **`POST /functions/v1/runs`** queues one, with the flow *snapshotted* onto the row — a workflow
+  edited while its run waits must not change what that run executes. It is guarded by
+  `requireAdminOrService` (triggering runs work on your infrastructure). TODO(supabase): once
+  Supabase Auth is wired, this becomes the `trigger` permission from `packages/domain/src/review.ts`,
+  which is the whole point of the consumer tier. Nothing in the request names a runner — placement
+  is the claim's decision, and the response's `placement` is explicitly a *proposal*.
+- **`app_finish_run`** is called from `ingest` when a terminal event arrives, not by a separate call
+  from the runner: a runner that posts its last event and then dies leaves a visibly completed run
+  stuck in `running` otherwise. It is idempotent — terminal is terminal.
+- **`app_requeue_abandoned_runs`** (cron, every minute) returns runs whose runner stopped
+  heartbeating to the queue, measuring staleness from the heartbeat rather than the run's age: a
+  long run is not a stuck run. `attempts` already caps the cycle.
+
+```bash
+# queue a run (service-role key, or an admin JWT)
+curl -X POST "https://$REF.supabase.co/functions/v1/runs" \
+  -H "Authorization: Bearer <service-role-key>" -H "Content-Type: application/json" \
+  -d '{"workflowId":"wf_invoice_check","workflowVersion":1,"schemaVersion":2,
+       "requirements":{"auth":"api-key","ui":"none","platform":"any"},
+       "steps":[{"kind":"action","id":"stp_1","actionId":"http.request",
+                 "config":{"method":"GET","url":"https://api.example.com/invoices"}}]}'
+```
+
+### Running a runner against this project
+
+The execution plane lives in `runner/` (see its README). Pointed at a deployed project it
+registers, claims, executes and posts its log back:
+
+```bash
+export CONDUIT_CONTROL_PLANE_URL="https://$REF.supabase.co/functions/v1/runner"
+export CONDUIT_RUNNER_TOKEN="<the RUNNER_TOKEN you set above>"
+export CONDUIT_ENV_API_TOKEN="<a credential workflows may use as {{ env.API_TOKEN }}>"
+node runner/src/cli.ts serve
+```
+
+Workflow-visible values are `CONDUIT_ENV_*` only — never the whole environment, which is where the
+runner's own token lives.

@@ -1,0 +1,76 @@
+{
+  "id": "wf_invoice_check",
+  "name": "Invoice reconciliation check",
+  "description": "Reads open invoices from an API, reconciles the first one, and records how many were waiting. Nothing here needs a browser or a Windows session — this is the shape stage 1 executes.",
+  "schemaVersion": 2,
+  "version": 1,
+  "requirements": { "auth": "api-key", "ui": "none", "platform": "any" },
+  "steps": [
+    {
+      "kind": "action",
+      "id": "stp_1",
+      "actionId": "http.request",
+      "config": {
+        "method": "GET",
+        "url": "{{ env.API_URL }}/invoices?status=open",
+        "headers": "authorization: Bearer {{ env.API_TOKEN }}\naccept: application/json"
+      }
+    },
+    {
+      "kind": "action",
+      "id": "stp_2",
+      "actionId": "assert.equals",
+      "config": { "actual": "{{ response.status }}", "expected": "200" }
+    },
+    {
+      "kind": "action",
+      "id": "stp_3",
+      "actionId": "data.set",
+      "config": { "name": "openCount", "value": "{{ response.body.count }}" }
+    },
+    {
+      "kind": "branch",
+      "id": "stp_4",
+      "condition": "{{ openCount }} > 0",
+      "then": [
+        {
+          "kind": "action",
+          "id": "stp_5",
+          "actionId": "data.set",
+          "config": { "name": "firstInvoice", "value": "{{ response.body.items[0].id }}" }
+        },
+        {
+          "kind": "action",
+          "id": "stp_6",
+          "actionId": "http.request",
+          "config": {
+            "method": "POST",
+            "url": "{{ env.API_URL }}/reconcile",
+            "headers": "authorization: Bearer {{ env.API_TOKEN }}",
+            "body": "{ \"invoiceId\": \"{{ firstInvoice }}\", \"count\": {{ openCount }} }"
+          }
+        },
+        {
+          "kind": "action",
+          "id": "stp_7",
+          "actionId": "assert.equals",
+          "config": { "actual": "{{ response.status }}", "expected": "202" }
+        },
+        {
+          "kind": "action",
+          "id": "stp_8",
+          "actionId": "metrics.record",
+          "config": { "name": "invoices.reconciled", "value": "{{ openCount }}" }
+        }
+      ],
+      "else": [
+        {
+          "kind": "action",
+          "id": "stp_9",
+          "actionId": "metrics.record",
+          "config": { "name": "invoices.reconciled", "value": "0" }
+        }
+      ]
+    }
+  ]
+}

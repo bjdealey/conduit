@@ -105,7 +105,13 @@ export const ACTIONS: StepAction[] = [
     fields: [text("selector", "Selector", "button[type=submit]")],
   },
 
-  /* --------------------------------------------------------------------- http */
+  /* --------------------------------------------------------------------- http
+     The node stage 1 is built around, and the reason the three fields below start
+     *empty* rather than prefilled. Everywhere else a placeholder doubles as the
+     starting value, because a step that reads is better than a step that is blank —
+     but these steps now really execute, and a plausible-looking URL that isn't one, or
+     a body referencing a variable that doesn't exist, would make every new step's
+     first run a failure. The placeholder stays as the hint it always was. */
   {
     id: "http.request",
     label: "HTTP request",
@@ -113,8 +119,29 @@ export const ACTIONS: StepAction[] = [
     summary: "Call an API and capture the response.",
     fields: [
       choice("method", "Method", ["GET", "POST", "PUT", "DELETE"]),
-      text("url", "URL", "https://api.conduit.com/v1/…"),
-      { id: "body", label: "Body", kind: "long", placeholder: '{ "id": "{{ record.id }}" }' },
+      { id: "url", label: "URL", kind: "text", placeholder: "https://api.example.com/v1/invoices", value: "" },
+      {
+        id: "headers",
+        label: "Headers",
+        kind: "long",
+        placeholder: "authorization: Bearer {{ env.API_TOKEN }}\naccept: application/json",
+        value: "",
+      },
+      { id: "body", label: "Body", kind: "long", placeholder: '{ "id": "{{ response.body.id }}" }', value: "" },
+    ],
+  },
+
+  /* --------------------------------------------------------------------- data
+     The transformation half of an API flow. Between two calls something has to carry
+     a value, or a flow can only ever be a chain of calls that ignore each other. */
+  {
+    id: "data.set",
+    label: "Set value",
+    package: "data",
+    summary: "Name a value from the run, for later steps to use.",
+    fields: [
+      text("name", "Name", "status"),
+      { id: "value", label: "Value", kind: "long", placeholder: "{{ response.status }}" },
     ],
   },
 
@@ -131,7 +158,7 @@ export const ACTIONS: StepAction[] = [
     label: "Assert link resolves",
     package: "assertions",
     summary: "Fail the run unless a link returns a success status.",
-    fields: [text("url", "Link", "{{ email.resetLink }}"), number("within", "Within (s)", "10")],
+    fields: [text("url", "Link", "{{ response.headers.location }}"), number("within", "Within (s)", "10")],
   },
 
   /* ------------------------------------------------------------------- records */

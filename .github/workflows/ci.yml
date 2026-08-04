@@ -25,7 +25,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # 22, not 20: the runner in `runner/` executes its own TypeScript with no
+          # build step, which needs Node's unflagged type stripping (22.18+). On 20
+          # its end-to-end tests fail on the host rather than on the code — and the
+          # one property that makes a runner image a file and a workspace instead of
+          # a toolchain would never be exercised in CI at all.
+          node-version: 22
           cache: npm
       - run: npm ci
 
@@ -36,5 +41,8 @@ jobs:
         run: npm run check:classes
 
       - run: npm run typecheck:packages
+      # Its own project, because `typecheck:packages` keeps `types: []` to prove the
+      # packages are host-free — the runner is the one artefact here that is a host.
+      - run: npm run typecheck:runner
       - run: npm test
       - run: npm run build

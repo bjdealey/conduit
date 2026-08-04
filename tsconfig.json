@@ -15,7 +15,8 @@
     "jsx": "react-jsx",
     "baseUrl": ".",
     "paths": {
-      "@conduit/domain": ["packages/domain/src/index.ts"]
+      "@conduit/domain": ["packages/domain/src/index.ts"],
+      "@conduit/runtime": ["packages/runtime/src/index.ts"]
     },
     "strict": true,
     "noUnusedLocals": true,

@@ -12,7 +12,19 @@ import { VIEW_MODES } from "./data/viewLayout";
 import { applyBrand } from "./lib/palette";
 import { isDark, setTheme } from "./lib/theme";
 import { files as seedFiles } from "./data/files";
-import type { Workflow, WorkflowDraft, Folder, Issue, LibraryFile, Member, Priority, Role, Run, Status } from "./data/types";
+import type {
+  ActivityEvent,
+  Workflow,
+  WorkflowDraft,
+  Folder,
+  Issue,
+  LibraryFile,
+  Member,
+  Priority,
+  Role,
+  Run,
+  Status,
+} from "./data/types";
 import {
   countUnder as countUnderNode,
   countUnderAll as countUnderAllNodes,
@@ -30,7 +42,9 @@ import {
   type LibraryTree,
   type MoveTarget,
 } from "./lib/library";
-import { blankDraft, commitDraft, testRun } from "./lib/builder";
+import { blankDraft, commitDraft, controlPlaneNote, runEventsToActivity, startedRun } from "./lib/builder";
+import { startRun } from "./lib/execution";
+import { durationLabel } from "./lib/format";
 import { subtreeIds } from "./lib/folders";
 import { ACTIONS, type StepAction } from "./data/actions";
 import {
@@ -41,11 +55,13 @@ import {
   can,
   canTransition,
   categoryOfReviewAction,
+  isTerminal,
   latestVersion,
   transitionsFrom,
   type AuditEntry,
   type Permission,
   type ReviewAction,
+  type RunEvent,
   type Workflow as DomainWorkflow,
 } from "@conduit/domain";
 import { EMPTY_WORKSPACE, type FilterOp, type SortDir, type WorkspaceState } from "./lib/workspace";
@@ -53,7 +69,7 @@ import { asDensity, asLayout, type LibraryDensity, type LibraryLayout } from "./
 import { isMobileNow, useIsMobile } from "./lib/responsive";
 import { CONTEXT_LABEL } from "./data/viewLayout";
 import { isSupabaseConfigured } from "./lib/supabase";
-import { getWorkflows, getCapabilities, getNodeTypes } from "./lib/api";
+import { getWorkflows, getCapabilities, getNodeTypes, subscribeRunEvents } from "./lib/api";
 import { seedConnectedWorkflows } from "./data/toDomain";
 
 const read = (key: string, fallback: string): string => {
@@ -118,6 +134,15 @@ type Store = {
   /** Save the draft, then start a manual run of it and jump to Activity. */
   testRunDraft: () => void;
   closeBuilder: () => void;
+  /**
+   * Start a manual run of a saved workflow and open Activity on it.
+   *
+   * The run really executes: with a backend it is queued for the pool, and with none
+   * the browser tab hosts the engine. Either way the log fills in as events arrive.
+   * Returns the run's id, or null when the workflow can't be run from here (a mirrored
+   * flow lives on its own platform).
+   */
+  runWorkflow: (workflowId: string) => string | null;
   /** Runs for one workflow, newest first (seed order). */
   runsForWorkflow: (workflowId: string) => Run[];
   /** Canonical domain bots from our API (live) or the seed fallback. */
@@ -626,6 +651,87 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return { id: made.id };
   };
 
+  /*
+   * Start a run, and keep it up to date as it reports.
+   *
+   * The run row appears immediately, queued, with the placement rationale already in
+   * its log — then the events fill it in live, from whichever engine is executing:
+   * this tab, or a runner in the pool posting to `run_events`. One code path either
+   * way, because both produce the same protocol events.
+   */
+  const launchRun = (workflow: Workflow): string => {
+    const run = startedRun(workflow, currentUser.name, runs, runners);
+    setRuns((prev) => [run, ...prev]);
+
+    // The log is two streams that stay separate: what a runner reported (numbered by
+    // its own `sequence`) and what the control plane had to say (placement, a refused
+    // trigger). Numbering ours into the runner's series would make our first note and
+    // its first event claim one identity, and `orderEvents` de-duplicates on exactly that.
+    const received: RunEvent[] = [];
+    const notes: ActivityEvent[] = [];
+    const redraw = (running: boolean): void => {
+      const activity = [...run.activity, ...notes, ...runEventsToActivity(received)];
+      setRuns((prev) =>
+        prev.map((r) =>
+          r.id !== run.id ? r : { ...r, state: running && r.state === "Queued" ? "Running" : r.state, activity },
+        ),
+      );
+    };
+    const note = (message: string): void => {
+      notes.push(controlPlaneNote(run.id, notes.length + 2, message));
+      redraw(false);
+    };
+    const paint = (event: RunEvent): void => {
+      received.push(event);
+      // The first event is the run actually starting: until one arrives it is queued,
+      // which is the honest state for work nobody has picked up.
+      redraw(!isTerminal(event.kind));
+    };
+
+    /** Close the run out: its outcome, and how long it took. The workflow's rollups
+     *  move with it — `successRate` is left alone, because it is a rollup over runs
+     *  the prototype never had, and inventing a new one from a single run would be a
+     *  worse number than the one already there. */
+    const conclude = (state: Run["state"], ms: number): void => {
+      setRuns((prev) => prev.map((r) => (r.id === run.id ? { ...r, state, duration: durationLabel(ms) } : r)));
+      setWorkflows((prev) =>
+        prev.map((w) => (w.id === workflow.id ? { ...w, runCount: w.runCount + 1, lastRunAt: "just now" } : w)),
+      );
+    };
+
+    void startRun({ workflow, runId: run.id, onEvent: paint, onNote: note })
+      .then((started) => {
+        if (started.result) {
+          conclude(started.result.state === "completed" ? "Completed" : "Failed", started.result.elapsedMs);
+          return;
+        }
+        // The pool took it. Watch the log arrive, and close the run out on the
+        // terminal event — the same event the control plane finishes the row on.
+        const stop = subscribeRunEvents(run.id, (event) => {
+          paint(event);
+          if (!isTerminal(event.kind)) return;
+          const first = Date.parse(received[0]?.at ?? event.at);
+          const last = Date.parse(event.at);
+          conclude(event.kind === "finished" ? "Completed" : "Failed", Number.isNaN(first) ? 0 : last - first);
+          stop();
+        });
+      })
+      .catch((error: unknown) => {
+        // Starting a run is the one place a thrown error would otherwise vanish into a
+        // promise: the run row would sit at Queued forever with nothing said.
+        paint({
+          runId: run.id,
+          sequence: received.length + 1,
+          kind: "failed",
+          message: `Run failed to start — ${error instanceof Error ? error.message : String(error)}`,
+          at: new Date().toISOString(),
+        });
+        conclude("Failed", 0);
+      });
+
+    return run.id;
+  };
+
   const value: Store = {
     issues,
     members,
@@ -671,15 +777,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     },
     testRunDraft: () => {
       if (!draft) return;
+      // Saved first, and the *saved* workflow is what runs: `commitDraft` raises the
+      // requirements to the floor its steps impose, and a test run that executed the
+      // unsaved draft would be placing work by numbers the library doesn't hold.
       const { workflows: next, id } = commitDraft(workflows, draft, currentUser.name);
       const saved = next.find((a) => a.id === id)!;
-      setWorkflows(next.map((a) => (a.id === id ? { ...a, runCount: a.runCount + 1, lastRunAt: "just now" } : a)));
-      setRuns((prev) => [testRun(saved, currentUser.name, prev, runners), ...prev]);
+      setWorkflows(next);
+      launchRun(saved);
       setSelectedWorkflowId(id);
       setSelectedFolderId(null);
       setSelectedFileId(null);
       setDraft(null);
       setViewRaw("activity");
+    },
+    runWorkflow: (workflowId) => {
+      const workflow = workflows.find((w) => w.id === workflowId);
+      // A mirrored workflow is executed by its own platform; triggering it from here
+      // would need its connector to accept a run, which is not this stage's promise.
+      if (!workflow || workflow.platform !== "conduit") return null;
+      const id = launchRun(workflow);
+      setSelectedWorkflowId(workflowId);
+      setViewRaw("activity");
+      return id;
     },
     closeBuilder: () => {
       setDraft(null);

@@ -13,6 +13,7 @@ import {
   orderEvents,
   type RunEvent,
   type RunEventKind,
+  type RunWork,
   type Workflow,
   type WorkflowRunState,
 } from "@conduit/domain";
@@ -69,6 +70,33 @@ export async function getWorkflows(): Promise<Workflow[]> {
   const { data, error } = await supabase.functions.invoke("workflows", { method: "GET" });
   if (error) throw error;
   return coerceWorkflows((data as { workflows?: unknown } | null)?.workflows);
+}
+
+/* ----------------------------------------------------------------- triggering */
+
+/** What the control plane says about a run it has queued. `runnerId` is a *proposal*
+ *  against the pool as it stands — the run is placed when a runner claims it. */
+export type QueuedRunReceipt = { runId: string; state: string; proposedRunnerId: string | null; rationale: string };
+
+/**
+ * Queue a run of this flow.
+ *
+ * The flow travels with the request and is snapshotted onto the run, so a workflow
+ * edited while its run waits cannot change what that run executes. Nothing here names
+ * a runner: placement is the claim's decision, and an endpoint that could pick a
+ * machine would be the assignment model coming back in through the API.
+ */
+export async function enqueueRun(work: RunWork): Promise<QueuedRunReceipt> {
+  if (!supabase) throw new Error("Supabase is not configured");
+  const { data, error } = await supabase.functions.invoke("runs", { method: "POST", body: work });
+  if (error) throw error;
+  const body = (data ?? {}) as { run?: { id?: string; state?: string }; placement?: Record<string, unknown> };
+  return {
+    runId: nonEmptyString(body.run?.id) ?? work.runId,
+    state: nonEmptyString(body.run?.state) ?? "queued",
+    proposedRunnerId: nonEmptyString(body.placement?.proposedRunnerId) ?? null,
+    rationale: nonEmptyString(body.placement?.rationale) ?? "queued",
+  };
 }
 
 /* ---------------------------------------------------------------- run events */

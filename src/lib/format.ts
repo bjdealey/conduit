@@ -63,6 +63,41 @@ export function durationSeconds(label: string): number | null {
   return total;
 }
 
+/**
+ * A measured duration as the label this app writes, e.g. 480 -> "0.5 s",
+ * 2_400 -> "2 s", 130_000 -> "2 min 10 s".
+ *
+ * The inverse of `durationSeconds`: runs used to carry hand-written labels, and now
+ * that they are really executed the number comes back in milliseconds and has to be
+ * written in the same vocabulary — or the Activity timeline, which reads these labels
+ * back, would stop being able to place them.
+ */
+export function durationLabel(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return "—";
+  if (ms < 950) return `${(ms / 1000).toFixed(1)} s`;
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 60) return `${seconds} s`;
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  return rest === 0 ? `${minutes} min` : `${minutes} min ${rest} s`;
+}
+
+/**
+ * A timestamp as a relative label, in the same words `minutesAgo` reads back.
+ *
+ * Run events carry an ISO time from the runner's clock — right for ordering across
+ * machines, wrong for a timeline that says "4 min ago" everywhere else.
+ */
+export function relativeTime(iso: string, now = Date.now()): string {
+  const at = Date.parse(iso);
+  if (Number.isNaN(at)) return iso; // already a label ("just now") — leave it alone
+  const minutes = Math.floor((now - at) / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  return hours < 24 ? `${hours} hour${hours === 1 ? "" : "s"} ago` : `${Math.floor(hours / 24)} days ago`;
+}
+
 /** Compact age label for a time axis: 0 -> "now", 45 -> "45m", 240 -> "4h". */
 export function agoLabel(minutes: number): string {
   if (minutes <= 0) return "now";
