@@ -11,12 +11,15 @@
 import {
   MAX_EVENTS_PER_BATCH,
   PROTOCOL_VERSION,
+  conclusionOf,
   isSupportedProtocol,
+  orderEvents,
   type ClaimResponse,
   type HeartbeatRequest,
   type HeartbeatResponse,
   type IngestRequest,
   type RegisterRequest,
+  type RunConclusion,
 } from "@conduit/domain";
 import { scalePlan, shouldDrain, type QueuedRun, type Runner } from "@conduit/domain";
 import { serviceClient } from "../_shared/supabase.ts";
@@ -66,18 +69,18 @@ function authorised(req: Request): boolean {
 
 Deno.serve(async (req) => {
   if (req.method !== "POST") return methodNotAllowed(["POST"]);
-  if (!authorised(req)) return json({ error: "unauthorised" }, 401);
+  if (!authorised(req)) return json(401, { error: "unauthorised" });
 
   const url = new URL(req.url);
   const action = url.pathname.split("/").pop();
   const body = await req.json().catch(() => null);
-  if (!body || typeof body !== "object") return json({ error: "invalid body" }, 400);
+  if (!body || typeof body !== "object") return json(400, { error: "invalid body" });
 
   const version = (body as { protocolVersion?: number }).protocolVersion ?? 0;
   if (!isSupportedProtocol(version)) {
     // Refused explicitly rather than half-served: a runner speaking a shape we don't
     // understand should upgrade, not guess.
-    return json({ accepted: false, reason: "protocol", detail: `server speaks v${PROTOCOL_VERSION}` }, 426);
+    return json(426, { accepted: false, reason: "protocol", detail: `server speaks v${PROTOCOL_VERSION}` });
   }
 
   const db = serviceClient();
@@ -96,8 +99,8 @@ Deno.serve(async (req) => {
       state: "idle",
       last_seen_at: new Date().toISOString(),
     });
-    if (error) return json({ accepted: false, reason: "rejected", detail: error.message }, 400);
-    return json({ accepted: true, heartbeatSeconds: HEARTBEAT_SECONDS, protocolVersion: PROTOCOL_VERSION });
+    if (error) return json(400, { accepted: false, reason: "rejected", detail: error.message });
+    return json(200, { accepted: true, heartbeatSeconds: HEARTBEAT_SECONDS, protocolVersion: PROTOCOL_VERSION });
   }
 
   if (action === "heartbeat") {
@@ -111,7 +114,7 @@ Deno.serve(async (req) => {
         last_seen_at: new Date().toISOString(),
       })
       .eq("id", h.runnerId);
-    if (error) return json({ error: error.message }, 400);
+    if (error) return json(400, { error: error.message });
 
     // Whether to wind down is a pool-wide decision, so it is recomputed from the
     // current pool and queue rather than stored per runner — a stored flag goes stale
@@ -122,17 +125,17 @@ Deno.serve(async (req) => {
       db.from("runs").select("*").eq("state", "queued"),
     ]);
     const plan = scalePlan((pool ?? []).map(toRunner), (queue ?? []).map(toQueuedRun));
-    return json({ drain: shouldDrain(plan, h.runnerId) } satisfies HeartbeatResponse);
+    return json(200, { drain: shouldDrain(plan, h.runnerId) } satisfies HeartbeatResponse);
   }
 
   if (action === "claim") {
     // One statement, holding a row lock: two runners polling a second apart both see
     // the same queued run, and if both take it the workflow executes twice.
     const { data, error } = await db.rpc("app_claim_run", { p_runner_id: (body as { runnerId: string }).runnerId });
-    if (error) return json({ error: error.message }, 400);
+    if (error) return json(400, { error: error.message });
 
     const row = Array.isArray(data) ? data[0] : data;
-    if (!row) return json({ work: null } satisfies ClaimResponse);
+    if (!row) return json(200, { work: null } satisfies ClaimResponse);
 
     const response: ClaimResponse = {
       work: {
@@ -145,14 +148,14 @@ Deno.serve(async (req) => {
         deadlineSeconds: RUN_DEADLINE_SECONDS,
       },
     };
-    return json(response);
+    return json(200, response);
   }
 
   if (action === "ingest") {
     const i = body as IngestRequest;
-    if (!Array.isArray(i.events)) return json({ error: "events must be an array" }, 400);
+    if (!Array.isArray(i.events)) return json(400, { error: "events must be an array" });
     if (i.events.length > MAX_EVENTS_PER_BATCH) {
-      return json({ error: `at most ${MAX_EVENTS_PER_BATCH} events per batch` }, 413);
+      return json(413, { error: `at most ${MAX_EVENTS_PER_BATCH} events per batch` });
     }
     const rows = i.events.map((e) => ({
       run_id: e.runId,
@@ -164,10 +167,32 @@ Deno.serve(async (req) => {
     }));
     // Idempotent by (run_id, sequence): a retried batch after a timeout is safe.
     const { error } = await db.from("run_events").upsert(rows, { onConflict: "run_id,sequence", ignoreDuplicates: true });
-    if (error) return json({ error: error.message }, 400);
+    if (error) return json(400, { error: error.message });
     const highWatermark = rows.reduce((max, r) => Math.max(max, r.sequence), 0);
-    return json({ accepted: rows.length, highWatermark });
+
+    /*
+     * A terminal event finishes the run and frees the runner.
+     *
+     * Derived from the log rather than reported separately: a runner that posts its
+     * last event and then dies — which is exactly what an ephemeral runner is entitled
+     * to do — would otherwise leave a run that visibly completed sitting in `running`
+     * until the requeue sweep took it. The RPC is idempotent, so a redelivered batch
+     * cannot move a finished run.
+     */
+    const terminal = new Map<string, RunConclusion>();
+    for (const event of orderEvents(i.events)) {
+      const conclusion = conclusionOf(event.kind);
+      if (conclusion) terminal.set(event.runId, conclusion);
+    }
+    for (const [runId, state] of terminal) {
+      const { error: finishError } = await db.rpc("app_finish_run", { p_run_id: runId, p_state: state });
+      // The log is stored either way: losing the account of what happened because the
+      // bookkeeping failed would be the wrong trade.
+      if (finishError) console.error(`app_finish_run(${runId}, ${state}) failed: ${finishError.message}`);
+    }
+
+    return json(200, { accepted: rows.length, highWatermark });
   }
 
-  return json({ error: `unknown action "${action ?? ""}"` }, 404);
+  return json(404, { error: `unknown action "${action ?? ""}"` });
 });

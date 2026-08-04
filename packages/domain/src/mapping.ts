@@ -4,7 +4,10 @@
  * so a normaliser either returns a complete valid model or fails loudly — never a
  * partial one.
  */
-import { MapContext, MappingError } from "./errors.ts";
+// `type` on the type-only half is load-bearing, not decoration: a runtime that strips
+// types rather than compiling them keeps every unmarked import, and would then look
+// for a `MapContext` export that only ever existed at compile time.
+import { MappingError, type MapContext } from "./errors.ts";
 
 /** A human label for a value's shape, for error messages. */
 function describeValue(v: unknown): string {

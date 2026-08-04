@@ -31,7 +31,24 @@ import_map = "./functions/import_map.json"
 verify_jwt = false
 import_map = "./functions/import_map.json"
 
-[functions.bots]
+[functions.workflows]
+verify_jwt = false
+import_map = "./functions/import_map.json"
+
+[functions.node-types]
+verify_jwt = false
+import_map = "./functions/import_map.json"
+
+# The runner protocol. verify_jwt must stay off here for a different reason from the
+# others: runners are not users and must never hold a user JWT. They present the shared
+# RUNNER_TOKEN, which the function checks itself on every action.
+[functions.runner]
+verify_jwt = false
+import_map = "./functions/import_map.json"
+
+# Triggering a run executes work on your infrastructure, so the function guards itself
+# with requireAdminOrService() — service-role key or an admin user.
+[functions.runs]
 verify_jwt = false
 import_map = "./functions/import_map.json"
 

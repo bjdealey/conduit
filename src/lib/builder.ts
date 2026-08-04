@@ -5,7 +5,6 @@ import {
   allSteps,
   defaultConfig,
   effectiveRequirements,
-  flattenSteps,
   packagesForSteps,
   type StepAction,
 } from "../data/actions";
@@ -21,6 +20,7 @@ import {
 } from "@conduit/domain";
 import type { ActivityEvent, Workflow, WorkflowDraft, WorkflowStep, Run } from "../data/types";
 import { workspaceControls } from "../data/workspaceControls";
+import { relativeTime } from "./format";
 import { matchesQuery, ordered, passesFilter, resolveSort, type WorkspaceState } from "./workspace";
 
 /* =============================================================================
@@ -258,11 +258,15 @@ export function nextRunId(runs: Run[]): string {
 }
 
 /**
- * A test run of the workflow as it stands: in-flight, manually triggered, with
- * a log that walks the flow — so the Activity stream shows what the builder just
- * launched instead of a placeholder.
+ * A run of the workflow as it stands, the moment it is started.
+ *
+ * It carries the placement and nothing else, because nothing else has happened yet:
+ * the log fills in as the engine reports it (`src/lib/execution.ts`), whether that
+ * engine is in this tab or on a runner in the pool. What used to be here was a
+ * plausible log written from the step list; a flow that really executes does not need
+ * one, and a log that was written rather than observed is worse than no log.
  */
-export function testRun(workflow: Workflow, startedBy: string, runs: Run[], pool: readonly Runner[]): Run {
+export function startedRun(workflow: Workflow, startedBy: string, runs: Run[], pool: readonly Runner[]): Run {
   const id = nextRunId(runs);
   // Placed, not assigned: the same distributor the scheduler uses picks the runner,
   // and its reasoning is written into the log so the choice is inspectable.
@@ -270,53 +274,53 @@ export function testRun(workflow: Workflow, startedBy: string, runs: Run[], pool
   return {
     id,
     workflowId: workflow.id,
-    state: runner ? "Running" : "Queued",
+    // Queued until something reports: a run row that claims to be Running before any
+    // engine has said so is the same fiction the fake log used to be.
+    state: "Queued",
     trigger: "Manual",
     startedBy,
     startedAt: "just now",
-    duration: "2 s",
+    duration: "—",
     runnerId: runner?.id,
-    activity: runEventsToActivity(
-      fakeRunnerEvents(id, workflow, runner ? `Placed on ${runner.name}` : "Waiting for a runner", rationale),
-    ),
+    activity: [controlPlaneNote(id, 1, `${runner ? `Placed on ${runner.name}` : "Waiting for a runner"} — ${rationale}`)],
   };
 }
 
 /**
- * The events a runner would report for this flow.
+ * A line the *control plane* wrote, in the run's log.
  *
- * A test run has no real runner behind it yet, so this stands in for one — but it
- * emits the *protocol's* events rather than fabricating a screen. When a real runner
- * arrives it posts the same shapes to `runner/ingest`, and the viewer needs no
- * change: the fake is a fake runner, not a fake log.
+ * Deliberately not a `RunEvent`: `sequence` belongs to the runner and starts at 1, so
+ * numbering our own notes into the same series means the runner's first event and our
+ * first note claim the same identity — and `orderEvents`, which de-duplicates on
+ * exactly that, would quietly drop one of them. Its own id prefix keeps both.
  */
-export function fakeRunnerEvents(runId: string, workflow: Workflow, placement: string, rationale: string): RunEvent[] {
-  const at = "just now";
-  const events: RunEvent[] = [
-    { runId, sequence: 1, kind: "started", message: "Test run started from the builder", at },
-    { runId, sequence: 2, kind: "log", message: `${placement} — ${rationale}`, at },
-  ];
-  // Flattened: a branch's contents are what actually executes, and a run log that
-  // stopped at the top level would omit everything inside a conditional.
-  flattenSteps(workflow.steps).forEach((step, i) => {
-    events.push({
-      runId,
-      sequence: 3 + i,
-      kind: "step-started",
-      stepId: step.id,
-      message: `${i + 1}. ${actionById(step.actionId)?.label ?? step.actionId}`,
-      at,
-    });
-  });
-  return events;
+export function controlPlaneNote(runId: string, n: number, message: string): ActivityEvent {
+  return { id: `${runId}-cp-${n}`, kind: "fact", time: "just now", title: message };
 }
 
-/** Protocol events rendered as the timeline the run viewer already speaks. */
+/** How each protocol event kind reads in the timeline the run viewer speaks. */
+const EVENT_KIND: Record<RunEvent["kind"], ActivityEvent["kind"]> = {
+  started: "status",
+  "step-started": "status",
+  "step-finished": "fact",
+  log: "fact",
+  failed: "problem",
+  finished: "status",
+};
+
+/**
+ * Protocol events rendered as the timeline the run viewer already speaks.
+ *
+ * The runner stamps `at` from its own clock in ISO, because that is the only sane
+ * thing to send across machines; the timeline reads relative labels, because that is
+ * what every other surface in the app shows. `relativeTime` passes an existing label
+ * through untouched, so seeded runs still read as they did.
+ */
 export function runEventsToActivity(events: readonly RunEvent[]): ActivityEvent[] {
   return orderEvents(events).map((e) => ({
     id: `${e.runId}-${e.sequence}`,
-    kind: e.kind === "failed" ? ("problem" as const) : e.kind === "log" ? ("fact" as const) : ("status" as const),
-    time: e.at,
+    kind: EVENT_KIND[e.kind] ?? ("status" as const),
+    time: relativeTime(e.at),
     title: e.message,
   }));
 }

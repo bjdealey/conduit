@@ -755,3 +755,107 @@ the phone shell doesn't mount, so `SettingsContent` renders the same strip to re
 15→16px body-base — also the size iOS uses to decide whether to zoom a focused input). Headings are
 untouched: already large, and scaling them costs more of the screen than it buys. Tap targets follow:
 `.tap-target` is 44px, tree rows 42px, bar items 56px, sheet rows 48px.
+
+## Implemented so far — stage 11: workflows actually run
+
+The first three inversions were about *where* work goes. This is the one about work happening:
+a workflow authored in Conduit now executes, start to finish, headless, over HTTP. Verified in a
+real browser (Chromium) against a local API — the builder's **Test run** and the library's
+**Run now** both make a real request and render a real log — and by a real process, `conduit-runner`,
+executing the shipped example flow end to end. 324 tests pass, no page errors.
+
+**The boundary held, and that is the point.** The vision's §6 says *"no execution engine in this
+repo"*, and the engine is still not part of the control plane: it is a **separate artefact kept at
+arm's length**. `packages/runtime` imports `@conduit/domain` and nothing else — no React, no
+Supabase, no `src/`, no Node or Deno API — and `runner/` is the host process around it. Both could be
+lifted into the runtime team's repository tomorrow and the control plane would not notice. What
+changed is that Conduit now ships runner #1 rather than only describing it.
+
+**Layout**
+- `packages/runtime` — the engine. `values` (JSON values, path lookup, loose equality, truthiness),
+  `expression` (`{{ }}` interpolation + branch conditions), `context` (run state + secret masking),
+  `http` (transport seam + URL policy), `nodes/*` (one executor per node type), `engine` (walks the
+  tree, emits protocol events), `testing` (fake transport, ticking clock — tests only).
+- `runner/` — the host: `config` (environment only), `client` (the four protocol calls), `loop`
+  (register → heartbeat → claim → execute → ingest), `local` (a flow file, no backend), `cli`.
+  `runner/examples/invoice-check.json` is the flow the end-to-end test executes.
+- `supabase/migrations/0009_run_lifecycle.sql` + `supabase/functions/runs` — the two ends of a run
+  0008 left open: queuing one, and finishing one.
+
+**What executes, and what says it doesn't.** Stage 1 is the headless API-first set: `http.request`,
+`assert.equals`, `assert.resolves`, `data.set` (new), `metrics.record`, plus conditionals in the
+engine. A node with no executor **fails the run at that step**, naming the node and what this runner
+does run. A browser step reported as fine by a runner with no browser is the worst outcome available
+here — the flow would look green and have done nothing. The palette says so before the run: a
+`no runner` chip beside the node and a line in the builder's footer.
+
+**Contract details that concretized**
+- **An expression cannot reach the host.** No `eval`, no `Function`, and there must never be one:
+  workflow text is authored by citizen builders, so an expression that reached the host language
+  would make the authoring surface an RCE surface with the review queue as the only guard.
+- **Interpolation fails loudly; a condition does not.** `{{ invoice.id }}` missing in a URL throws —
+  `POST /invoices/` is a request to a different endpoint and it will often succeed. The same path
+  missing in a branch condition is simply false: a condition is a *question*, and "is there an error
+  field" is a fair one to ask of a response that may not have one.
+- **A non-2xx response is an answer, not a failure.** `http.request` records a 404 and carries on; an
+  assertion is where an author says a status was unacceptable. The transport failing (DNS, TLS,
+  timeout) is the failure, because then there is no answer at all.
+- **Secrets come from the runner, never from the workflow.** `{{ env.NAME }}` resolves from values the
+  *runner* holds (`CONDUIT_ENV_*`, prefixed so a flow can't read the runner's own token), and every
+  event is masked on the way out. ⚠️ Masking is **by name** (`SECRET_NAME` in `context.ts`): the first
+  attempt masked every injected value and turned the log into `GET ••••/invoices → 200`, throwing away
+  the only forensic record a headless run leaves. A credential hidden in a value named `API_URL` is
+  therefore not caught — a real limit, stated rather than assumed.
+- **Protocol v2: the flow is a tree.** `ClaimResponse.work` carries `ExecutableStep[]` with branches,
+  because schema v2 made a flow a tree in stage 8 and the wire still said list. A flow with no
+  branches serialises identically in v1 and v2, so `SUPPORTED_PROTOCOL_VERSIONS` is `[1, 2]`; the only
+  thing a v1 runner cannot execute is a branching flow, and it finds out by meeting a `kind` it does
+  not know. A step arriving with no `kind` is an action — the same rule the control plane's walkers use.
+- **A run's outcome is derived from its log.** Ingesting a terminal event calls `app_finish_run`,
+  rather than the runner making a separate "I'm done" call: a runner that posts its last event and
+  then dies — exactly what an ephemeral runner is entitled to do — would otherwise leave a visibly
+  completed run sitting in `running` forever. `app_requeue_abandoned_runs` (cron, every minute) does
+  the same job for a runner that died mid-run, measuring staleness from the *heartbeat* and not from
+  the run's age: a long run is not a stuck run.
+- **The runner declares only what it can present.** `CONDUIT_AUTH_MODELS` defaults to `none,api-key`,
+  and it checks `runnerFits` against the work's echoed requirements before starting. Claiming an auth
+  model the image cannot actually present means being handed work it must fail — the pool would show
+  capacity it hasn't got.
+- **Private addresses are refused by default** in `serve` mode (`blockPrivateNetworks`). A workflow
+  authored by someone else runs on your infrastructure, and without this
+  `GET http://169.254.169.254/…` is a legal workflow step. `--allow-private-hosts` is the deliberate
+  opt-out for a runner whose job *is* an internal API.
+
+**The app runs its own flows.** With no backend the browser tab **is** the runner: Test run and Run
+now execute through the same engine and emit the same events, so there is one code path and one
+viewer. With a backend the app *queues* the run and watches `run_events` — and if the control plane
+refuses the trigger (today it will: the browser has no admin identity until Supabase Auth is wired),
+the run says so **in its own log** and executes locally rather than failing silently or pretending it
+went to the pool. `fakeRunnerEvents` is gone: a flow that really executes does not need a plausible
+log written from its step list, and a log that was written rather than observed is worse than none.
+
+⚠️ **Everything the execution plane imports must be free of TypeScript that *emits* code.** The runner
+runs `.ts` directly under Node's type stripping, which refuses `enum`, parameter properties and
+namespaces, and keeps any import not marked `type`. That is why `Capability` is now a frozen object
+plus a union type (every call site reads identically), why the runtime's error classes assign their
+fields in the constructor body, and why `mapping.ts` imports `type MapContext`. The domain package is
+the file the runtime team codes against; it has to load in the thing they are building.
+`tsconfig.packages.json` keeps `types: []` to prove the packages are host-free; `runner/` has its own
+project with Node's types.
+
+⚠️ **A prefilled placeholder stops being harmless the moment steps execute.** `defaultConfig` starts a
+step on its placeholder, which was right when nothing ran — but `https://api.conduit.com/v1/…` is not
+a URL and `{{ record.id }}` is not a value, so every new HTTP step's first run would have failed. The
+executable node's fields (`url`, `headers`, `body`) now start empty with the placeholder as the hint
+it always was; the rest of the palette is unchanged.
+
+**Two Edge Function bugs the wiring surfaced.** `runner/index.ts` imported `methodNotAllowed`, which
+did not exist, and called `json(body, status)` with the arguments reversed — it could never have
+booted. Both are fixed, and it is worth knowing why they survived: the Deno functions are the one part
+of this repo that neither `tsc` nor Vitest ever sees (`supabase/README.md` says so). Anything written
+there is unverified until `deno check` runs on deploy.
+
+**Not yet built after stage 11** (do not assume these exist): the browser/Windows node executors and
+the runner images that would carry them, OAuth/credential resolution inside a run (a runner presents
+what its environment holds — there is no per-workflow credential binding yet), retries or resumption
+inside a run, run cancellation, and a scheduler that actually fires `pg_cron` → `runs`.

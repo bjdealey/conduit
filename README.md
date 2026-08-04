@@ -10,7 +10,21 @@ reusing the marketing site's design system so it matches the mockup exactly.
 npm install
 npm run dev      # http://localhost:5174  (use a wide window; it's a desktop UI)
 npm run build    # tsc + vite build
+npm test         # Vitest: the domain, the engine, the runner, and the app's seams
 ```
+
+## Run a workflow
+
+Workflows execute for real, headless, over HTTP — in the app (the builder's **Test run**, the
+library's **Run now**) and from the command line:
+
+```bash
+node runner/src/cli.ts run runner/examples/invoice-check.json \
+  --env API_URL=https://api.example.com --env API_TOKEN=<a token>
+```
+
+The engine lives in `packages/runtime` and its host in `runner/` — the execution plane, kept as a
+separate artefact from the control plane this repo is. See `runner/README.md`.
 
 ## What works
 

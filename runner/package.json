@@ -1,0 +1,13 @@
+{
+  "name": "@conduit/runner",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "conduit-runner": "./src/cli.ts"
+  },
+  "dependencies": {
+    "@conduit/domain": "*",
+    "@conduit/runtime": "*"
+  }
+}

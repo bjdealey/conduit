@@ -194,7 +194,7 @@ better* in five seconds.
   something you track on a chart instead of apologise for in a meeting.
 - **In-flight runs** — reusing the existing Activity primitives and `ImpactChart`/`SurfaceChart`.
 
-### ~~Gap 5~~ — The runner protocol ✅ **delivered** *(`packages/domain/src/protocol.ts`; `claim` still returns no work)*
+### ~~Gap 5~~ — The runner protocol ✅ **delivered, and now implemented on both sides** *(`packages/domain/src/protocol.ts`; `claim` hands out real work, `runner/` executes it)*
 
 My first draft recommended building `packages/runtime` inside Conduit. With the framing settled,
 that is wrong: execution is not the control plane's job. What Conduit owes the runner is a
@@ -216,6 +216,13 @@ that is wrong: execution is not the control plane's job. What Conduit owes the r
 Define the protocol as versioned TypeScript in `packages/domain` so the runtime team codes against
 it. Until a real runner exists, `testRun()` (`src/lib/builder.ts:147`) can post through the same
 ingest path — a fake runner rather than a fake screen, which means the UI is never rewritten.
+
+**Stage 11 update — the fake runner is gone, replaced by a real one.** `packages/runtime` executes
+the headless API-first node set (HTTP, assertions, values, conditionals, metrics) and emits the
+protocol's events; `runner/` hosts it as a process that registers, claims, executes and ingests;
+`runs` + `0009` queue a run and finish it. The prediction above held exactly: the viewer was not
+rewritten, because the fake had always emitted the real shapes. What did change is that a node with
+no executor now fails the run and says so, rather than a log line implying it ran.
 
 ### ~~Gap 6~~ — The node catalogue ✅ **delivered** *(`node_types` + the `node-types` function; `ACTIONS` is the fallback)*
 
@@ -337,7 +344,15 @@ From the vision's own §9 boundaries, plus the framing:
 - **No integration marketplace.** Connectors are an internal extension point, not a browsable catalogue.
 - **No DAG/ETL semantics.** Fan-out, backfill, and lineage UI would make this read as Airflow.
 - **No general app builder.** The builder authors workflows — not forms, pages, or layouts.
-- **No execution engine in this repo.** Conduit dispatches and observes; runners execute (Gap 5).
+- ~~**No execution engine in this repo.**~~ **Amended in stage 11, deliberately and with the boundary
+  intact.** The rule was about the *control plane* not becoming a runtime, and it still holds: nothing
+  under `src/` executes anything, and no capability service, view or store knows how a step runs. What
+  the repo now also *contains* is the execution plane's first artefact — `packages/runtime` (the
+  engine) and `runner/` (its host) — which import `@conduit/domain` and nothing else, and would move
+  to the runtime team's repository without the control plane noticing. The judgement: a protocol with
+  no implementation is a claim, and the vision's Phase 0 runtime is runner #1. **If that separation
+  ever erodes — a `src/` import inside `packages/runtime`, a node executor reaching for the store —
+  the rule has been broken in the way it was written to prevent.**
 - **No cutover language anywhere in the UI.** Every migration affordance is per-workflow and reversible.
 - **Do not let AI lead.** Three stubs behind the standard interface. No assistant in the shell.
 - **Do not copy AA where the vision says it is wrong.** A device-assignment UI, a bot-update surface,

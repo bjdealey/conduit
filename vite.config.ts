@@ -14,6 +14,9 @@ export default defineConfig(({ command }) => ({
     alias: {
       // The frontend shares the canonical domain models with the backend/connectors.
       "@conduit/domain": fileURLToPath(new URL("./packages/domain/src/index.ts", import.meta.url)),
+      // With no backend configured the browser tab *is* the runner: the builder's Test
+      // run executes the flow here, through the same engine the runner CLI hosts.
+      "@conduit/runtime": fileURLToPath(new URL("./packages/runtime/src/index.ts", import.meta.url)),
     },
   },
 }));

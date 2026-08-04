@@ -17,11 +17,18 @@
  */
 import type { AuthModel, RunnerClass, RunnerPlatform, WorkflowRequirements } from "./runner.ts";
 
-/** The protocol version this build speaks. Bump on any breaking wire change. */
-export const PROTOCOL_VERSION = 1;
+/**
+ * The protocol version this build speaks. Bump on any breaking wire change.
+ *
+ * v2 added conditionals to the work payload: `steps` is a tree, not a list. A flow
+ * with no branches serialises identically in both versions, so the only flow a v1
+ * runner cannot execute is a branching one — and it finds out by meeting a step whose
+ * `kind` it doesn't know, which it must report as a failure rather than skip.
+ */
+export const PROTOCOL_VERSION = 2;
 
 /** Protocol versions this control plane still accepts from a runner. */
-export const SUPPORTED_PROTOCOL_VERSIONS: readonly number[] = Object.freeze([1]);
+export const SUPPORTED_PROTOCOL_VERSIONS: readonly number[] = Object.freeze([1, 2]);
 
 /** Whether a runner claiming this protocol version can be served. */
 export function isSupportedProtocol(version: number): boolean {
@@ -117,26 +124,64 @@ export function isStale(secondsSinceHeartbeat: number, heartbeatSeconds: number)
  */
 export type ClaimRequest = { protocolVersion: number; runnerId: string };
 
+/* -------------------------------------------------------------- the flow itself */
+
+/**
+ * One configured action, as it crosses to the runner.
+ *
+ * Deliberately thinner than the authored step: an id to report events against, the
+ * node type to execute, and the values filled into its fields. Labels, summaries and
+ * palette grouping are authoring concerns and stay in the control plane — a runner
+ * that needed them would have to be redeployed every time a node type was relabelled.
+ *
+ * `kind` is optional only because a v1 payload predates it. A step without one is an
+ * action, which is the same rule the control plane's own walkers apply.
+ */
+export type ExecutableAction = {
+  kind?: "action";
+  id: string;
+  actionId: string;
+  config: Record<string, string>;
+};
+
+/** A conditional, with both arms carried. The condition is in the same `{{ }}`
+ *  vocabulary as the action configs, so one evaluator serves both. */
+export type ExecutableBranch = {
+  kind: "branch";
+  id: string;
+  condition: string;
+  then: ExecutableStep[];
+  else: ExecutableStep[];
+};
+
+/** One step of a flow as executed. A flow is a tree from schema v2 onward. */
+export type ExecutableStep = ExecutableAction | ExecutableBranch;
+
+/** Whether a step is a conditional. Discriminating on "is it a branch" rather than
+ *  "is it an action" is what keeps an un-migrated v1 step (no `kind`) executable. */
+export function isBranch(step: ExecutableStep): step is ExecutableBranch {
+  return (step as ExecutableBranch).kind === "branch";
+}
+
+/** The flow, the version of it, and what it needs — everything a runner is handed. */
+export type RunWork = {
+  runId: string;
+  workflowId: string;
+  /** The exact version to execute — never "the latest", because the latest may
+   *  carry no approval. */
+  workflowVersion: number;
+  /** What the flow needs, echoed so the runner can refuse a mismatch rather
+   *  than failing obscurely halfway through. */
+  requirements: WorkflowRequirements;
+  /** The flow itself, in the schema version stated. */
+  schemaVersion: number;
+  steps: ExecutableStep[];
+  /** Wall-clock budget. A runner that exceeds it should abort and report. */
+  deadlineSeconds: number;
+};
+
 /** Work handed to a runner, or nothing to do. */
-export type ClaimResponse =
-  | { work: null }
-  | {
-      work: {
-        runId: string;
-        workflowId: string;
-        /** The exact version to execute — never "the latest", because the latest may
-         *  carry no approval. */
-        workflowVersion: number;
-        /** What the flow needs, echoed so the runner can refuse a mismatch rather
-         *  than failing obscurely halfway through. */
-        requirements: WorkflowRequirements;
-        /** The flow itself, in the schema version stated. */
-        schemaVersion: number;
-        steps: { id: string; actionId: string; config: Record<string, string> }[];
-        /** Wall-clock budget. A runner that exceeds it should abort and report. */
-        deadlineSeconds: number;
-      };
-    };
+export type ClaimResponse = { work: null } | { work: RunWork };
 
 /* -------------------------------------------------------------------- ingest */
 
@@ -181,6 +226,23 @@ export type IngestResponse = { accepted: number; /** Highest sequence durably st
 /** Whether a run has reached a state no further events should follow. */
 export function isTerminal(kind: RunEventKind): boolean {
   return kind === "finished" || kind === "failed";
+}
+
+/** How a run ended, in the wire's vocabulary (the `runs.state` values). */
+export const RUN_CONCLUSIONS = ["completed", "failed"] as const;
+export type RunConclusion = (typeof RUN_CONCLUSIONS)[number];
+
+/**
+ * The conclusion a terminal event implies, or null for an event that isn't one.
+ *
+ * The run's outcome is derived from its log rather than reported separately: a runner
+ * that posts "finished" and then dies before a second call would otherwise leave a run
+ * that visibly completed sitting in `running` forever.
+ */
+export function conclusionOf(kind: RunEventKind): RunConclusion | null {
+  if (kind === "finished") return "completed";
+  if (kind === "failed") return "failed";
+  return null;
 }
 
 /**

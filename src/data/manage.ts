@@ -89,6 +89,7 @@ export type Package = {
 export const packages: Package[] = [
   { id: "pkg_browser", name: "browser", version: "3.4.1", publisher: "conduit", usedBy: 2, updatedAgo: "5 days ago" },
   { id: "pkg_http", name: "http", version: "2.1.0", publisher: "conduit", usedBy: 1, updatedAgo: "2 weeks ago" },
+  { id: "pkg_data", name: "data", version: "1.0.0", publisher: "conduit", usedBy: 1, updatedAgo: "just now" },
   { id: "pkg_assertions", name: "assertions", version: "1.8.2", publisher: "conduit", usedBy: 3, updatedAgo: "9 days ago" },
   { id: "pkg_email_ses", name: "email-ses", version: "4.0.0", publisher: "aws", usedBy: 1, updatedAgo: "yesterday" },
   { id: "pkg_billing", name: "billing-api", version: "6.2.7", publisher: "internal", usedBy: 2, updatedAgo: "3 days ago" },

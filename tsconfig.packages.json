@@ -4,10 +4,15 @@
     "baseUrl": ".",
     "paths": {
       "@conduit/domain": ["packages/domain/src/index.ts"],
-      "@conduit/connector-sdk": ["packages/connector-sdk/src/index.ts"]
+      "@conduit/connector-sdk": ["packages/connector-sdk/src/index.ts"],
+      "@conduit/runtime": ["packages/runtime/src/index.ts"]
     },
     "types": []
   },
+  // `runner` is deliberately absent: `types: []` above is what proves the packages are
+  // host-agnostic — no Node, no DOM, no Deno — and the runner is a Node process. It has
+  // its own project (tsconfig.runner.json) carrying Node's types, which keeps the
+  // boundary enforced rather than leaving a gap in coverage.
   "include": ["packages", "connectors"],
   "exclude": ["**/*.test.ts"]
 }

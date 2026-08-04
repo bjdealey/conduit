@@ -1476,7 +1476,7 @@ function MetaRow({ label, children }: { label: string; children: ReactNode }) {
 }
 
 function WorkflowDetail({ workflow, onSelectWorkflow }: { workflow: Workflow; onSelectWorkflow: (id: string) => void }) {
-  const { memberById, runsForWorkflow, workflowById, editWorkflow, reviewWorkflow, role, allowed, selectFolder, expand, folders } =
+  const { memberById, runsForWorkflow, workflowById, editWorkflow, runWorkflow, reviewWorkflow, role, allowed, selectFolder, expand, folders } =
     useStore();
   const [tab, setTab] = useState<DetailTab>("History");
   const owner = memberById(workflow.ownerId);
@@ -1606,10 +1606,19 @@ function WorkflowDetail({ workflow, onSelectWorkflow }: { workflow: Workflow; on
               <p className="text-body-base text-secondary-foreground">{workflow.description}</p>
             </div>
             <div className="flex items-center gap-2">
-              <Button variant="solid" className="w-fit">
-                <Play size={14} strokeWidth={2} />
-                Run now
-              </Button>
+              {/* Really runs it: queued for the pool when there is a backend, executed
+                  in this tab when there isn't. A mirrored flow is executed by its own
+                  platform, so the button says so rather than failing on the press. */}
+              {workflow.platform === "conduit" ? (
+                <Button variant="solid" className="w-fit" onClick={() => runWorkflow(workflow.id)}>
+                  <Play size={14} strokeWidth={2} />
+                  Run now
+                </Button>
+              ) : (
+                <span className="text-body-sm text-tertiary-foreground">
+                  Runs on {PLATFORM_LABEL[workflow.platform]} — Conduit observes it here.
+                </span>
+              )}
               {/* Only a natively-authored flow can be opened here; a mirrored one
                   lives on its own platform. */}
               {allowed("author") && workflow.platform === "conduit" && (
