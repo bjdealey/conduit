@@ -219,7 +219,25 @@ export function ActionMenu({
         placement &&
         createPortal(
         <>
-          <span className="fixed inset-0" style={{ zIndex: 40 }} onClick={() => setOpen(false)} />
+          {/* The dismissal overlay. `stopPropagation` is load-bearing: this lives in
+              a portal, and a React portal propagates events through the *React*
+              tree rather than the DOM one — so without it, the click that closes
+              the menu also reaches whatever the menu is mounted inside, which in
+              the library tree meant dismissing a menu silently collapsed the
+              folder it belonged to. */}
+          <span
+            className="fixed inset-0"
+            style={{ zIndex: 40 }}
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpen(false);
+            }}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setOpen(false);
+            }}
+          />
           <span
             ref={panelBox}
             role="menu"

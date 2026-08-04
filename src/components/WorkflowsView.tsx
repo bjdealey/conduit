@@ -207,13 +207,12 @@ function TreeRow({
   const isOver = isDropTarget && ctx.dropOn === id;
   const dragged = ctx.dragging !== null && node !== undefined && ctx.dragging.id === node.id;
 
-  const background = isOver
-    ? "var(--blue-a3)"
-    : active
-      ? "var(--color-transparent-hover)"
-      : hovered
-        ? "var(--color-transparent-hover)"
-        : undefined;
+  // An open menu keeps its row lit. The panel is portalled out of the row, so the
+  // pointer leaves the row the moment it reaches the menu — without this the
+  // highlight drops off the one row you are demonstrably acting on, and the
+  // rename or delete you pick appears to come from nowhere.
+  const background =
+    isOver ? "var(--blue-a3)" : active || hovered || menuOpen ? "var(--color-transparent-hover)" : undefined;
 
   return (
     <div
@@ -474,7 +473,13 @@ function RowMenu({ node, ctx }: { node: LibraryNode; ctx: TreeCtx }) {
       tabbable={false}
       open={ctx.menuFor?.id === node.id}
       openTo={ctx.menuFor?.id === node.id ? ctx.menuFor.panel : "root"}
-      onOpenChange={(next) => (next ? ctx.openMenu(node.id) : ctx.closeMenu())}
+      onOpenChange={(next) => {
+        if (!next) return ctx.closeMenu();
+        // Acting on a row makes it the current row, so the cursor, the highlight
+        // and the pointer all agree about which one is in play.
+        ctx.setCursor(node.id);
+        ctx.openMenu(node.id);
+      }}
       trigger={<MoreHorizontal size={15} strokeWidth={2} />}
       panel={panel}
     />
