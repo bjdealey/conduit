@@ -49,6 +49,7 @@ import {
   type Workflow as DomainWorkflow,
 } from "@conduit/domain";
 import { EMPTY_WORKSPACE, type FilterOp, type SortDir, type WorkspaceState } from "./lib/workspace";
+import { asDensity, asLayout, type LibraryDensity, type LibraryLayout } from "./data/libraryView";
 import { isMobileNow, useIsMobile } from "./lib/responsive";
 import { CONTEXT_LABEL } from "./data/viewLayout";
 import { isSupabaseConfigured } from "./lib/supabase";
@@ -292,6 +293,14 @@ type Store = {
   palettes: Palette[];
   palette: Palette;
   setPaletteId: (id: string) => void;
+  /** How the library draws itself: the folder tree, or a flat list of the work
+   *  inside it. A reading preference, not a permission — it changes what the
+   *  rows are, never what you may do to them. */
+  libraryLayout: LibraryLayout;
+  setLibraryLayout: (layout: LibraryLayout) => void;
+  /** How much room a library row takes. */
+  libraryDensity: LibraryDensity;
+  setLibraryDensity: (density: LibraryDensity) => void;
   /** Command palette (universal search). */
   searchOpen: boolean;
   openSearch: () => void;
@@ -430,6 +439,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [bordersEnabled, setBordersState] = useState(() => read("borders-enabled", "off") === "on");
   const [badgesEnabled, setBadgesState] = useState(() => read("badges-enabled", "on") !== "off");
   const [paletteId, setPaletteState] = useState(() => read("palette", palettes[0].id));
+  // Narrowed on the way in as well as on the way out: a stored value is only ever
+  // as trustworthy as the version of the app that wrote it.
+  const [libraryLayout, setLibraryLayoutState] = useState<LibraryLayout>(() => asLayout(read("library-layout", "")));
+  const [libraryDensity, setLibraryDensityState] = useState<LibraryDensity>(() =>
+    asDensity(read("library-density", "")),
+  );
   const [searchOpen, setSearchOpen] = useState(false);
   const [dark, setDark] = useState(() => isDark());
   const [role, setRoleState] = useState<Role>(() => read("role", currentUser.role) as Role);
@@ -439,6 +454,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const setBackgroundEnabled = (on: boolean) => {
     setBgState(on);
     write("bg-enabled", on ? "on" : "off");
+  };
+  const setLibraryLayout = (next: LibraryLayout) => {
+    setLibraryLayoutState(next);
+    write("library-layout", next);
+  };
+  const setLibraryDensity = (next: LibraryDensity) => {
+    setLibraryDensityState(next);
+    write("library-density", next);
   };
   const setBordersEnabled = (on: boolean) => {
     setBordersState(on);
@@ -961,6 +984,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     palettes,
     palette,
     setPaletteId,
+    libraryLayout,
+    setLibraryLayout,
+    libraryDensity,
+    setLibraryDensity,
     searchOpen,
     openSearch: () => setSearchOpen(true),
     closeSearch: () => setSearchOpen(false),

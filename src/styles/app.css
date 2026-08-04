@@ -64,6 +64,38 @@ body {
      declaration silently dropped — which is exactly what happened first time. */
   --row-ring: 0 0 0 0 transparent;
   box-shadow: var(--row-ring);
+
+  /* Row height and indent come from the density the reader chose, set as custom
+     properties on the tree container (see `densityVars` in data/libraryView.ts).
+     The fallbacks live at the point of use, NOT as declarations here: a property
+     declared on `.tree-row` itself would beat the container's inherited value,
+     and every density would silently render as the default. */
+  min-height: var(--tree-row-h, 2rem);
+}
+
+/* Indent guides: one hairline per ancestor level, so a branch reads as a branch
+   rather than as rows that happen to start further right.
+
+   Drawn as the row's own background image — not as a border on the containing
+   <Reveal>, and not as a span per level. A background costs no DOM on a tree that
+   can run to hundreds of rows, it is clipped by the reveal animation exactly as
+   the row is, and it needs nothing to know how tall a branch is.
+
+   The geometry: the first line sits under the outermost chevron, which is half a
+   chevron (8px) past the row's 6px lead-in, and each further line one indent to
+   the right. The chevron's width doesn't change with the density, so that first
+   line stays at 14px whatever `--tree-indent` is — only the spacing between them
+   moves. `--row-depth` is the ancestor count, so a top-level row paints a zero-
+   width image and draws nothing at all. */
+.tree-row {
+  background-image: repeating-linear-gradient(
+    to right,
+    var(--color-border-default) 0 1px,
+    transparent 1px var(--tree-indent, 14px)
+  );
+  background-repeat: no-repeat;
+  background-position: var(--tree-guide-x, 14px) 0;
+  background-size: calc(var(--row-depth, 0) * var(--tree-indent, 14px)) 100%;
 }
 .tree-row:focus-visible {
   outline: none;
@@ -598,10 +630,10 @@ nav[data-expanded="false"] .rail-fade-collapsed {
   }
 
   /* Library tree rows: 32px is a comfortable pointer target and a poor thumb one.
-     Height rather than min-height, because the row's leading selection bar is an
-     inset box-shadow that has to reach the full height either way. */
+     A flat override rather than a floor on the chosen density: Compact is a
+     request for more rows on a screen, not for a target a thumb keeps missing. */
   .tree-row {
-    height: 2.625rem;
+    min-height: 2.625rem;
   }
   /* The expander is the only way to open a folder on a phone (a tap on the row
      toggles it, a tap on a workflow opens it), so it stops being a 16px glyph
@@ -611,6 +643,11 @@ nav[data-expanded="false"] .rail-fade-collapsed {
     height: 2rem;
     margin-left: -0.375rem;
     margin-right: -0.125rem;
+  }
+  /* …which moves its centre, and the indent guides are drawn to sit under it:
+     6px lead-in − 6px pull-back + half of 32px. */
+  .tree-row {
+    --tree-guide-x: 16px;
   }
 
   /* Three KPI tiles across 342px of usable width is ~98px each, most of it

@@ -590,6 +590,39 @@ DOM whether or not anyone looked at it.
 **Sibling folders sort by name** (`childFolders`). They were in insertion order, so a folder created
 today landed at the bottom of its siblings rather than where its name says it belongs.
 
+**Indent guides, and the two reading preferences** (`src/data/libraryView.ts`, 6 tests). Layout
+(`tree` · `list`) and density (`comfortable` · `cosy` · `compact`) are declared as one table, so the
+settings pickers, the store's persistence and the tree's CSS read the same list rather than three
+copies of it. Both persist to localStorage and are narrowed on the way *in* as well as out — a
+stored value is only as trustworthy as the version of the app that wrote it.
+- **A guide line per ancestor, drawn as the row's own background** — not a border on the containing
+  `<Reveal>`, not a span per level. A background costs no DOM on a tree that can run to hundreds of
+  rows, it is clipped by the reveal animation exactly as the row is, and it needs nothing to know how
+  tall a branch is. `--row-depth` is the ancestor count; a top-level row paints a zero-width image
+  and draws nothing.
+- ⚠️ **The row's fill must be `backgroundColor`, never the `background` shorthand** — the shorthand
+  resets `background-image`, which is where the guides live.
+- ⚠️ **A density's custom properties are set on the tree *container*, and their fallbacks live at the
+  point of use** (`var(--tree-indent, 14px)`), never as declarations on `.tree-row`. A property
+  declared on the element itself beats the container's inherited value, so every density would have
+  silently rendered as the default.
+- **The row height is a floor, and the padding inside it is part of the density.** Compact's 26px
+  first shipped doing nothing: the label's line box plus a fixed 4px was already 28px. `min-height`
+  rather than `height` is also what lets a flat-list row carry its second line. The phone overrides
+  the floor outright — Compact asks for more rows, not for a target a thumb keeps missing.
+- **The flat list is a layout, never a filter.** `visibleRows` grew a `layout` argument rather than
+  the renderer growing a second order, for the same reason the function exists: the arrow keys and
+  the eye have to agree about the next row. A test pins that both layouts show the same matches for
+  the same search.
+- **Flat rows carry their folder path** as a second line — where a thing lives is half of what you
+  need, the same reason every breadcrumb carries the trail, and a layout with no folder rows has
+  nowhere else to say it. The incoming order is kept, not re-sorted: the workspace header's sort
+  already governs it.
+- **Folders aren't rows in the flat layout, and the setting says so.** The estate's "New folder" is
+  hidden there, because the rename it opens with would have nowhere to land — and `renamingId` is
+  cleared whenever its row isn't in `rows`, since `onKeyDown` returns early while renaming and a
+  rename aimed at an undrawn row would silently jam every arrow key.
+
 **Clicking a folder row toggles it** as well as selecting it — a second click closes what the first
 revealed. Enter does the same, so pointer and keyboard agree. Navigating to a folder from anywhere
 *else* (a detail pane, a breadcrumb crumb) only ever reveals it: you asked to go there, not to toggle

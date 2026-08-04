@@ -1,4 +1,5 @@
-import type { Folder } from "../data/types";
+import type { Folder, Visibility } from "../data/types";
+import type { LibraryLayout } from "../data/libraryView";
 import { childFolders, folderTrail, subtreeIds } from "./folders";
 import type { LibraryTree } from "./library";
 
@@ -77,13 +78,54 @@ export type TreeRowInfo = {
  * Call it with the same tree the view renders — narrowed and ordered — so the
  * cursor's "next row" is the row the eye sees next. Section order matches the
  * renderer exactly: subfolders, then workflows, then files.
+ *
+ * `layout` is the reader's choice between the folder tree and a flat list of
+ * everything in each estate. It belongs here rather than in the renderer for the
+ * same reason the order does: the arrow keys and the eye have to agree about
+ * what the next row is, whichever layout is showing.
  */
 export function visibleRows(
   tree: LibraryTree,
-  { expanded, slice }: { expanded: (id: string) => boolean; slice?: TreeSlice },
+  {
+    expanded,
+    slice,
+    layout = "tree",
+  }: { expanded: (id: string) => boolean; slice?: TreeSlice; layout?: LibraryLayout },
 ): TreeRowInfo[] {
   const rows: TreeRowInfo[] = [];
   const shows = (kind: keyof TreeSlice, id: string) => !slice || slice[kind].has(id);
+
+  // Which estate a leaf belongs to: the visibility of the folder it's filed in.
+  // A leaf whose folder has gone (a tree mid-edit) belongs to neither and is
+  // simply not listed, rather than defaulting into somebody's private estate.
+  const visibilityOf = (folderId: string): Visibility | null =>
+    tree.folders.find((f) => f.id === folderId)?.visibility ?? null;
+
+  if (layout === "list") {
+    for (const visibility of ["public", "private"] as const) {
+      const key = `vis:${visibility}`;
+      // The incoming order is kept, not re-sorted: the workspace header's sort
+      // control already governs it, and a flat list that ignores the sort would
+      // be the one place in the app where that control does nothing.
+      const flows = tree.workflows.filter((w) => shows("workflows", w.id) && visibilityOf(w.folderId) === visibility);
+      const docs = tree.files.filter((f) => shows("files", f.id) && visibilityOf(f.folderId) === visibility);
+      const open = expanded(key);
+      rows.push({
+        id: key,
+        kind: "root",
+        depth: 0,
+        parentId: null,
+        expandable: flows.length + docs.length > 0,
+        expanded: open,
+      });
+      if (!open) continue;
+      for (const w of flows)
+        rows.push({ id: w.id, kind: "workflow", depth: 1, parentId: key, expandable: false, expanded: false });
+      for (const d of docs)
+        rows.push({ id: d.id, kind: "file", depth: 1, parentId: key, expandable: false, expanded: false });
+    }
+    return rows;
+  }
 
   const walk = (folder: Folder, depth: number, parentId: string) => {
     const kids = childFolders(tree.folders, folder.id).filter((f) => shows("folders", f.id));

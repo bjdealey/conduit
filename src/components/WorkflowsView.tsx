@@ -39,6 +39,7 @@ import {
   publishedVersion,
 } from "@conduit/domain";
 import { PLATFORM_LABEL } from "../data/types";
+import { densityVars } from "../data/libraryView";
 import type { FileKind, Folder, LibraryFile, Workflow, WorkflowStatus, Visibility } from "../data/types";
 import { Avatar } from "./Avatar";
 import { Chip } from "./Chip";
@@ -203,6 +204,7 @@ function TreeRow({
   icon,
   iconTone,
   label,
+  sublabel,
   active,
   expandable,
   open,
@@ -220,6 +222,8 @@ function TreeRow({
   /** Colour for the icon only — never the sole carrier of what a row is. */
   iconTone?: string;
   label: string;
+  /** A second line under the name — the folder path, in the flat layout. */
+  sublabel?: string;
   active: boolean;
   expandable: boolean;
   open: boolean;
@@ -325,11 +329,18 @@ function TreeRow({
         ctx.setCursor(id);
         ctx.openMenu(id);
       }}
-      className="tree-row flex h-8 w-full items-center gap-1 rounded-lg pr-1 text-left transition-colors"
+      className="tree-row flex w-full items-center gap-1 rounded-lg pr-1 text-left transition-colors"
       style={
         {
-          paddingLeft: 6 + depth * 14,
-          background,
+          // Both read `--tree-indent` so the row and its guide lines move
+          // together when the density changes; the height comes from the same
+          // place (see `.tree-row` in app.css).
+          paddingLeft: `calc(6px + ${depth} * var(--tree-indent, 14px))`,
+          // The ancestor count, which is what the guides are drawn from.
+          "--row-depth": String(depth),
+          // `backgroundColor`, never the `background` shorthand: the shorthand
+          // resets `background-image`, which is where the indent guides live.
+          backgroundColor: background,
           opacity: dragged ? 0.4 : 1,
           // The row's inset decoration, whichever it currently wants: a legal drop
           // destination outlines itself the moment a drag starts, so where
@@ -360,7 +371,10 @@ function TreeRow({
         <ChevronRight size={13} strokeWidth={2} style={{ transform: open ? "rotate(90deg)" : "none" }} />
       </button>
 
-      <span className="flex min-w-0 flex-1 items-center gap-2 py-1">
+      {/* The label block's own padding is part of the density: the row height is a
+          minimum, so at Compact a fixed 4px would put the natural height above the
+          floor and the setting would do nothing. */}
+      <span className="flex min-w-0 flex-1 items-center gap-2" style={{ paddingBlock: "var(--tree-row-py, 4px)" }}>
         <span
           className="flex shrink-0 items-center justify-center"
           style={{ width: 16, height: 16, color: iconTone ?? "var(--color-tertiary-foreground)" }}
@@ -373,6 +387,15 @@ function TreeRow({
             onCommit={(name) => ctx.commitRename(node, name)}
             onCancel={ctx.cancelRename}
           />
+        ) : sublabel ? (
+          // The flat list's second line. Where a row lives is half of what you
+          // need to know about it — the same reason every breadcrumb carries the
+          // folder trail — and a layout with no folder rows has nowhere else to
+          // say it. It costs the row a line, which is what a flat list costs.
+          <span className="flex min-w-0 flex-1 flex-col leading-tight">
+            <span className="truncate text-body-sm text-primary-foreground">{label}</span>
+            <span className="truncate text-[0.7rem] text-tertiary-foreground">{sublabel}</span>
+          </span>
         ) : (
           <span className="truncate text-body-sm text-primary-foreground">{label}</span>
         )}
@@ -653,12 +676,14 @@ function InfoButton({ label, onOpen }: { label: string; onOpen: () => void }) {
 function WorkflowLeaf({
   workflow,
   depth,
+  sublabel,
   active,
   onSelect,
   ctx,
 }: {
   workflow: Workflow;
   depth: number;
+  sublabel?: string;
   active: boolean;
   onSelect: () => void;
   ctx: TreeCtx;
@@ -676,6 +701,7 @@ function WorkflowLeaf({
       icon={WORKFLOW_ROW_ICON.icon}
       iconTone={WORKFLOW_ROW_ICON.tone}
       label={workflow.name}
+      sublabel={sublabel}
       active={active}
       expandable={false}
       open={false}
@@ -700,12 +726,14 @@ function WorkflowLeaf({
 function FileLeaf({
   file,
   depth,
+  sublabel,
   active,
   onSelect,
   ctx,
 }: {
   file: LibraryFile;
   depth: number;
+  sublabel?: string;
   active: boolean;
   onSelect: () => void;
   ctx: TreeCtx;
@@ -723,6 +751,7 @@ function FileLeaf({
       icon={look.icon}
       iconTone={look.tone}
       label={file.name}
+      sublabel={sublabel}
       active={active}
       expandable={false}
       open={false}
@@ -946,7 +975,12 @@ function WorkflowLibrary({
 
   // A search opens what it needs to show; outside one, the stored state rules.
   const isExpanded = (id: string) => (narrowed ? true : store.isExpanded(id));
-  const rows = visibleRows(rendered, { expanded: isExpanded, slice });
+  const layout = store.libraryLayout;
+  const rows = visibleRows(rendered, { expanded: isExpanded, slice, layout });
+  // Where a leaf lives, for the flat list's second line. Read from the same
+  // `folderPath` the breadcrumb uses, so the two never describe one folder
+  // differently.
+  const pathOf = (folderId: string) => folderPath(store.folders, folderId);
 
   const nameOfRow = (row: TreeRowInfo): string => {
     if (row.kind === "root") return row.id === "vis:public" ? "Public" : "Private";
@@ -961,6 +995,14 @@ function WorkflowLibrary({
     if (rows.length === 0) return;
     if (!cursorId || !rows.some((r) => r.id === cursorId)) setCursorId(rows[0].id);
   }, [rows, cursorId]);
+
+  // And never stay in a rename whose row isn't on screen. The field lives in the
+  // row, so a rename aimed at a node the current layout doesn't draw would be
+  // invisible *and* jam the tree: `onKeyDown` returns early while renaming, so
+  // every arrow key would silently stop working with nothing to show why.
+  useEffect(() => {
+    if (renamingId && !rows.some((r) => r.id === renamingId)) setRenamingId(null);
+  }, [rows, renamingId]);
 
   useEffect(() => {
     if (!wantFocus.current || !cursorId) return;
@@ -1300,6 +1342,9 @@ function WorkflowLibrary({
         // them, so the flag doesn't flicker on the way past.
         onFocus={() => setTreeFocused(true)}
         onBlur={() => setTreeFocused(false)}
+        // The density lives here rather than on each row: the rows read it by
+        // inheritance, so one place decides and nothing has to be threaded down.
+        style={densityVars(store.libraryDensity) as CSSProperties}
         className="scrollbar-none flex-1 overflow-y-auto px-2 py-2"
       >
         {narrowed && nothingShowing ? (
@@ -1313,6 +1358,10 @@ function WorkflowLibrary({
             const topFolders = childFolders(store.folders, null, root.visibility).filter(
               (f) => !slice || slice.folders.has(f.id),
             );
+            // The flat layout's contents. Taken from `rows` rather than filtered
+            // again here, so the order the eye sees is by construction the order
+            // the arrow keys walk — the same reason `visibleRows` exists at all.
+            const flat = rows.filter((r) => r.parentId === visKey && r.kind !== "folder");
             return (
               <div key={root.visibility} className="mb-1">
                 {/* Public/Private are section headers, not folders — nothing lives
@@ -1325,12 +1374,15 @@ function WorkflowLibrary({
                   icon={root.icon}
                   label={root.label}
                   active={false}
-                  expandable={topFolders.length > 0}
+                  expandable={layout === "list" ? flat.length > 0 : topFolders.length > 0}
                   open={open}
                   onSelect={() => store.toggleExpanded(visKey)}
                   droppable
                   menu={
-                    ctx.editable ? (
+                    // "New folder" is the estate's only action, and the flat
+                    // layout has no folder rows for the new one to appear in —
+                    // the rename it opens with would have nowhere to land.
+                    ctx.editable && layout === "tree" ? (
                       <ActionMenu
                         label={`Actions for ${root.label}`}
                         align="right"
@@ -1353,7 +1405,37 @@ function WorkflowLibrary({
                   }
                 />
                 <Reveal open={open} role="group">
-                  {topFolders.map((f) => (
+                  {layout === "list"
+                    ? flat.map((row) => {
+                        const workflow = row.kind === "workflow" ? workflows.find((w) => w.id === row.id) : undefined;
+                        const file = row.kind === "file" ? files.find((f) => f.id === row.id) : undefined;
+                        if (workflow)
+                          return (
+                            <WorkflowLeaf
+                              key={workflow.id}
+                              workflow={workflow}
+                              depth={1}
+                              sublabel={pathOf(workflow.folderId)}
+                              active={workflow.id === selectedId}
+                              onSelect={() => onSelect(workflow.id)}
+                              ctx={ctx}
+                            />
+                          );
+                        if (file)
+                          return (
+                            <FileLeaf
+                              key={file.id}
+                              file={file}
+                              depth={1}
+                              sublabel={pathOf(file.folderId)}
+                              active={file.id === selectedFileId}
+                              onSelect={() => onSelectFile(file.id)}
+                              ctx={ctx}
+                            />
+                          );
+                        return null;
+                      })
+                    : topFolders.map((f) => (
                     <FolderBranch
                       key={f.id}
                       folderId={f.id}
@@ -1368,7 +1450,7 @@ function WorkflowLibrary({
                       files={files}
                       ctx={ctx}
                     />
-                  ))}
+                      ))}
                 </Reveal>
               </div>
             );

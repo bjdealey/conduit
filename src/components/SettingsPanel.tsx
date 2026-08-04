@@ -7,6 +7,7 @@ import { DataTable, type Column } from "./DataTable";
 import { Button } from "./Button";
 import { TabStrip } from "./TabStrip";
 import { SETTINGS_PAGES, DEFAULT_SETTINGS_PAGE } from "../data/settings";
+import { LIBRARY_DENSITIES, LIBRARY_LAYOUTS } from "../data/libraryView";
 import { ROLES, ROLE_BLURB, ROLE_LABEL, type Workflow } from "@conduit/domain";
 
 /* ---------------------------------------------------------------------------
@@ -61,6 +62,53 @@ function SecondaryButton({ children, icon }: { children: ReactNode; icon?: React
 
 function GhostButton({ children }: { children: ReactNode }) {
   return <Button variant="ghost">{children}</Button>;
+}
+
+/**
+ * A segmented picker for a small closed set, with the chosen option's sentence
+ * underneath.
+ *
+ * The blurb is part of the control, not decoration: every one of these settings
+ * has a consequence worth one line — which tier you are pretending to be, what a
+ * flat list gives up — and a row of three unexplained words makes the reader
+ * guess it.
+ */
+function Choice<T extends string>({
+  options,
+  value,
+  onChange,
+}: {
+  options: readonly { id: T; label: string; blurb?: string }[];
+  value: T;
+  onChange: (id: T) => void;
+}) {
+  const chosen = options.find((o) => o.id === value);
+  return (
+    <div className="flex flex-col gap-2 pt-0.5">
+      <div className="inline-flex w-fit items-center gap-0.5 rounded-lg bg-component p-0.5">
+        {options.map((o) => {
+          const active = value === o.id;
+          return (
+            <button
+              key={o.id}
+              type="button"
+              onClick={() => onChange(o.id)}
+              aria-pressed={active}
+              className="pressable focusable rounded-md px-3 py-1 text-body-sm font-medium transition-colors"
+              style={{
+                background: active ? "var(--color-page)" : "transparent",
+                color: active ? "var(--color-primary-foreground)" : "var(--color-tertiary-foreground)",
+                boxShadow: active ? "var(--s-default)" : "none",
+              }}
+            >
+              {o.label}
+            </button>
+          );
+        })}
+      </div>
+      {chosen?.blurb && <span className="text-body-sm text-tertiary-foreground">{chosen.blurb}</span>}
+    </div>
+  );
 }
 
 /** Centred page column. */
@@ -194,7 +242,7 @@ function DangerZone() {
 
 /** The tiers, in the order they gain permissions — so the picker reads as a ladder
  *  rather than a set of unrelated labels. */
-const ROLE_OPTIONS = ROLES.map((id) => ({ id, label: ROLE_LABEL[id] }));
+const ROLE_OPTIONS = ROLES.map((id) => ({ id, label: ROLE_LABEL[id], blurb: ROLE_BLURB[id] }));
 
 function ProfilePage() {
   const {
@@ -207,6 +255,10 @@ function ProfilePage() {
     palettes,
     palette,
     setPaletteId,
+    libraryLayout,
+    setLibraryLayout,
+    libraryDensity,
+    setLibraryDensity,
     role,
     setRole,
   } = useStore();
@@ -239,30 +291,19 @@ function ProfilePage() {
         <TextInput defaultValue={currentUser.email} />
       </Row>
       <Row label="Role">
-        <div className="flex flex-col gap-2 pt-0.5">
-          <div className="inline-flex w-fit items-center gap-0.5 rounded-lg bg-component p-0.5">
-            {ROLE_OPTIONS.map((o) => {
-              const active = role === o.id;
-              return (
-                <button
-                  key={o.id}
-                  type="button"
-                  onClick={() => setRole(o.id)}
-                  aria-pressed={active}
-                  className="pressable focusable rounded-md px-3 py-1 text-body-sm font-medium transition-colors"
-                  style={{
-                    background: active ? "var(--color-page)" : "transparent",
-                    color: active ? "var(--color-primary-foreground)" : "var(--color-tertiary-foreground)",
-                    boxShadow: active ? "var(--s-default)" : "none",
-                  }}
-                >
-                  {o.label}
-                </button>
-              );
-            })}
-          </div>
-          <span className="text-body-sm text-tertiary-foreground">{ROLE_BLURB[role]}</span>
-        </div>
+        <Choice options={ROLE_OPTIONS} value={role} onChange={setRole} />
+      </Row>
+
+      <Divider />
+      {/* The library's two reading preferences. They live with the appearance
+          settings rather than in the library's own header because they are a
+          standing choice about how you read the estate, not a control you reach
+          for while working in it. */}
+      <Row label="Library layout">
+        <Choice options={LIBRARY_LAYOUTS} value={libraryLayout} onChange={setLibraryLayout} />
+      </Row>
+      <Row label="Library density">
+        <Choice options={LIBRARY_DENSITIES} value={libraryDensity} onChange={setLibraryDensity} />
       </Row>
 
       <Divider />
