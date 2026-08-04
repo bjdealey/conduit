@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { useIsMobile } from "../lib/responsive";
 
 /* =============================================================================
    Row action menu
@@ -32,6 +33,10 @@ export type ActionItem = {
   icon?: ReactNode;
   /** Shown under the label — a folder's path, a destination's parent. */
   detail?: string;
+  /** The key that does this without opening the menu, drawn trailing. Carries an
+   *  `aria-keyshortcuts` token as well as a glyph, so a screen reader announces a
+   *  key name rather than reading out a picture of one. */
+  shortcut?: { label: string; keys: string };
   /** Destructive items read in the critical palette. */
   danger?: boolean;
   /** Items that swap the panel rather than act — "Move to…", "Delete" — keep the
@@ -51,11 +56,12 @@ export type MenuPanel = {
   scroll?: boolean;
 };
 
-function Item({ item, onDone }: { item: ActionItem; onDone: () => void }) {
+function Item({ item, onDone, keyboard }: { item: ActionItem; onDone: () => void; keyboard: boolean }) {
   return (
     <button
       type="button"
       role="menuitem"
+      aria-keyshortcuts={item.shortcut?.keys}
       onClick={(e) => {
         e.stopPropagation();
         item.onSelect();
@@ -80,6 +86,19 @@ function Item({ item, onDone }: { item: ActionItem; onDone: () => void }) {
         </span>
         {item.detail && <span className="truncate text-[0.7rem] text-tertiary-foreground">{item.detail}</span>}
       </span>
+      {/* Trailing, in the keycap treatment the workspace header already uses, so a
+          shortcut reads the same wherever it's advertised. `aria-hidden` because
+          `aria-keyshortcuts` on the item is what actually announces it — and gone
+          on the phone shell, where naming a key the device hasn't got is the same
+          mistake as printing "Del" for a Mac. */}
+      {item.shortcut && keyboard && (
+        <kbd
+          aria-hidden
+          className="shrink-0 rounded bg-component px-1 font-departure-mono text-[0.65rem] text-tertiary-foreground"
+        >
+          {item.shortcut.label}
+        </kbd>
+      )}
     </button>
   );
 }
@@ -119,6 +138,7 @@ export function ActionMenu({
   openTo?: string;
   onOpenChange?: (open: boolean) => void;
 }) {
+  const mobile = useIsMobile();
   const [uncontrolled, setUncontrolled] = useState(false);
   const isOpen = open ?? uncontrolled;
   const [panelId, setPanelId] = useState(openTo ?? "root");
@@ -282,7 +302,7 @@ export function ActionMenu({
               style={current.scroll ? { maxHeight: 260 } : undefined}
             >
               {current.items.map((item) => (
-                <Item key={item.id} item={item} onDone={() => setOpen(false)} />
+                <Item key={item.id} item={item} keyboard={!mobile} onDone={() => setOpen(false)} />
               ))}
               {current.items.length === 0 && (
                 <span className="px-2 py-2 text-body-sm text-tertiary-foreground">Nowhere to put it.</span>

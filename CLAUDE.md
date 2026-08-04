@@ -522,6 +522,24 @@ keyboard cursor to that row). The panel is portalled out of the row, so the poin
 instant it reaches the menu — without this the highlight drops off the one row you are demonstrably
 acting on.
 
+**A menu item that binds a key says so, trailing** (`ActionItem.shortcut`, from `src/lib/keys.ts`).
+Two labels come out of `shortcutFor`, not one: `label` is the glyph the keycap draws, `keys` is the
+`aria-keyshortcuts` token — always a key *name*, because a screen reader handed "⌫" is reading a
+picture of a key rather than naming it. The glyph is `aria-hidden` for the same reason.
+- **The hint names the key the keyboard in front of you has.** The tree's handler takes `Delete` and
+  `Backspace` both, so the hint is free to read `⌫` on an Apple platform and `Del` everywhere else. A
+  MacBook has no Del key, and a hint pointing at a key that isn't there is worse than no hint.
+- Only bound keys get one: "Move to…" has no shortcut and shows none. The batch `Delete N items` does
+  show `Del`, because Del on a row inside the selection opens exactly that confirm.
+- **The phone shell draws no keycaps** (`useIsMobile` in `ActionMenu`) — same reason. `aria-keyshortcuts`
+  stays on the item either way, since a paired keyboard is still a keyboard.
+- ⚠️ **A shortcut the menu advertises must not strand the keyboard.** F2's input unmounts when the
+  rename ends, and an unmounted element's focus falls to `<body>` — so every arrow key and Del after
+  it went nowhere. Focus returns to the row, but **on the next frame, not immediately**: a rename
+  that ends by clicking away unmounts during `focusout`, *before* the browser focuses what was
+  clicked, so at that instant `activeElement` reads as `<body>` either way and the two cases are
+  indistinguishable. One frame later they aren't, and "nothing took focus" is finally a fact.
+
 **Row menus are portalled, and must stay that way.** `ActionMenu`'s panel renders into `document.body`
 positioned `fixed`, not absolutely inside the row. A tree row sits inside a scrolling pane and inside
 one `overflow: hidden` per `<Reveal>` nesting level — five clipping ancestors deep in places — and an
