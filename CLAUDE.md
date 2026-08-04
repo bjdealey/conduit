@@ -555,14 +555,19 @@ revealed. Enter does the same, so pointer and keyboard agree. Navigating to a fo
 *else* (a detail pane, a breadcrumb crumb) only ever reveals it: you asked to go there, not to toggle
 it.
 
-⚠️ **Tree rows use an INSET focus ring** (`.tree-row:focus-visible` in `app.css`), not `.focusable`'s
-outline. An outline is drawn *outside* the border box (`outline-offset: 2px`) and `<Reveal>`'s
+⚠️ **Nothing inside a tree row may use an outline for focus.** `.tree-row:focus-visible` *and*
+`.tree-row .focusable:focus-visible` both take an INSET ring, not `.focusable`'s outline. An outline is drawn *outside* the border box (`outline-offset: 2px`) and `<Reveal>`'s
 `overflow: hidden` clips it — visibly, on every nested row, while Public/Private looked fine because
 they sit outside any `<Reveal>`. Same root cause as the portalled menus. The drag drop-target ring
 rides on a `--row-ring` custom property so the two compose in one `box-shadow` instead of the inline
 style silently replacing the class. Note the fallback is `0 0 0 0 transparent`, **not `none`**: `none`
 is only legal as the sole value of `box-shadow`, so `inset …, none` is invalid and the whole
 declaration is dropped — which is exactly what happened on the first attempt, and it fails silently.
+The rule covers the row's descendants too: the "…" trigger sits inside the same clipping ancestors,
+so fixing only the row left its ring shaved. It also takes `tabbable={false}`, since a `<button>`
+with no `tabindex` attribute is a tab stop — which is how it stayed in the tab order while a check
+that only counted `[tabindex]` elements reported the tree as one stop. **Count what Tab can reach,
+not what carries the attribute.**
 
 **New work lands where you are.** `newWorkflow(folderId)` takes a destination; the header passes the
 open folder (or the folder of whatever is open), falling back to Drafts. A folder's row menu offers

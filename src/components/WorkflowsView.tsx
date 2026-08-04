@@ -471,6 +471,7 @@ function RowMenu({ node, ctx }: { node: LibraryNode; ctx: TreeCtx }) {
     <ActionMenu
       label={`Actions for ${name}`}
       align="right"
+      tabbable={false}
       open={ctx.menuFor?.id === node.id}
       openTo={ctx.menuFor?.id === node.id ? ctx.menuFor.panel : "root"}
       onOpenChange={(next) => (next ? ctx.openMenu(node.id) : ctx.closeMenu())}
@@ -1032,6 +1033,7 @@ function WorkflowLibrary({
                       <ActionMenu
                         label={`Actions for ${root.label}`}
                         align="right"
+                        tabbable={false}
                         open={menuFor?.id === visKey}
                         onOpenChange={(next) => (next ? setMenuFor({ id: visKey, panel: "root" }) : setMenuFor(null))}
                         trigger={<MoreHorizontal size={15} strokeWidth={2} />}
