@@ -20,6 +20,18 @@ const run = promisify(execFile);
 const EXAMPLE = fileURLToPath(new URL("../examples/invoice-check.json", import.meta.url));
 const CLI = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
 
+/**
+ * Whether this Node can run the CLI at all.
+ *
+ * The runner executes its own TypeScript with no build step, which needs unflagged
+ * type stripping (Node 22.18+). Below that the child process dies on the host's
+ * limitation rather than on anything in the runner, and a failure that says nothing
+ * about the code is worse than a skip that names the requirement. CI pins 22, so this
+ * only ever fires for someone running the suite on an older local Node.
+ */
+const [major, minor] = process.versions.node.split(".").map(Number);
+const stripsTypes = major > 22 || (major === 22 && minor >= 18);
+
 /** What the fake API was asked to do, so a test can prove the flow really did it. */
 const received: { method: string; url: string; auth: string | undefined; body: string }[] = [];
 
@@ -180,7 +192,7 @@ describe("toWork", () => {
   });
 });
 
-describe("the CLI as a process", () => {
+describe.skipIf(!stripsTypes)(`the CLI as a process (needs Node 22.18+, on ${process.versions.node})`, () => {
   it("executes the flow and exits 0", async () => {
     const { stdout } = await run(
       process.execPath,

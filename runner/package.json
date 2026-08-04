@@ -6,6 +6,9 @@
   "bin": {
     "conduit-runner": "./src/cli.ts"
   },
+  "engines": {
+    "node": ">=22.18.0"
+  },
   "dependencies": {
     "@conduit/domain": "*",
     "@conduit/runtime": "*"
