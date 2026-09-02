@@ -1,4 +1,4 @@
-import type { View } from "../store";
+import type { Section } from "./nav";
 
 /* =============================================================================
    Surface readiness
@@ -46,38 +46,39 @@ export const READINESS_META: Readonly<Record<SurfaceReadiness, { label: string; 
   });
 
 /**
- * Per-surface readiness.
+ * Per-section readiness.
  *
  * `roadmap` is used exactly where the vision says the prototype doesn't reach:
- * scheduling and credentials (Manage), multi-user auth and governance
- * (Administration), and the two surfaces inherited from the marketing template
- * that have no vision counterpart yet (Users, Surfaces).
+ * scheduling and credentials (Workflows' Triggers, Settings' Resources), and
+ * multi-user auth and governance (Governance's Administration).
+ *
+ * Keyed by `Section`, not `View`, because a destination is no longer one screen:
+ * Governance's Review queue drives end to end while its Administration tab is
+ * shape-only, and one marker for both would be a lie about one of them.
  */
-const BASE: Readonly<Record<View, SurfaceReadiness>> = Object.freeze({
+const BASE: Readonly<Record<Section, SurfaceReadiness>> = Object.freeze({
   home: "prototype",
-  activity: "prototype",
-  inbox: "prototype",
-  workflows: "prototype",
-  review: "prototype",
-  audit: "prototype",
+  "workflows/library": "prototype",
+  "workflows/triggers": "roadmap",
+  "activity/runs": "prototype",
+  "activity/issues": "prototype",
   runners: "prototype",
-  builder: "prototype",
+  "governance/review": "prototype",
+  "governance/audit": "prototype",
+  "governance/administration": "roadmap",
   settings: "prototype",
-  manage: "roadmap",
-  administration: "roadmap",
-  users: "roadmap",
-  surfaces: "roadmap",
+  builder: "prototype",
 });
 
 /**
- * The readiness of a surface, given where its data is coming from.
+ * The readiness of a section, given where its data is coming from.
  *
  * The workflow surfaces are the only ones that can currently be `live`, because
  * they're the only ones wired to our API — so a configured backend upgrades them
  * and leaves the rest honest.
  */
-export function readinessOfView(view: View, dataSource: "live" | "seed"): SurfaceReadiness {
-  const base = BASE[view];
-  const readsOurApi = view === "workflows" || view === "home";
+export function readinessOf(section: Section, dataSource: "live" | "seed"): SurfaceReadiness {
+  const base = BASE[section];
+  const readsOurApi = section === "workflows/library" || section === "home";
   return dataSource === "live" && readsOurApi && base === "prototype" ? "live" : base;
 }

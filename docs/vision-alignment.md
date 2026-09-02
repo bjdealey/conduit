@@ -1,5 +1,13 @@
 # Vision alignment — Conduit as the Control Room replacement
 
+> ⚠️ **Superseded on the A360 question (historical document).** Conduit no longer ships an
+> Automation Anywhere connector, and no vendor is named in the product. The `automation-anywhere`
+> platform value, the `connectors/automation-anywhere` package and the mirrored seed estate were
+> all removed; `WorkflowPlatform` is now an open `string` the UI reads off the data. The
+> *mechanism* described here — pluggable connectors, capability services, the instance registry —
+> is unchanged and still current. This document is kept as a record of the reasoning at the time;
+> read `CLAUDE.md` § "Vendor independence" for what is true now.
+
 An assessment of the Conduit application against the **Automation Platform — Vision** document
 (IT Director / CIO audience), with the product framing settled: **Conduit is the replacement for
 the Automation Anywhere Control Room.** Every claim about the current app cites a file and line.

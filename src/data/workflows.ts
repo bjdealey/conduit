@@ -1,5 +1,5 @@
-import type { ActivityEvent, Workflow, WorkflowTrigger, Folder, MigrationState, Run } from "./types";
-import { CURRENT_SCHEMA_VERSION, migrateWorkflow, type WorkflowRequirements, type WorkflowVersion } from "@conduit/domain";
+import type { ActivityEvent, Workflow, Folder, Run } from "./types";
+import { CURRENT_SCHEMA_VERSION, migrateWorkflow, type WorkflowVersion } from "@conduit/domain";
 
 /**
  * Seed data for the workflow library — the first-class entity. Workflows live
@@ -17,9 +17,6 @@ export const folders: Folder[] = [
   { id: "pub-onboarding", name: "Onboarding", parentId: "pub-root", visibility: "public" },
   { id: "pub-monitoring", name: "Monitoring", parentId: "pub-root", visibility: "public" },
   { id: "pub-monitoring-synth", name: "Synthetics", parentId: "pub-monitoring", visibility: "public" },
-  // The estate mirrored from the incumbent Control Room. It sits in the same tree as
-  // native work on purpose — one library, two platforms, nothing to switch between.
-  { id: "pub-aa", name: "Automation Anywhere", parentId: "pub-root", visibility: "public" },
   // Private (owner-scoped) tree
   { id: "prv-root", name: "My workflows", parentId: null, visibility: "private" },
   { id: "prv-drafts", name: "Drafts", parentId: "prv-root", visibility: "private" },
@@ -396,50 +393,13 @@ function historyFor(w: Authored): WorkflowVersion[] {
 }
 
 
-/**
- * An workflow mirrored from a connected platform by its connector.
- *
- * We show it, observe its runs, and track where it sits in the move onto Conduit —
- * but its flow is authored on its own platform, so `steps` and `packages` are empty
- * rather than invented. That emptiness is the honest signal that this row is a
- * reflection of somewhere else, and it's what the builder checks before offering to
- * edit anything.
- */
-function mirrored(
-  id: string,
-  name: string,
-  description: string,
-  ownerId: string,
-  requirements: WorkflowRequirements,
-  migration: MigrationState,
-  stats: { runCount: number; successRate: number; lastRunAt: string; trigger: WorkflowTrigger },
-): Authored {
-  return {
-    id,
-    name,
-    description,
-    folderId: "pub-aa",
-    visibility: "public",
-    status: "Published",
-    ownerId,
-    platform: "automation-anywhere",
-    migration,
-    requirements,
-    trigger: stats.trigger,
-    steps: [],
-    runCount: stats.runCount,
-    successRate: stats.successRate,
-    lastRunAt: stats.lastRunAt,
-    updatedAgo: "—",
-    packages: [],
-    references: [],
-  };
-}
-
-const schedule = (detail: string): WorkflowTrigger => ({ kind: "Schedule", detail });
-const headed: WorkflowRequirements = { auth: "none", ui: "headed", platform: "windows" };
-const windowsAuth: WorkflowRequirements = { auth: "windows-integrated", ui: "none", platform: "windows" };
-const apiFirst = (auth: WorkflowRequirements["auth"]): WorkflowRequirements => ({ auth, ui: "none", platform: "any" });
+/* Every workflow here is native. A mirrored one — authored on a connected platform
+   and reflected into this library by its connector — carries that platform's id and
+   no steps, because its flow lives over there. None are seeded: this sample estate
+   is what Conduit looks like on its own, and a mirrored row only exists once someone
+   installs a connector and syncs one in. The rules that govern such a row (read-only
+   in the tree, unopenable in the builder) are still enforced in `src/lib/library.ts`
+   and covered by their own fixtures in the tests. */
 
 const library: Authored[] = [
   {
@@ -652,23 +612,6 @@ const library: Authored[] = [
     references: [],
   },
 
-  /* ----------------------------------------------- mirrored from Automation Anywhere
-     The incumbent estate, read through the A360 connector. Its shape is the argument:
-     mostly headed and Windows-bound today, with a shrinking band of workloads blocked
-     only by Windows-integrated auth. Home reads the split straight off these rows
-     rather than asserting it. */
-  mirrored("wf_aa_vendor_onboarding", "Vendor onboarding", "Keys new vendor records into the finance desktop client and files the approval pack.", "ls", headed, "Not started", { runCount: 3120, successRate: 0.91, lastRunAt: "12 minutes ago", trigger: schedule("Weekdays at 07:00") }),
-  mirrored("wf_aa_claims_keying", "Claims keying", "Rekeys scanned claims into the legacy claims terminal. No API path exists.", "jk", headed, "Won't move", { runCount: 18244, successRate: 0.88, lastRunAt: "3 minutes ago", trigger: schedule("Every 10 minutes") }),
-  mirrored("wf_aa_statement_pack", "Statement pack assembly", "Drives the reporting client to assemble and print monthly statement packs.", "pf", headed, "Not started", { runCount: 640, successRate: 0.93, lastRunAt: "an hour ago", trigger: schedule("Monthly on the 1st") }),
-  mirrored("wf_aa_pricing_upload", "Pricing sheet upload", "Uploads pricing workbooks through the supplier portal UI.", "ps", headed, "Not started", { runCount: 1490, successRate: 0.86, lastRunAt: "26 minutes ago", trigger: schedule("Daily at 06:00") }),
-  mirrored("wf_aa_stock_count", "Stock count reconciliation", "Reconciles counted stock against the warehouse desktop system.", "jk", headed, "Won't move", { runCount: 2210, successRate: 0.9, lastRunAt: "2 hours ago", trigger: schedule("Nightly at 23:00") }),
-  mirrored("wf_aa_credit_review", "Credit review packet", "Assembles credit review packets from the underwriting client.", "ls", headed, "Not started", { runCount: 880, successRate: 0.94, lastRunAt: "4 hours ago", trigger: schedule("Weekly on Monday") }),
-  mirrored("wf_aa_timesheet_post", "Timesheet posting", "Posts approved timesheets through the payroll desktop app.", "ps", headed, "Not started", { runCount: 5030, successRate: 0.96, lastRunAt: "38 minutes ago", trigger: schedule("Daily at 18:00") }),
-  // Blocked only by the auth model — these become API-eligible the moment their target
-  // app finishes moving to Entra, which is the compounding the vision is betting on.
-  mirrored("wf_aa_hr_starter", "HR starter setup", "Creates starter records in the internal HR web app, which still authenticates as the logged-in Windows user.", "pf", windowsAuth, "Piloting", { runCount: 1204, successRate: 0.97, lastRunAt: "18 minutes ago", trigger: schedule("Hourly") }),
-  mirrored("wf_aa_asset_register", "Asset register sync", "Syncs the internal asset register, currently behind Windows-integrated auth.", "jk", windowsAuth, "Not started", { runCount: 970, successRate: 0.95, lastRunAt: "an hour ago", trigger: schedule("Every 4 hours") }),
-  mirrored("wf_aa_fx_rates", "FX rate refresh", "Pulls daily FX rates from a vendor API. Already API-shaped — ready to move.", "ps", apiFirst("api-key"), "Not started", { runCount: 730, successRate: 0.99, lastRunAt: "5 hours ago", trigger: schedule("Daily at 05:00") }),
 ];
 
 /**

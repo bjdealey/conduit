@@ -11,6 +11,7 @@ import {
 import { visibleIssues } from "../select";
 import { issues } from "../../data/issues";
 import { workspaceControls } from "../../data/workspaceControls";
+import { SECTIONS } from "../../data/nav";
 import { ROLES, can } from "@conduit/domain";
 import { menuEntries, optionsFor } from "../filterMenu";
 
@@ -85,33 +86,49 @@ describe("visibleIssues (shared by the inbox list and the board)", () => {
 
 describe("workspace control descriptors", () => {
   it("declares controls for the collection pages and none for settings", () => {
-    expect(workspaceControls("inbox", "")?.search).toBeDefined();
-    expect(workspaceControls("workflows", "")?.filters?.length).toBeGreaterThan(0);
+    expect(workspaceControls("activity/issues", "")?.search).toBeDefined();
+    expect(workspaceControls("workflows/library", "")?.filters?.length).toBeGreaterThan(0);
     expect(workspaceControls("settings", "")).toBeNull();
   });
 
   it("follows the active section tab", () => {
     // Activity's State filter only offers states the open tab can show.
-    const inProgress = workspaceControls("activity", "In progress")?.filters?.find((f) => f.id === "state");
+    const inProgress = workspaceControls("activity/runs", "In progress")?.filters?.find((f) => f.id === "state");
     expect(inProgress?.options.map((o) => o.id)).toEqual(["Running", "Queued"]);
-    const historical = workspaceControls("activity", "Historical")?.filters?.find((f) => f.id === "state");
+    const historical = workspaceControls("activity/runs", "Historical")?.filters?.find((f) => f.id === "state");
     expect(historical?.options.map((o) => o.id)).toEqual(["Completed", "Failed"]);
     // Insights is a report — no row order to choose.
-    expect(workspaceControls("activity", "Insights")?.sorts).toBeUndefined();
+    expect(workspaceControls("activity/runs", "Insights")?.sorts).toBeUndefined();
 
-    // Manage only offers the enabled/paused filter on the tabs that have it.
-    expect(workspaceControls("manage", "Scheduled")?.filters?.length).toBe(1);
-    expect(workspaceControls("manage", "Packages")?.filters).toBeUndefined();
+    // Administration's role/status filters belong to its Users tab alone.
+    expect(workspaceControls("governance/administration", "Users")?.filters?.length).toBe(2);
+    expect(workspaceControls("governance/administration", "Roles")?.filters).toBeUndefined();
+  });
+
+  it("keeps subpages of one destination on separate controls", () => {
+    // The whole reason controls are keyed by section rather than view: two
+    // subpages of Governance narrow different collections, and one entry per
+    // destination would give both whichever was written last.
+    const review = workspaceControls("governance/review", "");
+    const audit = workspaceControls("governance/audit", "");
+    expect(review?.search).not.toEqual(audit?.search);
+  });
+
+  it("offers one trigger filter set, whichever kind of trigger a row is", () => {
+    // Schedules and event triggers are one table now. Both can be paused, so the
+    // State filter is unconditional where the old per-tab page had to branch.
+    const triggers = workspaceControls("workflows/triggers", "");
+    expect(triggers?.filters?.map((f) => f.id).sort()).toEqual(["enabled", "kind"]);
   });
 
   it("gates page actions by the permission the action actually needs", () => {
     // Asserting the tier list literally would just restate the source. What matters
     // is that the gate agrees with the permission table: inviting people is
     // governance, and starting a workflow is authoring.
-    const invite = workspaceControls("administration", "Users")?.actions?.[0];
+    const invite = workspaceControls("governance/administration", "Users")?.actions?.[0];
     expect(invite?.roles?.every((r) => can(r, "administer"))).toBe(true);
 
-    const newWorkflow = workspaceControls("workflows", "")?.actions?.[0];
+    const newWorkflow = workspaceControls("workflows/library", "")?.actions?.[0];
     expect(newWorkflow?.roles?.every((r) => can(r, "author"))).toBe(true);
     // And every tier that can author is offered it — a citizen builder who can't
     // start a workflow is not a tier, it's a dead end.
@@ -122,30 +139,31 @@ describe("workspace control descriptors", () => {
     // Search and filtering are one control: the filter glyph lives inside the
     // search field. A page that declared filters but no search would fall back to
     // a standalone Filter button — a second door, which is what this pins shut.
+    //
+    // Driven off `SECTIONS` rather than a list written out beside it, so a new
+    // subpage is covered the moment it is declared. The extra rows are the
+    // tab-dependent branches, which the empty tab (each function's own default)
+    // wouldn't otherwise reach.
     const pages: [Parameters<typeof workspaceControls>[0], string][] = [
-      ["inbox", ""],
-      ["workflows", ""],
-      ["users", ""],
-      ["runners", ""],
-      ["surfaces", ""],
-      ["builder", ""],
-      ...(["In progress", "Historical", "Insights"] as const).map((t) => ["activity", t] as [never, string]),
-      ...(["Scheduled", "Event triggers", "Credentials", "Packages", "Global values"] as const).map(
-        (t) => ["manage", t] as [never, string],
+      ...SECTIONS.map((s) => [s, ""] as [Parameters<typeof workspaceControls>[0], string]),
+      ...(["In progress", "Historical", "Insights"] as const).map(
+        (t) => ["activity/runs", t] as [Parameters<typeof workspaceControls>[0], string],
       ),
-      ...(["Users", "Roles", "Licenses", "Policies"] as const).map((t) => ["administration", t] as [never, string]),
+      ...(["Users", "Roles", "Licenses", "Policies"] as const).map(
+        (t) => ["governance/administration", t] as [Parameters<typeof workspaceControls>[0], string],
+      ),
     ];
 
-    for (const [view, tab] of pages) {
-      const definition = workspaceControls(view, tab);
+    for (const [section, tab] of pages) {
+      const definition = workspaceControls(section, tab);
       const filterable = (definition?.filters?.length ?? 0) > 0 || (definition?.sorts?.length ?? 0) > 0;
-      if (filterable) expect(definition?.search, `${view}/${tab}`).toBeTruthy();
+      if (filterable) expect(definition?.search, `${section}/${tab}`).toBeTruthy();
     }
   });
 });
 
 describe("the filter menu's type-ahead", () => {
-  const inbox = workspaceControls("inbox", "")!;
+  const inbox = workspaceControls("activity/issues", "")!;
 
   it("lists every dimension, then sorting, when nothing is typed", () => {
     const entries = menuEntries(inbox, "");
@@ -231,11 +249,11 @@ describe("sort direction", () => {
   });
 
   it("declares a direction for every sort on every page, so chips never guess", () => {
-    for (const view of ["inbox", "activity", "workflows", "users", "runners", "builder"] as const) {
-      for (const sort of workspaceControls(view, "")?.sorts ?? []) {
-        expect(sort.defaultDir, `${view}/${sort.id}`).toBeDefined();
+    for (const section of SECTIONS) {
+      for (const sort of workspaceControls(section, "")?.sorts ?? []) {
+        expect(sort.defaultDir, `${section}/${sort.id}`).toBeDefined();
         // Labels name the field; the arrow says which way it runs.
-        expect(sort.label, `${view}/${sort.id}`).not.toMatch(/^(most|least|newest|oldest|longest|busiest)/i);
+        expect(sort.label, `${section}/${sort.id}`).not.toMatch(/^(most|least|newest|oldest|longest|busiest)/i);
       }
     }
   });

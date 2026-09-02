@@ -1,12 +1,17 @@
 import { useId } from "react";
 
 /**
- * Events-over-time chart for a surface: three tracking series (orange/green/blue)
- * over ~7 hours of 10-minute buckets, with a filled area under the top line. The
- * spiky curve is generated deterministically from `seed`, so it's stable per
- * surface without real telemetry.
+ * A volume-over-time chart: three tracking series (orange/green/blue) over ~7
+ * hours of 10-minute buckets, with a filled area under the top line. The spiky
+ * curve is generated deterministically from `seed`, so the same input always
+ * draws the same shape without real telemetry behind it.
+ *
+ * Named for what it draws rather than where it was first used — it arrived with
+ * the Surfaces page, but Activity's Insights tab ("Runs over time") is what still
+ * reads it, and a component called `SurfaceChart` in a product with no surfaces
+ * names a screen nobody can find.
  */
-export function SurfaceChart({ seed }: { seed: number }) {
+export function TimeSeriesChart({ seed }: { seed: number }) {
   const gradId = useId();
   const W = 1000;
   const H = 300;

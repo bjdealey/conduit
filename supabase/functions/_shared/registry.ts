@@ -1,6 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ConnectorRegistry, SupabaseVaultSecretStore, type SecretStore } from "@conduit/connector-sdk";
-import { a360ConnectorFactory } from "@conduit/connector-automation-anywhere";
 import { SupabaseVaultClient } from "./vault.ts";
 
 /** A `connector_instances` row. */
@@ -18,10 +17,17 @@ export function secretStore(supabase: SupabaseClient): SecretStore {
   return new SupabaseVaultSecretStore(new SupabaseVaultClient(supabase));
 }
 
-/** The set of connector types this deployment knows how to build. */
-export function defineKnownTypes(registry: ConnectorRegistry, secrets: SecretStore): void {
-  registry.defineType(a360ConnectorFactory(secrets));
-  // Future connector types self-register here (azure-devops, jira, …).
+/**
+ * The set of connector types this deployment knows how to build.
+ *
+ * Deliberately empty: Conduit ships with no connector compiled in, so a fresh
+ * deployment mirrors nothing until someone installs a connector package and
+ * registers its factory here. A `connector_instances` row whose `type` has no
+ * factory is reported as `skipped` rather than silently ignored — the honest
+ * answer to "I configured an instance and nothing appeared".
+ */
+export function defineKnownTypes(_registry: ConnectorRegistry, _secrets: SecretStore): void {
+  // Connector types register here, e.g. registry.defineType(jiraConnectorFactory(secrets)).
 }
 
 /**

@@ -1,8 +1,6 @@
 import { useStore, type View } from "../store";
 import { navItems } from "../data/nav";
 import { navIcons } from "../data/navIcons";
-import { endUsers } from "../data/users";
-import { runners } from "../data/runners";
 import { NavGroup } from "./NavGroup";
 import { OpenItem } from "./OpenItem";
 import { UserMenu } from "./UserMenu";
@@ -19,7 +17,7 @@ const icons = navIcons(20);
  *  lives in the main content header (SidebarToggle) and drives `sidebarExpanded`
  *  in the store, which sets this rail's width and label visibility. */
 export function Sidebar() {
-  const { sidebarExpanded: expanded, view, openIds, issues, workflows, badgesEnabled, role, hasCapability } =
+  const { sidebarExpanded: expanded, view, openIds, issues, workflows, runners, badgesEnabled, role, hasCapability } =
     useStore();
   const inSettings = view === "settings";
 
@@ -42,12 +40,8 @@ export function Sidebar() {
     switch (id) {
       case "activity":
         return issues.filter((i) => i.status === "Under Investigation" || i.status === "Active").length;
-      case "inbox":
-        return issues.length;
       case "workflows":
         return workflows.length;
-      case "users":
-        return endUsers.length;
       case "runners":
         return runners.length;
       default:
@@ -62,8 +56,12 @@ export function Sidebar() {
       className="relative flex shrink-0 flex-col p-2 transition-[width] duration-200 ease-out"
       style={{ width: expanded ? 216 : 56, zIndex: 30 }}
     >
-      {/* Top slot: workspace switcher normally, a Back control in Settings mode. */}
-      {inSettings ? <SettingsBack expanded={expanded} /> : <WorkspaceMenu expanded={expanded} />}
+      {/* Top slot: workspace switcher normally, a Back control in Settings mode.
+          Keyed on the mode so the swap remounts and `.rail-swap` runs — see the
+          note on the nav region below for why the rail crossfades at all. */}
+      <div key={inSettings ? "settings-top" : "main-top"} className="rail-swap">
+        {inSettings ? <SettingsBack expanded={expanded} /> : <WorkspaceMenu expanded={expanded} />}
+      </div>
 
       {/* Universal search (opens the command palette) — issue-specific, so hidden
           while in Settings. */}
@@ -88,35 +86,45 @@ export function Sidebar() {
           (expanded ? "overflow-y-auto" : "overflow-visible")
         }
       >
-        {inSettings ? (
-          <SettingsNav expanded={expanded} />
-        ) : (
-          <>
-            {/* Primary nav items (with optional subpages) */}
-            <div className="flex flex-col items-center gap-1">
-              {visibleNav.map((item) => (
-                <NavGroup
-                  key={item.id}
-                  item={item}
-                  icon={icons[item.id]}
-                  badge={badgeFor(item.id)}
-                  expanded={expanded}
-                />
-              ))}
-            </div>
+        {/* Entering Settings replaces this whole region — twelve destinations plus
+            the pinned open pages become seven settings pages. Everywhere else the
+            rail is the fixed frame the content moves inside, so this is the one
+            navigation that swaps the frame itself, and it crossfades rather than
+            cutting. Keyed on the mode so React remounts and the animation runs.
+            The wrapper is layout-neutral (a plain flex column) and unpositioned,
+            so it doesn't become a containing block for the collapsed rail's
+            tooltips/flyouts, which escape their row to `left: 100%`. */}
+        <div key={inSettings ? "settings-nav" : "main-nav"} className="rail-swap flex flex-col">
+          {inSettings ? (
+            <SettingsNav expanded={expanded} />
+          ) : (
+            <>
+              {/* Primary nav items (with optional subpages) */}
+              <div className="flex flex-col items-center gap-1">
+                {visibleNav.map((item) => (
+                  <NavGroup
+                    key={item.id}
+                    item={item}
+                    icon={icons[item.id]}
+                    badge={badgeFor(item.id)}
+                    expanded={expanded}
+                  />
+                ))}
+              </div>
 
-            {/* Open pages: issues opened this session, pinned below the divider. They
-                persist here as you navigate elsewhere. */}
-            {openIssues.length > 0 && (
-              <div className="mx-auto my-2 h-px w-6 shrink-0" style={{ background: "var(--color-border-default)" }} />
-            )}
-            <div className="flex flex-col items-center gap-1">
-              {openIssues.map((issue) => (
-                <OpenItem key={issue.id} issue={issue} expanded={expanded} />
-              ))}
-            </div>
-          </>
-        )}
+              {/* Open pages: issues opened this session, pinned below the divider. They
+                  persist here as you navigate elsewhere. */}
+              {openIssues.length > 0 && (
+                <div className="mx-auto my-2 h-px w-6 shrink-0" style={{ background: "var(--color-border-default)" }} />
+              )}
+              <div className="flex flex-col items-center gap-1">
+                {openIssues.map((issue) => (
+                  <OpenItem key={issue.id} issue={issue} expanded={expanded} />
+                ))}
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Account menu + theme toggle pinned to the bottom */}

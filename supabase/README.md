@@ -83,10 +83,10 @@ curl -X POST https://<ref>.supabase.co/functions/v1/connectors \
   -H "Authorization: Bearer <admin-jwt-or-service-role-key>" \
   -H "Content-Type: application/json" \
   -d '{
-        "id": "a360-prod-eu",
-        "type": "automation-anywhere",
-        "name": "Prod EU Control Room",
-        "config": { "controlRoomUrl": "https://prod-eu.my.automationanywhere.digital" },
+        "id": "acme-prod-eu",
+        "type": "acme-cloud",
+        "name": "Prod EU",
+        "config": { "baseUrl": "https://prod-eu.acme.example" },
         "credentials": { "username": "svc-account", "apiKey": "<api-key>" }
       }'
 ```
@@ -124,12 +124,15 @@ VITE_SUPABASE_ANON_KEY=<anon-key>
 npm run dev   # Settings → Integrations flips from "Seed data" to "Live · Supabase"
 ```
 
-### See live data without a real Control Room
+### See live data without a real connector
 
-A real A360 sync needs live Control Room credentials. To watch the pipeline light up
-without one, seed a demo connector + rows directly (Dashboard → SQL editor), then reload
-Integrations. The connector needs a `secret_ref` (the A360 connector won't build without
-one), so create a throwaway Vault secret for it:
+**No connector ships with Conduit.** `defineKnownTypes` in `_shared/registry.ts` is
+deliberately empty, so a `connector_instances` row of any type is reported as `skipped`
+until a connector package is installed and its factory registered there.
+
+To watch the pipeline light up without writing one, seed the cache directly (Dashboard →
+SQL editor) and reload Integrations. A connector instance needs a `secret_ref` (a real
+connector won't build without one), so create a throwaway Vault secret for it:
 
 ```sql
 -- throwaway credential bundle so the connector validates (never actually used here)
@@ -137,19 +140,20 @@ select vault.create_secret('{"username":"demo","apiKey":"demo"}', 'connector/dem
 
 -- register the connector (enabled, declares workflows)
 insert into public.connector_instances (id, type, name, enabled, config, secret_ref)
-values ('demo-eu', 'automation-anywhere', 'Demo EU', true,
-        '{"controlRoomUrl":"https://demo"}', 'connector/demo-eu');
+values ('demo-eu', 'acme-cloud', 'Demo EU', true,
+        '{"baseUrl":"https://demo"}', 'connector/demo-eu');
 
 -- seed the workflows cache directly (stands in for a real sync)
 insert into public.workflows (id, source_id, platform, connector_id, title, state, owner) values
-  ('demo-eu:1','1','automation-anywhere','demo-eu','Invoice Workflow','Running','Brad'),
-  ('demo-eu:2','2','automation-anywhere','demo-eu','Payment Recon','Idle','Dana');
+  ('demo-eu:1','1','acme-cloud','demo-eu','Invoice Workflow','Running','Brad'),
+  ('demo-eu:2','2','acme-cloud','demo-eu','Payment Recon','Idle','Dana');
 ```
 
-`capabilities` now returns `["workflows"]` (a valid workflows-capable connector is enabled) and
-`workflows` returns the two rows. To go real, register an A360 instance with live credentials
-via the write-only `POST /functions/v1/connectors` path above and run `sync` (which will
-replace these demo rows with real workflows).
+`workflows` now returns the two rows. Note `capabilities` will still be empty: capabilities
+come from a *built* connector's declaration, and with no factory registered there is nothing
+to declare them. To go real, install a connector package, register its factory in
+`defineKnownTypes`, add an instance with live credentials via the write-only
+`POST /functions/v1/connectors` path above, and run `sync`.
 
 ## Local development
 
@@ -175,8 +179,9 @@ supabase functions serve --env-file supabase/.env   # .env is gitignored; never 
   reversed — it could never have booted. Both were found and fixed while wiring the run loop.
   Run `deno check supabase/functions/**/*.ts` before every deploy; nothing else in this repo
   will catch it.
-- **TODO(a360)** flags remain from the connector stage (endpoints/field shapes unverified
-  against a live Control Room) — see the connector source.
+- **No connector is compiled in.** `defineKnownTypes` is empty by design, so `sync` has
+  nothing to pull from until one is installed. Rows of an unregistered type come back as
+  `skipped` rather than being silently ignored.
 
 ## The runner protocol
 

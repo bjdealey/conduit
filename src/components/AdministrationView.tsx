@@ -2,17 +2,7 @@ import { useMemo, useState } from "react";
 import { Lock, ShieldCheck } from "lucide-react";
 import { useStore } from "../store";
 import type { Role } from "../data/types";
-import {
-  licenses,
-  platformUsers as seedUsers,
-  policies as seedPolicies,
-  roleDefs,
-  type License,
-  type PlatformUser,
-  type PlatformUserStatus,
-  type Policy,
-  type RoleDef,
-} from "../data/admin";
+import type { License, PlatformUser, PlatformUserStatus, Policy, RoleDef } from "../data/admin";
 import { DataTable, type Column } from "./DataTable";
 import { Avatar } from "./Avatar";
 import { Switch } from "./Switch";
@@ -24,6 +14,16 @@ import { ROLES, ROLE_LABEL } from "@conduit/domain";
 
 const TABS = ["Users", "Roles", "Licenses", "Policies"] as const;
 type Tab = (typeof TABS)[number];
+
+/** What each tab says when it holds nothing. Roles and Policies are product
+ *  constants and are never actually empty; they are here so the table has an
+ *  honest line if a search empties them. */
+const EMPTY_TAB: Record<Tab, string> = {
+  Users: "No accounts yet. Invite someone and they appear here before they first sign in.",
+  Roles: "No roles defined.",
+  Licenses: "No licences on file. Entitlements appear here once a plan is attached to this workspace.",
+  Policies: "No policies defined.",
+};
 
 const ROLE_ACCENT: Record<Role, string> = {
   admin: "violet",
@@ -87,11 +87,12 @@ function AccessDenied() {
  *  from end-user monitoring in Users). Admins can edit roles and toggle policies;
  *  professionals get a read-only view; the tiers below don't reach it (nav-gated). */
 export function AdministrationView() {
-  const { memberById, allowed, controls, sectionTab, setSectionTab } = useStore();
+  const { memberById, allowed, controls, sectionTab, setSectionTab, platformUsers: seedUsers, roleDefs, licenses, policies: seedPolicies } =
+    useStore();
   // Shared with the workspace header, so its search and filters follow the tab.
-  const tab = (sectionTab("administration") || "Users") as Tab;
-  const setTab = (next: Tab) => setSectionTab("administration", next);
-  const state = controls("administration");
+  const tab = (sectionTab("governance/administration") || "Users") as Tab;
+  const setTab = (next: Tab) => setSectionTab("governance/administration", next);
+  const state = controls("governance/administration");
   // Local, editable copies so an admin's edits are reflected in the prototype.
   const [users, setUsers] = useState<PlatformUser[]>(seedUsers);
   const [policies, setPolicies] = useState<Policy[]>(seedPolicies);
@@ -118,16 +119,32 @@ export function AdministrationView() {
       key: "name",
       header: "Name",
       render: (u) => {
-        const member = memberById(u.memberId);
+        const member = u.memberId ? memberById(u.memberId) : undefined;
         return (
           <span className="inline-flex items-center gap-2">
             {member && <Avatar member={member} size={22} />}
-            <span className="font-medium">{member?.name ?? u.memberId}</span>
+            {/* No profile yet (invited, never signed in): the address is the only
+                name this account has, so say that rather than an internal id. */}
+            <span className={member ? "font-medium" : "text-secondary-foreground"}>
+              {member?.name ?? u.email}
+            </span>
           </span>
         );
       },
     },
-    { key: "email", header: "Email", render: (u) => <span className="text-secondary-foreground">{u.email}</span> },
+    {
+      key: "email",
+      header: "Email",
+      // A provider sign-in gives the prototype no address, so your own row can
+      // legitimately have none yet. An empty cell reads as a missing value the
+      // table failed to load rather than one nobody has entered.
+      render: (u) =>
+        u.email ? (
+          <span className="text-secondary-foreground">{u.email}</span>
+        ) : (
+          <span className="text-tertiary-foreground">Not set</span>
+        ),
+    },
     {
       key: "role",
       header: "Role",
@@ -197,14 +214,14 @@ export function AdministrationView() {
 
   const visibleUsers = users.filter(
     (u) =>
-      matchesQuery(state.query, [memberById(u.memberId)?.name, u.email, u.role, u.status]) &&
+      matchesQuery(state.query, [u.memberId ? memberById(u.memberId)?.name : undefined, u.email, u.role, u.status]) &&
       passesFilter(state, "role", u.role) &&
       passesFilter(state, "status", u.status),
   );
   const visibleRoles = roleDefs.filter((r) => matchesQuery(state.query, [r.id, r.description, r.permissions]));
   const visibleLicenses = licenses.filter((l) => matchesQuery(state.query, [l.name, l.plan, l.renews]));
   const visiblePolicies = policies.filter((p) => matchesQuery(state.query, [p.name, p.description, p.scope]));
-  const empty = isNarrowed(state) ? "Nothing matches the current search or filters." : "Nothing to show yet.";
+  const empty = isNarrowed(state) ? "Nothing matches the current search or filters." : EMPTY_TAB[tab];
 
   return (
     <div className="flex min-w-0 flex-1 flex-col">

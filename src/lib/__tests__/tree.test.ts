@@ -26,9 +26,11 @@ describe("visibleRows", () => {
     const monitoring = rows.filter((r) => r.parentId === "pub-monitoring").map((r) => r.kind);
     expect(monitoring).toEqual(["folder", "file"]);
 
-    const aa = rows.filter((r) => r.parentId === "pub-aa").map((r) => r.kind);
-    // Ten mirrored workflows, then three files — never interleaved.
-    expect(aa.indexOf("file")).toBe(aa.lastIndexOf("workflow") + 1);
+    const billing = rows.filter((r) => r.parentId === "pub-billing").map((r) => r.kind);
+    // Workflows first, then files — never interleaved.
+    expect(billing).toContain("workflow");
+    expect(billing).toContain("file");
+    expect(billing.indexOf("file")).toBe(billing.lastIndexOf("workflow") + 1);
   });
 
   it("starts with the two section headers and nests beneath them", () => {
@@ -57,7 +59,7 @@ describe("visibleRows", () => {
   it("sorts sibling folders by name rather than by insertion", () => {
     const added = { ...tree, folders: [...seedFolders, { id: "fld_1", name: "Alerts", parentId: "pub-root", visibility: "public" as const }] };
     const under = visibleRows(added, openAll).filter((r) => r.parentId === "pub-root" && r.kind === "folder");
-    expect(under[0].id).toBe("fld_1"); // "Alerts" sorts before "Automation Anywhere"
+    expect(under[0].id).toBe("fld_1"); // "Alerts" sorts before "Billing"
   });
 });
 

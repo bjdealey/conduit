@@ -1,12 +1,11 @@
 import { useState, type ReactNode } from "react";
 import { ArrowDown, ArrowUp, Package, Play, Plus, Split, Trash2, Workflow as WorkflowIcon, Zap } from "lucide-react";
 import { useStore } from "../store";
-import { folders as allFolders } from "../data/workflows";
-import { members } from "../data/issues";
 import { actionById, packagesForSteps, stepSummary, type ActionField } from "../data/actions";
 import {
   RUN_TRIGGERS,
   type BranchStep,
+  type Folder,
   type RunTrigger,
   type Visibility,
   type WorkflowDraft,
@@ -101,12 +100,12 @@ function SelectInput({
 }
 
 /** "Shared / Monitoring / Synthetics" — a folder's ancestry, for the folder picker. */
-function folderPath(folderId: string): string {
+function folderPath(folderId: string, folders: readonly Folder[]): string {
   const names: string[] = [];
-  let cur = allFolders.find((f) => f.id === folderId);
+  let cur = folders.find((f) => f.id === folderId);
   while (cur) {
     names.unshift(cur.name);
-    cur = cur.parentId ? allFolders.find((f) => f.id === cur!.parentId) : undefined;
+    cur = cur.parentId ? folders.find((f) => f.id === cur!.parentId) : undefined;
   }
   return names.join(" / ");
 }
@@ -594,6 +593,8 @@ export function WorkflowBuilder() {
     nodeTypes,
     isMobile,
     setInfoPaneOpen,
+    folders,
+    members,
   } = useStore();
   const [selection, setSelection] = useState<Selection>({ kind: "workflow" });
   // The phone's palette: a sheet, opened from the footer. See `PaletteBody`.
@@ -743,10 +744,10 @@ export function WorkflowBuilder() {
                   <SelectInput
                     value={draft.folderId}
                     onChange={(folderId) => {
-                      const folder = allFolders.find((f) => f.id === folderId);
+                      const folder = folders.find((f) => f.id === folderId);
                       updateDraft({ folderId, visibility: (folder?.visibility ?? draft.visibility) as Visibility });
                     }}
-                    options={allFolders.map((f) => ({ id: f.id, label: folderPath(f.id) }))}
+                    options={folders.map((f) => ({ id: f.id, label: folderPath(f.id, folders) }))}
                   />
                 </Field>
                 <Field label="Owner">

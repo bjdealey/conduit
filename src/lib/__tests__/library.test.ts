@@ -22,8 +22,36 @@ import {
 import { folders as seedFolders, workflows as seedWorkflows } from "../../data/workflows";
 import { files as seedFiles } from "../../data/files";
 import { subtreeIds } from "../folders";
+import type { Folder, Workflow } from "../../data/types";
 
-const tree = (): LibraryTree => ({ folders: seedFolders, workflows: seedWorkflows, files: seedFiles });
+/* A mirrored workflow and the folder holding it, built here rather than taken from
+   the seed. The sample estate is native-only — a mirrored row exists only once a
+   connector has synced one in — but the rules that govern such a row (read-only in
+   the tree, and no deleting the folder around it) are permanent and still need
+   covering. Building the fixture also states the rule's actual precondition: it
+   turns on `platform`, not on any particular vendor. */
+const MIRROR_FOLDER: Folder = {
+  id: "pub-mirror",
+  name: "Connected estate",
+  parentId: "pub-root",
+  visibility: "public",
+};
+
+const MIRRORED_WORKFLOW: Workflow = {
+  ...seedWorkflows[0],
+  id: "wf_mirrored_1",
+  name: "Mirrored flow",
+  folderId: MIRROR_FOLDER.id,
+  platform: "acme-cloud",
+  steps: [],
+  packages: [],
+};
+
+const tree = (): LibraryTree => ({
+  folders: [...seedFolders, MIRROR_FOLDER],
+  workflows: [...seedWorkflows, MIRRORED_WORKFLOW],
+  files: seedFiles,
+});
 
 /** The reason a refusal carried, or "" when the edit went through. */
 const reasonOf = (r: ReturnType<typeof renameNode>) => (r.ok ? "" : r.reason);
@@ -37,9 +65,9 @@ const folder = (id: string): LibraryNode => ({ kind: "folder", id });
 const workflow = (id: string): LibraryNode => ({ kind: "workflow", id });
 const file = (id: string): LibraryNode => ({ kind: "file", id });
 
-/** A native workflow and a mirrored one from the seed. */
+/** A native workflow from the seed, and the mirrored fixture above. */
 const native = seedWorkflows.find((w) => w.platform === "conduit")!;
-const mirrored = seedWorkflows.find((w) => w.platform !== "conduit")!;
+const mirrored = MIRRORED_WORKFLOW;
 
 describe("file kinds", () => {
   it("reads the kind from the extension", () => {
@@ -57,8 +85,8 @@ describe("file kinds", () => {
   });
 
   it("re-types a file when it is renamed", () => {
-    const renamed = treeOf(renameNode(tree(), file("fil_8"), "scratch.xml"));
-    expect(kindOfFile(renamed.files.find((f) => f.id === "fil_8")!.name)).toBe("config");
+    const renamed = treeOf(renameNode(tree(), file("fil_5"), "scratch.xml"));
+    expect(kindOfFile(renamed.files.find((f) => f.id === "fil_5")!.name)).toBe("config");
   });
 });
 
@@ -139,9 +167,9 @@ describe("move", () => {
   });
 
   it("refuses a move onto a name already taken at the destination", () => {
-    // pub-aa holds "status-map.xml"; give the billing file that name and move it there.
-    const renamed = treeOf(renameNode(tree(), file("fil_2"), "status-map.xml"));
-    expect(reasonOf(moveNode(renamed, file("fil_2"), { kind: "folder", id: "pub-aa" }))).toMatch(/already there/);
+    // pub-monitoring holds "runbook.md"; give the billing file that name and move it there.
+    const renamed = treeOf(renameNode(tree(), file("fil_2"), "runbook.md"));
+    expect(reasonOf(moveNode(renamed, file("fil_2"), { kind: "folder", id: "pub-monitoring" }))).toMatch(/already there/);
   });
 
   it("refuses a move that changes nothing", () => {
@@ -172,13 +200,13 @@ describe("delete", () => {
     const after = treeOf(deleteNode(tree(), file("fil_2")));
     expect(after.files.find((f) => f.id === "fil_2")).toBeUndefined();
     expect(after.files).toHaveLength(seedFiles.length - 1);
-    expect(after.folders).toEqual(seedFolders);
+    expect(after.folders).toEqual(tree().folders);
   });
 
   it("refuses a mirrored workflow, and a folder holding one", () => {
     expect(reasonOf(deleteNode(tree(), workflow(mirrored.id)))).toMatch(/mirrored from another platform/);
     // The cascade must not become a way round the rule.
-    expect(reasonOf(deleteNode(tree(), folder("pub-aa")))).toMatch(/mirrored workflows?/);
+    expect(reasonOf(deleteNode(tree(), folder("pub-mirror")))).toMatch(/mirrored workflows?/);
     expect(reasonOf(deleteNode(tree(), folder("pub-root")))).toMatch(/mirrored workflows?/);
   });
 });
@@ -278,8 +306,8 @@ describe("bulk edits", () => {
   it("applies in sequence, so a collision between two moved siblings is caught", () => {
     // Two files with the same name can't both land in one folder.
     const clashing = treeOf(renameNode(tree(), file("fil_1"), "same.md"));
-    const both = treeOf(renameNode(clashing, file("fil_8"), "same.md"));
-    const result = moveNodes(both, [file("fil_1"), file("fil_8")], { kind: "folder", id: "pub-onboarding" });
+    const both = treeOf(renameNode(clashing, file("fil_5"), "same.md"));
+    const result = moveNodes(both, [file("fil_1"), file("fil_5")], { kind: "folder", id: "pub-onboarding" });
     expect(result.moved).toBe(1);
     expect(result.refusals[0].reason).toMatch(/already there/);
   });

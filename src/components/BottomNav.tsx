@@ -1,12 +1,10 @@
 import { useEffect, useState } from "react";
 import { MoreHorizontal, Search } from "lucide-react";
 import { useStore, type View } from "../store";
-import { MOBILE_BAR, MOBILE_BAR_SLOTS, navItems, type NavItemDef } from "../data/nav";
+import { emailLine } from "../data/user";
+import { MOBILE_BAR, MOBILE_BAR_SLOTS, defaultSubpage, navItems, type NavItemDef, type SubPage } from "../data/nav";
 import { navIcons } from "../data/navIcons";
 import { splitDestinations } from "../lib/responsive";
-import { endUsers } from "../data/users";
-import { runners } from "../data/runners";
-import { currentUser } from "../data/user";
 import { CountBadge } from "./CountBadge";
 import { Sheet } from "./Sheet";
 import { ThemeToggle } from "./ThemeToggle";
@@ -71,28 +69,53 @@ function SheetRow({
   active,
   badge,
   onSelect,
+  onSelectSub,
+  activeSub,
 }: {
   item: NavItemDef;
   active: boolean;
   badge?: number;
   onSelect: () => void;
+  onSelectSub?: (sub: SubPage) => void;
+  /** The open subpage when this destination is the one showing, else null. */
+  activeSub?: string | null;
 }) {
+  const subpages = item.subpages ?? [];
   return (
-    <button
-      type="button"
-      onClick={onSelect}
-      aria-current={active ? "page" : undefined}
-      className="sheet-row focusable pressable"
-      data-active={active}
-    >
-      <span className="flex shrink-0 items-center justify-center text-tertiary-foreground">
-        {sheetIcons[item.id]}
-      </span>
-      <span className="min-w-0 flex-1 truncate text-left text-body-base text-primary-foreground">
-        {item.label}
-      </span>
-      {badge !== undefined && badge > 0 && <CountBadge count={badge} variant="inline" />}
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={onSelect}
+        aria-current={active && subpages.length === 0 ? "page" : undefined}
+        className="sheet-row focusable pressable"
+        data-active={active}
+      >
+        <span className="flex shrink-0 items-center justify-center text-tertiary-foreground">
+          {sheetIcons[item.id]}
+        </span>
+        <span className="min-w-0 flex-1 truncate text-left text-body-base text-primary-foreground">
+          {item.label}
+        </span>
+        {badge !== undefined && badge > 0 && <CountBadge count={badge} variant="inline" />}
+      </button>
+      {subpages.map((sub) => (
+        <button
+          key={sub.id}
+          type="button"
+          onClick={() => onSelectSub?.(sub)}
+          aria-current={activeSub === sub.id ? "page" : undefined}
+          className="sheet-row sheet-row-sub focusable pressable"
+          data-active={activeSub === sub.id}
+        >
+          {/* The parent's glyph carries the group; indentation and a lighter
+              weight are what say "inside it" without a second icon vocabulary. */}
+          <span className="flex shrink-0 items-center justify-center" aria-hidden />
+          <span className="min-w-0 flex-1 truncate text-left text-body-base text-secondary-foreground">
+            {sub.label}
+          </span>
+        </button>
+      ))}
+    </>
   );
 }
 
@@ -104,15 +127,19 @@ function SheetRow({
 export function BottomNav() {
   const {
     view,
+    subview,
     setView,
+    openSubview,
     role,
     hasCapability,
     badgesEnabled,
     issues,
     workflows,
+    runners,
     workspace,
     openSearch,
     signOut,
+    currentUser,
   } = useStore();
   const [moreOpen, setMoreOpen] = useState(false);
 
@@ -127,17 +154,23 @@ export function BottomNav() {
   );
   const { bar, overflow } = splitDestinations(visible, MOBILE_BAR, MOBILE_BAR_SLOTS);
 
+  // `setView` clears the subview, which would leave a destination that has
+  // subpages rendering whichever one its router falls back to while the sheet
+  // shows none of them as current. Opening the first one explicitly keeps the
+  // two in step.
+  const go = (item: NavItemDef) => {
+    const sub = defaultSubpage(item.id);
+    if (sub) openSubview(item.id, sub);
+    else setView(item.id);
+  };
+
   const badgeFor = (id: View): number | undefined => {
     if (!badgesEnabled) return undefined;
     switch (id) {
       case "activity":
         return issues.filter((i) => i.status === "Under Investigation" || i.status === "Active").length;
-      case "inbox":
-        return issues.length;
       case "workflows":
         return workflows.length;
-      case "users":
-        return endUsers.length;
       case "runners":
         return runners.length;
       default:
@@ -160,7 +193,7 @@ export function BottomNav() {
             icon={barIcons[item.id]}
             active={view === item.id}
             badge={badgeFor(item.id)}
-            onSelect={() => setView(item.id)}
+            onSelect={() => go(item)}
           />
         ))}
         <BarItem
@@ -197,7 +230,13 @@ export function BottomNav() {
               item={item}
               active={view === item.id}
               badge={badgeFor(item.id)}
-              onSelect={() => setView(item.id)}
+              onSelect={() => go(item)}
+              // A destination's subpages are rows in their own right here. The
+              // rail expands a group in place; a sheet has no equivalent, and
+              // without these Governance's Audit and Administration would have no
+              // way in on a phone at all.
+              onSelectSub={(sub) => openSubview(item.id, sub.id)}
+              activeSub={view === item.id ? subview ?? defaultSubpage(item.id) : null}
             />
           ))}
         </div>
@@ -216,7 +255,7 @@ export function BottomNav() {
               {currentUser.name}
             </span>
             <span className="truncate text-tertiary-foreground" style={{ fontSize: "0.72rem" }}>
-              {currentUser.email}
+              {emailLine(currentUser)}
             </span>
           </span>
           <ThemeToggle />

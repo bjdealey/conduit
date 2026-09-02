@@ -31,17 +31,17 @@ function fakeVault(): VaultClient {
 describe("SupabaseVaultSecretStore adapts the Vault seam without leaking values", () => {
   it("round-trips a bundle through get() and throws when absent", async () => {
     const store = new SupabaseVaultSecretStore(fakeVault());
-    await store.set("connector/a360-eu", { username: "svc", apiKey: "SECRET" });
-    expect(await store.get("connector/a360-eu")).toEqual({ username: "svc", apiKey: "SECRET" });
+    await store.set("connector/acme-eu", { username: "svc", apiKey: "SECRET" });
+    expect(await store.get("connector/acme-eu")).toEqual({ username: "svc", apiKey: "SECRET" });
     await expect(store.get("connector/missing")).rejects.toBeInstanceOf(SecretNotFoundError);
   });
 
   it("describe() returns presence + field names, never the values", async () => {
     const store = new SupabaseVaultSecretStore(fakeVault());
-    await store.set("connector/a360-eu", { username: "svc", apiKey: "SECRET_VALUE" });
+    await store.set("connector/acme-eu", { username: "svc", apiKey: "SECRET_VALUE" });
 
-    const meta = await store.describe("connector/a360-eu");
-    expect(meta).toMatchObject({ ref: "connector/a360-eu", present: true, keys: ["username", "apiKey"] });
+    const meta = await store.describe("connector/acme-eu");
+    expect(meta).toMatchObject({ ref: "connector/acme-eu", present: true, keys: ["username", "apiKey"] });
     expect(JSON.stringify(meta)).not.toContain("SECRET_VALUE");
     expect(JSON.stringify(meta)).not.toContain("svc");
 

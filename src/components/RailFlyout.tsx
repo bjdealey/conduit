@@ -12,7 +12,7 @@ export function RailFlyout({
   onSub,
 }: {
   title: string;
-  subpages: SubPage[];
+  subpages: readonly SubPage[];
   onParent: () => void;
   onSub: (id: string) => void;
 }) {

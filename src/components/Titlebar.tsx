@@ -1,32 +1,28 @@
 import { Info, PanelRight } from "lucide-react";
-import { useStore, type View } from "../store";
-import { navItems } from "../data/nav";
-import { endUsers } from "../data/users";
-import { runners } from "../data/runners";
+import { useStore } from "../store";
+import { defaultSubpage, navItems, type Section } from "../data/nav";
 import { VIEW_MODES, CONTEXT_LABEL } from "../data/viewLayout";
 import { SETTINGS_PAGES, DEFAULT_SETTINGS_PAGE } from "../data/settings";
 import { folderTrail } from "../lib/folders";
 import { Breadcrumb, type Crumb } from "./Breadcrumb";
 import { Chip } from "./Chip";
-import { READINESS_META, readinessOfView } from "../data/readiness";
+import { READINESS_META, readinessOf } from "../data/readiness";
 import { SidebarToggle } from "./SidebarToggle";
 import { SegmentedControl } from "./SegmentedControl";
 import { Avatar } from "./Avatar";
 
 /** Generic segmented presentation switcher, driven by `VIEW_MODES`. Shown for any
- *  view that declares more than one mode (inbox board/list, users list/grid, …).
+ *  section that declares more than one mode (issues board/list, library list/board, …).
  *  Switching to a non-list mode clears the open item so the board/grid shows (the
- *  detail returns only when you click into an item), matching the inbox. */
-function ViewModeSwitcher({ view }: { view: View }) {
-  const { layout, setLayout, select, selectUser, selectWorkflow, selectFolder, selectFile, selectRunner, selectRun } =
-    useStore();
-  const modes = VIEW_MODES[view];
+ *  detail returns only when you click into an item). */
+function ViewModeSwitcher({ section }: { section: Section }) {
+  const { layout, setLayout, select, selectWorkflow, selectFolder, selectFile, selectRunner, selectRun } = useStore();
+  const modes = VIEW_MODES[section];
   if (!modes || modes.length < 2) return null;
   // Switching to the alternate layout clears every page's open item, so each page
   // lands on its board/grid/timeline — not a stale detail — as you move between them.
   const clearAllSelections = () => {
     select(null);
-    selectUser(null);
     selectWorkflow(null);
     selectFolder(null);
     selectFile(null);
@@ -80,20 +76,10 @@ function InfoPaneToggle({ label }: { label: string }) {
   );
 }
 
-const VIEW_LABEL: Record<Exclude<View, "inbox">, string> = {
-  home: "Home",
-  review: "Review",
-  audit: "Audit",
-  builder: "Workflow builder",
-  activity: "Activity",
-  workflows: "Workflows",
-  manage: "Manage",
-  users: "Users",
-  administration: "Administration",
-  surfaces: "Surfaces",
-  runners: "Runners",
-  settings: "Settings",
-};
+/** The builder is the one screen with no nav entry to take a label from — it is a
+ *  mode you enter from the library, not a destination. Everything else reads its
+ *  name off `navItems`, so a rename happens in one place. */
+const BUILDER_LABEL = "Workflow builder";
 
 /** The application titlebar: sidebar toggle + a consistent breadcrumb trail for
  *  the current view/selection, plus a shared control cluster (view-mode switch,
@@ -102,12 +88,11 @@ export function Titlebar() {
   const {
     view,
     subview,
+    section,
     isMobile,
     dataSource,
     selected,
     select,
-    selectedUserId,
-    selectUser,
     selectedWorkflowId,
     selectWorkflow,
     selectedFolderId,
@@ -129,12 +114,11 @@ export function Titlebar() {
     closeBuilder,
     viewMode,
     workflows,
-    setView,
     openSubview,
     members,
+    runners,
   } = useStore();
 
-  const openUser = selectedUserId ? endUsers.find((u) => u.id === selectedUserId) ?? null : null;
   const openWorkflow = selectedWorkflowId
     ? workflows.find((a) => a.id === selectedWorkflowId) ?? null
     : null;
@@ -151,25 +135,42 @@ export function Titlebar() {
   // Only the Activity timeline opens a run full-pane; the list layout expands runs
   // in place, so a stale selection never leaks into its breadcrumb.
   const openRun =
-    view === "activity" && viewMode("activity") === "timeline" && selectedRunId
+    section === "activity/runs" && viewMode("activity/runs") === "timeline" && selectedRunId
       ? runById(selectedRunId) ?? null
       : null;
+
+  /* The trail every screen starts from.
+   *
+   * A destination with subpages contributes two crumbs, not one: "Governance"
+   * alone doesn't say whether you are looking at the review queue or the audit
+   * trail, and the rail's group is expanded around exactly this distinction. The
+   * destination crumb goes to its first subpage — its main face — so the trail
+   * climbs the same way the rail reads. Whatever is open in the section is
+   * appended after these by the branches below. */
+  const navItem = navItems.find((n) => n.id === view);
+  const openSub = navItem?.subpages?.length ? subview ?? defaultSubpage(view) : null;
+  const subLabel = navItem?.subpages?.find((sp) => sp.id === openSub)?.label;
+
+  /** `clear` is what returns the section to its own top — closing whatever is
+   *  open — and hangs off the last crumb the section owns. */
+  const sectionCrumbs = (clear?: () => void): Crumb[] => {
+    const label = navItem?.label ?? BUILDER_LABEL;
+    if (!subLabel) return [{ label, onClick: clear }];
+    const first = defaultSubpage(view);
+    return [
+      { label, onClick: first ? () => openSubview(view, first) : undefined },
+      { label: subLabel, onClick: clear },
+    ];
+  };
 
   let items: Crumb[];
   // Whether the current view is showing a right-hand context pane the info toggle
   // can act on — mirrors each view's render conditions so the control is never dead.
   let hasContext = false;
-  if (view === "inbox") {
+  if (section === "activity/issues") {
     hasContext = !!selected;
-    items = selected
-      ? [{ label: "Inbox", onClick: () => select(null) }, { label: selected.title }]
-      : [{ label: "Inbox" }];
-  } else if (view === "users") {
-    hasContext = !!openUser;
-    items = openUser
-      ? [{ label: "Users", onClick: () => selectUser(null) }, { label: openUser.name }]
-      : [{ label: "Users" }];
-  } else if (view === "workflows") {
+    items = selected ? [...sectionCrumbs(() => select(null)), { label: selected.title }] : sectionCrumbs();
+  } else if (section === "workflows/library") {
     hasContext = treeSelection.length > 1 || !!openWorkflow || !!openFile || folderCrumbs.length > 0;
     // A peek is what the pane is showing, so it outranks the selection summary here too.
     const showingSelection = treeSelection.length > 1 && !peeking;
@@ -188,17 +189,14 @@ export function Titlebar() {
       ? // A multi-selection is what the pane is showing, so it is what the trail
         // should name — otherwise the breadcrumb keeps announcing a single row
         // that is no longer what you are looking at.
-        [
-          { label: "Workflows", onClick: () => setTreeSelection([]) },
-          { label: `${treeSelection.length} selected` },
-        ]
+        [...sectionCrumbs(() => setTreeSelection([])), { label: `${treeSelection.length} selected` }]
       : openWorkflow
-      ? [{ label: "Workflows", onClick: () => selectWorkflow(null) }, ...trail, { label: openWorkflow.name }]
+      ? [...sectionCrumbs(() => selectWorkflow(null)), ...trail, { label: openWorkflow.name }]
       : openFile
-        ? [{ label: "Workflows", onClick: () => selectFile(null) }, ...trail, { label: openFile.name }]
+        ? [...sectionCrumbs(() => selectFile(null)), ...trail, { label: openFile.name }]
         : trail.length > 0
-          ? [{ label: "Workflows", onClick: () => selectFolder(null) }, ...trail]
-          : [{ label: "Workflows" }];
+          ? [...sectionCrumbs(() => selectFolder(null)), ...trail]
+          : sectionCrumbs();
   } else if (view === "settings") {
     const pageId = subview ?? DEFAULT_SETTINGS_PAGE;
     const page = SETTINGS_PAGES.find((p) => p.id === pageId);
@@ -206,10 +204,6 @@ export function Titlebar() {
       { label: "Settings", onClick: () => openSubview("settings", DEFAULT_SETTINGS_PAGE) },
       { label: page?.label ?? "Settings" },
     ];
-  } else if (view === "surfaces") {
-    // The Surfaces section always opens on the surface "Dashboard".
-    hasContext = true;
-    items = [{ label: "Surfaces", onClick: () => setView("surfaces") }, { label: "Dashboard" }];
   } else if (view === "builder") {
     // The builder's trail leads back to the library; its context pane is the
     // step configuration, so the info toggle acts on that.
@@ -218,36 +212,26 @@ export function Titlebar() {
       { label: "Workflows", onClick: closeBuilder },
       { label: draft?.isNew ? "New workflow" : draft?.name || "Untitled workflow" },
     ];
-  } else if (view === "activity") {
+  } else if (section === "activity/runs") {
     hasContext = true;
-    items = openRun
-      ? [{ label: "Activity", onClick: () => selectRun(null) }, { label: openRun.id }]
-      : [{ label: "Activity" }];
+    items = openRun ? [...sectionCrumbs(() => selectRun(null)), { label: openRun.id }] : sectionCrumbs();
   } else if (view === "runners") {
     hasContext = !!openRunner;
-    items = openRunner
-      ? [{ label: "Runners", onClick: () => selectRunner(null) }, { label: openRunner.name }]
-      : [{ label: "Runners" }];
-  } else if (subview) {
-    const sub = navItems.find((n) => n.id === view)?.subpages?.find((s) => s.id === subview);
-    items = [
-      { label: VIEW_LABEL[view], onClick: () => setView(view) },
-      { label: sub?.label ?? subview },
-    ];
+    items = openRunner ? [...sectionCrumbs(() => selectRunner(null)), { label: openRunner.name }] : sectionCrumbs();
   } else {
-    items = [{ label: VIEW_LABEL[view] }];
+    items = sectionCrumbs();
   }
 
-  const readiness = readinessOfView(view, dataSource);
+  const readiness = readinessOf(section, dataSource);
   // The phone shell drops the two controls that describe the desktop layout: the
   // rail it toggles isn't mounted, and the list/board switch offers a second
   // multi-column presentation on a screen that has room for one. The readiness
   // chip goes too — a claim about the surface, worth its width only when there is
   // width to spare. Everything they control is still reachable from the sheet or
   // the view itself.
-  const showSwitcher = !isMobile && (VIEW_MODES[view]?.length ?? 0) > 1;
-  const showInfoToggle = hasContext && !!CONTEXT_LABEL[view];
-  const showSubscribers = !isMobile && view === "inbox" && !!selected;
+  const showSwitcher = !isMobile && (VIEW_MODES[section]?.length ?? 0) > 1;
+  const showInfoToggle = hasContext && !!CONTEXT_LABEL[section];
+  const showSubscribers = !isMobile && section === "activity/issues" && !!selected;
 
   return (
     <header
@@ -269,7 +253,7 @@ export function Titlebar() {
       )}
 
       <div className="ml-auto flex items-center gap-2">
-        {showSwitcher && <ViewModeSwitcher view={view} />}
+        {showSwitcher && <ViewModeSwitcher section={section} />}
 
         {showSubscribers && (
           <div className="flex items-center gap-3 pl-1">
@@ -286,7 +270,7 @@ export function Titlebar() {
           </div>
         )}
 
-        {showInfoToggle && <InfoPaneToggle label={CONTEXT_LABEL[view] ?? "Details"} />}
+        {showInfoToggle && <InfoPaneToggle label={CONTEXT_LABEL[section] ?? "Details"} />}
       </div>
     </header>
   );

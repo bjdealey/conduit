@@ -12,9 +12,9 @@ import {
   type RunnerClass,
 } from "@conduit/domain";
 import { useStore } from "../store";
-import { runners } from "../data/runners";
-import { PLATFORM_LABEL, type Workflow, type MigrationState, type Run } from "../data/types";
+import { CONDUIT_PLATFORM, platformLabel, platformsIn, type Workflow, type MigrationState, type Run } from "../data/types";
 import { DetailPane } from "./layout/SplitView";
+import { EmptyPanel, EmptyRow } from "./EmptyState";
 import { RunStateChip } from "./Badges";
 import { RUNNER_STATE_ACCENT } from "./RunnersView";
 import { num } from "../lib/format";
@@ -22,13 +22,17 @@ import { num } from "../lib/format";
 /* =============================================================================
    Home — what the platform is doing, and why it is worth having
    -----------------------------------------------------------------------------
-   The first screen. It answers, in order: what capacity exists, what still runs
-   on the incumbent platform, and what share of the estate can move — because
-   those are the three questions the money asks.
+   The first screen. It answers, in order: what capacity exists, what the estate
+   is made of, what share of it can move onto lightweight compute, and what is
+   running right now — because those are the questions the money asks.
 
    Every number here is computed from the same rows the rest of the app renders.
    Nothing on this page is asserted: if the estate mix changes, this changes with
    it, which is the only way a screen like this stays honest under demo pressure.
+
+   That honesty is also why every panel has an empty state. Conduit ships with no
+   estate and no pool, so on a new install this page is *entirely* empty — and a
+   dashboard of zeroes and 0% bars reads as a broken page rather than a first day.
    ============================================================================= */
 
 const CLASS_ICON: Record<RunnerClass, ReactNode> = {
@@ -111,10 +115,27 @@ function Legend({ accent, label, count, share }: { accent: string; label: string
 
 /** The pool, by class. Counts are live states, not a capacity plan — a class that
  *  has scaled to zero says so rather than disappearing. */
-function PoolPanel({ pool }: { pool: readonly Runner[] }) {
+function PoolPanel({ pool, onOpen }: { pool: readonly Runner[]; onOpen: () => void }) {
   const groups = poolByClass(pool);
   const busy = pool.filter((r) => r.state === "Busy").length;
   const moving = pool.filter((r) => r.state === "Starting" || r.state === "Draining").length;
+
+  // An empty pool is the ordinary state of a new install, and it is *not* the same
+  // as a pool that has scaled to zero: there is no autoscaler to have scaled it.
+  if (pool.length === 0) {
+    return (
+      <Section
+        title="Runner pool"
+        hint="Capacity right now. Nothing is assigned to a runner — work is placed per run."
+      >
+        <EmptyPanel
+          title="No runners registered"
+          body="Runners are ephemeral and register themselves. Start one with the conduit-runner image and it appears here within a heartbeat."
+          action={{ label: "About runners", onSelect: onOpen }}
+        />
+      </Section>
+    );
+  }
 
   return (
     <Section
@@ -163,16 +184,24 @@ function PoolPanel({ pool }: { pool: readonly Runner[] }) {
 
 /* -------------------------------------------------------------- estate panel */
 
-/** Where the estate runs today, and how far each part has moved. The point of
- *  showing "Won't move" alongside the rest is that it is a real answer — a number
- *  here beats discovering it in year three. */
+/** Where the estate runs today, and how far each part has moved.
+ *
+ *  The platforms are read off the estate rather than listed here: a connector is
+ *  installed at runtime, so a compiled-in list would either name a platform nobody
+ *  has connected or miss one somebody has. A clean install shows Conduit alone.
+ *
+ *  The migration breakdown only appears once there is somewhere to migrate *from*.
+ *  With one platform every workflow is trivially "Migrated", and a bar reading 100%
+ *  migrated implies a move that never happened — the point of showing "Won't move"
+ *  alongside the rest is that it is a real answer, which needs a real mix. */
 function EstatePanel({ workflows, onOpen }: { workflows: Workflow[]; onOpen: () => void }) {
-  const platforms = ["automation-anywhere", "conduit"] as const;
+  const platforms = platformsIn(workflows);
   const counts = platforms.map((platform) => ({
     platform,
     count: workflows.filter((a) => a.platform === platform).length,
   }));
   const total = workflows.length || 1;
+  const connected = platforms.filter((p) => p !== CONDUIT_PLATFORM);
 
   const migrations: MigrationState[] = ["Migrated", "Piloting", "Not started", "Won't move"];
   const byMigration = migrations.map((migration) => ({
@@ -180,47 +209,66 @@ function EstatePanel({ workflows, onOpen }: { workflows: Workflow[]; onOpen: () 
     count: workflows.filter((a) => a.migration === migration).length,
   }));
 
-  return (
-    <Section title="Estate" hint="One library, both platforms. Migration is per workflow and reversible.">
-      <div className="grid grid-cols-2 gap-3">
-        {counts.map(({ platform, count }) => (
-          <Tile
-            key={platform}
-            label={PLATFORM_LABEL[platform]}
-            value={String(count)}
-            sub={`${Math.round((count / total) * 100)}% of the estate`}
-          />
-        ))}
-      </div>
+  const hint =
+    connected.length > 0
+      ? "One library, every platform. Migration is per workflow and reversible."
+      : "Everything here is native. Connect a platform to mirror an existing estate alongside it.";
 
-      <div className="flex flex-col gap-2 rounded-xl border-border-default border-[0.5px] bg-page px-4 py-3 shadow-default">
-        <Bar
-          segments={byMigration.map((m) => ({
-            id: m.migration,
-            share: m.count / total,
-            accent: MIGRATION_ACCENT[m.migration],
-          }))}
+  return (
+    <Section title="Estate" hint={hint}>
+      {workflows.length === 0 ? (
+        <EmptyPanel
+          title="No workflows yet"
+          body="Author one here, or connect a platform to mirror an estate you already run."
+          action={{ label: "Open the library", onSelect: onOpen }}
         />
-        <div className="flex flex-col">
-          {byMigration.map((m) => (
-            <Legend
-              key={m.migration}
-              accent={MIGRATION_ACCENT[m.migration]}
-              label={m.migration}
-              count={m.count}
-              share={m.count / total}
-            />
-          ))}
-        </div>
-        <button
-          type="button"
-          onClick={onOpen}
-          className="focusable -mx-1 inline-flex w-fit items-center gap-1 rounded-md px-1 py-0.5 text-body-sm text-secondary-foreground transition-colors hover:text-primary-foreground"
-        >
-          Open the library
-          <ArrowUpRight size={14} strokeWidth={1.8} />
-        </button>
-      </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 gap-3">
+            {counts.map(({ platform, count }) => (
+              <Tile
+                key={platform}
+                label={platformLabel(platform)}
+                value={String(count)}
+                sub={`${Math.round((count / total) * 100)}% of the estate`}
+              />
+            ))}
+          </div>
+
+          <div className="flex flex-col gap-2 rounded-xl border-border-default border-[0.5px] bg-page px-4 py-3 shadow-default">
+            {connected.length > 0 && (
+              <>
+                <Bar
+                  segments={byMigration.map((m) => ({
+                    id: m.migration,
+                    share: m.count / total,
+                    accent: MIGRATION_ACCENT[m.migration],
+                  }))}
+                />
+                <div className="flex flex-col">
+                  {byMigration.map((m) => (
+                    <Legend
+                      key={m.migration}
+                      accent={MIGRATION_ACCENT[m.migration]}
+                      label={m.migration}
+                      count={m.count}
+                      share={m.count / total}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
+            <button
+              type="button"
+              onClick={onOpen}
+              className="focusable -mx-1 inline-flex w-fit items-center gap-1 rounded-md px-1 py-0.5 text-body-sm text-secondary-foreground transition-colors hover:text-primary-foreground"
+            >
+              Open the library
+              <ArrowUpRight size={14} strokeWidth={1.8} />
+            </button>
+          </div>
+        </>
+      )}
     </Section>
   );
 }
@@ -234,6 +282,23 @@ function EstatePanel({ workflows, onOpen }: { workflows: Workflow[]; onOpen: () 
 function ReadinessPanel({ workflows }: { workflows: Workflow[] }) {
   const mix = readinessMix(workflows);
   const entra = mix.find((m) => m.readiness === "entra-pending");
+
+  // Readiness is a property of a workload. With no workloads the bar is empty and
+  // all three bands read "0 · 0%", which looks like a measurement rather than the
+  // absence of anything to measure.
+  if (workflows.length === 0) {
+    return (
+      <Section
+        title="Readiness"
+        hint="What could run on lightweight compute — now, next, and not for a while."
+      >
+        <EmptyPanel
+          title="Nothing to measure yet"
+          body="Readiness is derived from what each workflow needs from a runner. It fills in as workflows arrive — authored here or mirrored in by a connector."
+        />
+      </Section>
+    );
+  }
 
   return (
     <Section
@@ -274,14 +339,24 @@ function ReadinessPanel({ workflows }: { workflows: Workflow[] }) {
  *  A queued run is re-decided live against the current pool, so the rationale on
  *  screen is the distributor's actual reasoning rather than a stored string — and
  *  when nothing fits, it says that too. */
-function InFlightPanel({ runs, workflows, onOpen }: { runs: Run[]; workflows: Workflow[]; onOpen: () => void }) {
+function InFlightPanel({
+  runs,
+  workflows,
+  runners,
+  onOpen,
+}: {
+  runs: Run[];
+  workflows: Workflow[];
+  runners: readonly Runner[];
+  onOpen: () => void;
+}) {
   const live = runs.filter((r) => r.state === "Running" || r.state === "Queued");
   const workflowOf = (id: string) => workflows.find((a) => a.id === id);
 
   return (
     <Section title="In flight" hint="Every placement, with the reason it was made.">
       <div className="flex flex-col rounded-xl border-border-default border-[0.5px] bg-page px-4 py-1 shadow-default">
-        {live.length === 0 && <p className="py-6 text-center text-body-sm text-tertiary-foreground">Nothing running.</p>}
+        {live.length === 0 && <EmptyRow>Nothing running. Runs appear here the moment one is triggered.</EmptyRow>}
         {live.map((run, i) => {
           const workflow = workflowOf(run.workflowId);
           const placed = run.runnerId ? runners.find((r) => r.id === run.runnerId) : null;
@@ -334,7 +409,7 @@ function InFlightPanel({ runs, workflows, onOpen }: { runs: Run[]; workflows: Wo
 
 /** Home — the landing view. Pool, estate, readiness, and what's running. */
 export function HomeView() {
-  const { workflows, runs, setView } = useStore();
+  const { workflows, runs, runners, setView, openSubview } = useStore();
 
   return (
     <DetailPane>
@@ -342,17 +417,25 @@ export function HomeView() {
         <div className="mx-auto flex max-w-4xl flex-col gap-8">
           <header className="flex flex-col gap-1">
             <h2 className="font-sans text-heading-3 font-medium text-primary-foreground">Overview</h2>
+            {/* A brand-new workspace has nothing to count, and "0 workflows across
+                0 platforms, running on a pool of 0 runners" reads as a fault rather
+                than as a first day. It says what to do instead. */}
             <p className="text-body-sm text-tertiary-foreground">
-              {num(workflows.length)} workflows across {new Set(workflows.map((a) => a.platform)).size} platforms,
-              running on a pool of {runners.filter((r) => r.state !== "Offline").length} runners.
+              {workflows.length === 0 && runners.length === 0
+                ? "Nothing is set up yet. Author a workflow, connect a platform, or start a runner — this page fills in as you go."
+                : `${num(workflows.length)} ${workflows.length === 1 ? "workflow" : "workflows"} across ${
+                    platformsIn(workflows).length
+                  } ${platformsIn(workflows).length === 1 ? "platform" : "platforms"}, running on a pool of ${
+                    runners.filter((r) => r.state !== "Offline").length
+                  } runners.`}
             </p>
           </header>
 
           <div className="grid gap-8 lg:grid-cols-2">
-            <PoolPanel pool={runners} />
-            <EstatePanel workflows={workflows} onOpen={() => setView("workflows")} />
+            <PoolPanel pool={runners} onOpen={() => setView("runners")} />
+            <EstatePanel workflows={workflows} onOpen={() => openSubview("workflows", "library")} />
             <ReadinessPanel workflows={workflows} />
-            <InFlightPanel runs={runs} workflows={workflows} onOpen={() => setView("activity")} />
+            <InFlightPanel runs={runs} workflows={workflows} runners={runners} onOpen={() => openSubview("activity", "runs")} />
           </div>
         </div>
       </div>

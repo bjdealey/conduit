@@ -8,7 +8,6 @@ import {
   type RunnerState,
 } from "@conduit/domain";
 import { useStore } from "../store";
-import { runners } from "../data/runners";
 import { SplitView, Pane, DetailPane, ContextPane, EmptyDetail, PANE_WIDTH } from "./layout/SplitView";
 import { isNarrowed, matchesQuery, ordered, passesFilter, resolveSort, type WorkspaceState } from "../lib/workspace";
 import { workspaceControls } from "../data/workspaceControls";
@@ -64,7 +63,7 @@ function StateChip({ state }: { state: RunnerState }) {
 /* ----------------------------------------------------------------- selection */
 
 /** Runners narrowed and ordered by the workspace header, shared by both layouts. */
-function visibleRunners(state: WorkspaceState): Runner[] {
+function visibleRunners(state: WorkspaceState, runners: readonly Runner[]): Runner[] {
   const rows = runners.filter(
     (r) =>
       matchesQuery(state.query, [r.name, r.runnerClass, r.state, r.platform, r.image]) &&
@@ -86,11 +85,14 @@ function visibleRunners(state: WorkspaceState): Runner[] {
 function RunnerList({
   list,
   narrowed,
+  empty,
   selectedId,
   onSelect,
 }: {
   list: Runner[];
   narrowed: boolean;
+  /** The whole pool is empty, as opposed to narrowed down to nothing. */
+  empty: boolean;
   selectedId: string | null;
   onSelect: (id: string) => void;
 }) {
@@ -99,7 +101,11 @@ function RunnerList({
       <div className="scrollbar-none flex-1 overflow-y-auto px-2 py-2">
         {list.length === 0 && (
           <p className="px-3 py-6 text-center text-body-sm text-tertiary-foreground">
-            {narrowed ? "No runners match the current search or filters." : "The pool has scaled to zero."}
+            {narrowed
+              ? "No runners match the current search or filters."
+              : empty
+                ? "No runners registered. Start one and it appears here within a heartbeat."
+                : "The pool has scaled to zero."}
           </p>
         )}
         <div className="flex flex-col gap-0.5">
@@ -167,14 +173,28 @@ function RunnerCard({ runner, onOpen }: { runner: Runner; onOpen: () => void }) 
 
 /** Grid presentation: the pool grouped by class, so its shape is the first thing
  *  read. A class with nothing in it still shows — scaled to zero is a state. */
-function RunnerGrid({ list, narrowed, onOpen }: { list: Runner[]; narrowed: boolean; onOpen: (id: string) => void }) {
+function RunnerGrid({
+  list,
+  narrowed,
+  empty,
+  onOpen,
+}: {
+  list: Runner[];
+  narrowed: boolean;
+  empty: boolean;
+  onOpen: (id: string) => void;
+}) {
   const groups = poolByClass(list);
   return (
     <DetailPane>
       <div className="scrollbar-none flex-1 overflow-y-auto p-5">
         {list.length === 0 ? (
           <p className="py-16 text-center text-body-sm text-tertiary-foreground">
-            {narrowed ? "No runners match the current search or filters." : "The pool has scaled to zero."}
+            {narrowed
+              ? "No runners match the current search or filters."
+              : empty
+                ? "No runners registered. Runners are ephemeral and register themselves — start one and it appears here within a heartbeat."
+                : "The pool has scaled to zero."}
           </p>
         ) : (
           <div className="flex flex-col gap-6">
@@ -190,7 +210,16 @@ function RunnerGrid({ list, narrowed, onOpen }: { list: Runner[]; narrowed: bool
                 </div>
                 {group.runners.length === 0 ? (
                   <p className="rounded-xl border-border-default border-[0.5px] px-4 py-6 text-center text-body-sm text-tertiary-foreground">
-                    Scaled to zero — nothing needs this class right now.
+                    {/* An empty class has two very different causes and must not
+                        claim the wrong one: the pool really did scale it to zero,
+                        or the header is narrowing it out. Filtering to one class
+                        reported the other two as "scaled to zero" while they were
+                        up and running — a statement about capacity made from a
+                        statement about the search box. The whole-list empty state
+                        above already draws this distinction; this one now does too. */}
+                    {narrowed
+                      ? "None in this class match the current search or filters."
+                      : "Scaled to zero — nothing needs this class right now."}
                   </p>
                 ) : (
                   <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
@@ -322,23 +351,33 @@ function RunnerDetail({ runner }: { runner: Runner }) {
 /** Runners — the execution pool. List mode is the shared shell; grid mode groups
  *  the pool by class so its shape reads first. */
 export function RunnersView() {
-  const { viewMode, selectedRunnerId, selectRunner, controls } = useStore();
+  const { viewMode, selectedRunnerId, selectRunner, controls, runners } = useStore();
   const state = controls("runners");
-  const list = visibleRunners(state);
+  const list = visibleRunners(state, runners);
   const narrowed = isNarrowed(state);
   const runner = selectedRunnerId ? runners.find((r) => r.id === selectedRunnerId) ?? null : null;
 
   if (viewMode("runners") === "grid") {
     return (
       <SplitView>
-        {runner ? <RunnerDetail runner={runner} /> : <RunnerGrid list={list} narrowed={narrowed} onOpen={selectRunner} />}
+        {runner ? (
+          <RunnerDetail runner={runner} />
+        ) : (
+          <RunnerGrid list={list} narrowed={narrowed} empty={runners.length === 0} onOpen={selectRunner} />
+        )}
       </SplitView>
     );
   }
 
   return (
     <SplitView mobile={runner ? "detail" : "list"}>
-      <RunnerList list={list} narrowed={narrowed} selectedId={selectedRunnerId} onSelect={selectRunner} />
+      <RunnerList
+        list={list}
+        narrowed={narrowed}
+        empty={runners.length === 0}
+        selectedId={selectedRunnerId}
+        onSelect={selectRunner}
+      />
       {runner ? <RunnerDetail runner={runner} /> : <EmptyDetail>Select a runner.</EmptyDetail>}
     </SplitView>
   );

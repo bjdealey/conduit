@@ -61,7 +61,7 @@ export async function getCapabilities(): Promise<Capability[]> {
 }
 
 /**
- * Normalised bots from every enabled connector. Served by the `bots` Edge Function
+ * Normalised workflows from every enabled connector. Served by the `workflows` Edge Function
  * (service-role read over the cache table) so it works before Supabase Auth is wired;
  * once it is, this can move to a direct PostgREST read.
  */

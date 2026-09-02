@@ -48,7 +48,10 @@ export function LoginScreen() {
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
-    if (valid) signIn();
+    // The address becomes the profile — see `userFromEmail`. It is the only thing
+    // this screen ever learns about you, so throwing it away and shipping a
+    // fixture instead is how the app ended up greeting everyone by one name.
+    if (valid) signIn(email);
   };
 
   return (
@@ -92,9 +95,13 @@ export function LoginScreen() {
 
         {/* Social sign-in */}
         <div className="flex flex-col gap-2.5">
-          <SocialButton icon={GoogleMark} label="Continue with Google" onClick={signIn} />
-          <SocialButton icon={GithubMark} label="Continue with GitHub" onClick={signIn} />
-          <SocialButton icon={AppleMark} label="Continue with Apple" onClick={signIn} />
+          {/* No OAuth here, so no address to learn: these sign in as a new,
+              unnamed account and Settings → Profile is where it gets a name.
+              Note the arrow — passing `signIn` directly hands it the click event
+              as its `email` argument. */}
+          <SocialButton icon={GoogleMark} label="Continue with Google" onClick={() => signIn()} />
+          <SocialButton icon={GithubMark} label="Continue with GitHub" onClick={() => signIn()} />
+          <SocialButton icon={AppleMark} label="Continue with Apple" onClick={() => signIn()} />
         </div>
 
         {/* Sign-up prompt */}
@@ -102,7 +109,7 @@ export function LoginScreen() {
           Don't have an account?{" "}
           <button
             type="button"
-            onClick={signIn}
+            onClick={() => signIn(email)}
             className="focusable font-semibold text-primary-foreground hover:underline"
           >
             Sign Up

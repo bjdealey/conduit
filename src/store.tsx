@@ -1,17 +1,24 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { issues as seedIssues, members } from "./data/issues";
-import { workflows as seedWorkflows, folders as seedFolders, runs as seedRuns } from "./data/workflows";
-import { auditEntries as seedAudit } from "./data/audit";
-import { endUsers } from "./data/users";
-import { runners } from "./data/runners";
-import { currentUser } from "./data/user";
+import {
+  dataset,
+  meAsMember,
+  meAsPlatformUser,
+  ME_ID,
+  ME_PLATFORM_USER_ID,
+  type Dataset,
+} from "./data/dataset";
+import { NEW_USER, initialsOf, userFromEmail, type CurrentUser } from "./data/user";
+// `Credential` also names a DOM global, so these are imported explicitly rather
+// than left to resolve — an unimported `Credential[]` silently means the browser's.
+import type { Credential, EventTrigger, GlobalValue, Package, Schedule } from "./data/manage";
+import type { License, PlatformUser, Policy, RoleDef } from "./data/admin";
 import { workspaces } from "./data/workspaces";
 import type { Workspace } from "./data/workspaces";
 import { palettes, type Palette } from "./data/palettes";
 import { VIEW_MODES } from "./data/viewLayout";
+import { sectionOf, type Section } from "./data/nav";
 import { applyBrand } from "./lib/palette";
 import { isDark, setTheme } from "./lib/theme";
-import { files as seedFiles } from "./data/files";
 import type {
   ActivityEvent,
   Workflow,
@@ -62,6 +69,7 @@ import {
   type Permission,
   type ReviewAction,
   type RunEvent,
+  type Runner,
   type Workflow as DomainWorkflow,
 } from "@conduit/domain";
 import { EMPTY_WORKSPACE, type FilterOp, type SortDir, type WorkspaceState } from "./lib/workspace";
@@ -87,27 +95,53 @@ const write = (key: string, value: string): void => {
   }
 };
 
+/** The stored profile, narrowed on the way in. A value is only as trustworthy as
+ *  the build that wrote it, so anything missing or malformed falls back to a fresh
+ *  account rather than rendering `undefined` on the first screen. */
+const readUser = (): CurrentUser => {
+  try {
+    const raw = JSON.parse(read("profile", "null")) as Partial<CurrentUser> | null;
+    if (!raw || typeof raw.name !== "string" || typeof raw.email !== "string") return NEW_USER;
+    return {
+      name: raw.name,
+      email: raw.email,
+      initials: initialsOf(raw.name),
+      role: NEW_USER.role,
+    };
+  } catch {
+    return NEW_USER;
+  }
+};
+
+const writeUser = (user: CurrentUser): void => write("profile", JSON.stringify(user));
+
 /** Top-level navigation destinations (the sidebar rail), plus the two full-screen
  *  modes that aren't destinations: Settings and the workflow builder. They're
  *  views so they inherit the shared chrome — the workspace header's search and
  *  filters, the layout switcher, and the info-pane toggle — rather than each
- *  reinventing it. */
+ *  reinventing it.
+ *
+ *  A destination is a *place*, not a screen: Workflows, Activity and Governance
+ *  each hold several (`NavItemDef.subpages`). The screen you are actually on is a
+ *  `Section` (`data/nav`), which is what every per-page mechanism keys on. */
 export type View =
   | "home"
-  | "activity"
-  | "inbox"
   | "workflows"
-  | "review"
-  | "audit"
-  | "manage"
-  | "users"
-  | "administration"
-  | "surfaces"
+  | "activity"
   | "runners"
+  | "governance"
   | "settings"
   | "builder";
 
 type Store = {
+  /**
+   * Whether the sample estate is loaded. Off by default: Conduit ships empty, and
+   * every view is written to say so rather than to look broken. On, it loads the
+   * demo estate so the prototype can be shown without building one first.
+   * Persisted, and switching it replaces every collection (see `setDemoData`).
+   */
+  demoData: boolean;
+  setDemoData: (on: boolean) => void;
   issues: Issue[];
   members: Member[];
   /** Workflow library (first-class entity), its folder tree, and run history. */
@@ -117,8 +151,26 @@ type Store = {
    *  tree, same folders; they are simply not runnable. */
   files: LibraryFile[];
   runs: Run[];
+  /* The collections the views used to import straight from `src/data/*`. They live
+     here now because whether they hold anything is a runtime decision (a clean
+     install, or the sample estate) rather than a property of the module — and a
+     module-scope import can't answer that. It is also the shape the library's
+     reads will take once they come from the API. */
+  runners: Runner[];
+  schedules: Schedule[];
+  eventTriggers: EventTrigger[];
+  credentials: Credential[];
+  packages: Package[];
+  globalValues: GlobalValue[];
+  platformUsers: PlatformUser[];
+  licenses: License[];
+  /** Tier definitions and the policy catalogue — product constants, present on a
+   *  clean install as much as on a loaded one. */
+  roleDefs: RoleDef[];
+  policies: Policy[];
   workflowById: (id: string) => Workflow | undefined;
   runById: (id: string) => Run | undefined;
+  runnerById: (id: string) => Runner | undefined;
   /** The workflow open in the builder, or null when it isn't showing. The
    *  builder is a full-screen mode over the workspace, not a nav destination. */
   draft: WorkflowDraft | null;
@@ -145,7 +197,6 @@ type Store = {
   runWorkflow: (workflowId: string) => string | null;
   /** Runs for one workflow, newest first (seed order). */
   runsForWorkflow: (workflowId: string) => Run[];
-  /** Canonical domain bots from our API (live) or the seed fallback. */
   /** The estate as our API reports it — every enabled connector's workflows,
    *  normalised. The same entity as `workflows` above, at the fidelity that crosses
    *  the API boundary; the two converge once the library reads from the API. */
@@ -155,7 +206,7 @@ type Store = {
   capabilities: Capability[];
   /** Whether a capability is currently enabled (drives capability-gated UI). */
   hasCapability: (capability: Capability) => boolean;
-  /** Where `bots` + capabilities come from: our live API, or in-memory seed data. */
+  /** Where `connectedWorkflows` + capabilities come from: our live API, or in-memory seed data. */
   dataSource: "live" | "seed";
   /** Set when a live load failed and the app fell back to seed data. */
   integrationError: string | null;
@@ -176,11 +227,9 @@ type Store = {
   nodeTypes: StepAction[];
   selectedId: number | null;
   selected: Issue | null;
-  /** Selected end-user (Users view) and workflow (Workflows view). Lifted here
-   *  so the titlebar breadcrumb can show them and so board/grid modes can swap the
-   *  collection for the item's detail, like the inbox does. Null = nothing opened. */
-  selectedUserId: string | null;
-  selectUser: (id: string | null) => void;
+  /** Selected workflow (the library). Lifted here so the titlebar breadcrumb can
+   *  show it and so board mode can swap the collection for the item's detail,
+   *  like the issues list does. Null = nothing opened. */
   selectedWorkflowId: string | null;
   selectWorkflow: (id: string | null) => void;
   /** Folder opened from the library tree. A folder is a destination like anything
@@ -251,33 +300,41 @@ type Store = {
   selectedRunId: string | null;
   selectRun: (id: string | null) => void;
   /** The shared workspace header's state for a page: search, filters, and sort.
-   *  One record per view, so each page keeps its own narrowing as you navigate.
+   *  One record per *section*, so each screen keeps its own narrowing as you
+   *  navigate — including two subpages of one destination, which is why this is
+   *  keyed by `Section` rather than `View`.
    *  (Named `controls` because `workspace` is the tenant workspace.) */
-  controls: (v: View) => WorkspaceState;
-  setControlsQuery: (v: View, query: string) => void;
+  controls: (s: Section) => WorkspaceState;
+  setControlsQuery: (s: Section, query: string) => void;
   /** Apply a filter option (with an optional operator), or pass null to drop it. */
-  setControlsFilter: (v: View, filterId: string, value: string | null, op?: FilterOp) => void;
+  setControlsFilter: (s: Section, filterId: string, value: string | null, op?: FilterOp) => void;
   /** Choose a sort, and optionally its direction (omit to use the sort's own). */
-  setControlsSort: (v: View, sortId: string, dir?: SortDir | "") => void;
+  setControlsSort: (s: Section, sortId: string, dir?: SortDir | "") => void;
   /** Reset everything the filter bar shows: the search, the filters, and the sort
    *  (back to the page's default). */
-  clearControls: (v: View) => void;
-  /** Active section tab for the tabbed pages (Manage, Administration). Lifted here
-   *  so the workspace header's controls can follow the objects on screen. */
-  sectionTab: (v: View) => string;
-  setSectionTab: (v: View, tab: string) => void;
+  clearControls: (s: Section) => void;
+  /** Active tab within a section (Activity's Runs, Administration's Users…).
+   *  Lifted here so the workspace header's controls can follow the objects on
+   *  screen. Keyed by section, so Governance's Audit tabs and its Administration
+   *  tabs are two memories rather than one they'd overwrite. */
+  sectionTab: (s: Section) => string;
+  setSectionTab: (s: Section, tab: string) => void;
   view: View;
   /** Active subpage id within the current view, or null. */
   subview: string | null;
+  /** The screen actually on show: the view, or `view/subpage` for a destination
+   *  that has them. A null `subview` reads as the destination's first subpage, so
+   *  this is never ambiguous about where you are. */
+  section: Section;
   sidebarExpanded: boolean;
   /** Global layout preference shared by every page's view switcher: the primary
    *  "list" layout, or each page's alternate (board/grid). One control, so the
    *  choice persists as you move between pages. */
   layout: "list" | "alt";
   setLayout: (l: "list" | "alt") => void;
-  /** Resolve a view's current mode id from the global layout and its declared
+  /** Resolve a section's current mode id from the global layout and its declared
    *  modes (`VIEW_MODES`) — e.g. "list" or, for the alternate, "board"/"grid". */
-  viewMode: (v: View) => string;
+  viewMode: (s: Section) => string;
   /** Whether the right-hand context ("more info") pane is shown. Toggled from the
    *  titlebar and shared by every view that has one. Persisted on desktop; on a
    *  phone it drives a bottom sheet and starts closed every time, because a sheet
@@ -334,10 +391,22 @@ type Store = {
   /** Light/dark theme (mirrors the `dark` class on <html>). */
   dark: boolean;
   toggleTheme: () => void;
-  /** Auth gate (temporary — any email/provider signs in; persisted locally). */
+  /** Auth gate (temporary — any email/provider signs in; persisted locally).
+   *  `signIn` takes the address that was typed, when there was one: the profile a
+   *  fresh install starts with is derived from it rather than shipped as a
+   *  fixture. A provider button passes nothing and keeps whatever is stored. */
   authed: boolean;
-  signIn: () => void;
+  signIn: (email?: string) => void;
   signOut: () => void;
+  /** The signed-in user — name, email, avatar initials, tier. Persisted. */
+  currentUser: CurrentUser;
+  /**
+   * Edit the profile. `initials` are re-derived from the name rather than taken,
+   * and the workspace's own rows for you (`members`/`platformUsers`) are updated
+   * with it — otherwise renaming yourself in Settings leaves the old name on every
+   * avatar and in the admin table, which is where you'd go to check it worked.
+   */
+  updateProfile: (patch: Partial<Pick<CurrentUser, "name" | "email">>) => void;
   memberById: (id: string) => Member | undefined;
   updateIssue: (id: number, patch: Partial<Pick<Issue, "status" | "priority" | "assigneeId">>) => void;
 };
@@ -355,38 +424,60 @@ const openOnDesktop = <T,>(value: T | null): T | null => (isMobileNow() ? null :
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const isMobile = useIsMobile();
-  const [issues, setIssues] = useState<Issue[]>(seedIssues);
+  // Conduit ships empty. `demo` loads the sample estate instead — see
+  // `src/data/dataset.ts` for what each contains and why "empty" still has the
+  // two visibility roots and one account in it.
+  const [demoData, setDemoDataState] = useState(() => read("demo-data", "off") === "on");
+  // Who is signed in. Read once for the initial dataset; edits go through
+  // `updateProfile`, which also updates the workspace's own rows for you.
+  const [currentUser, setCurrentUser] = useState<CurrentUser>(() => readUser());
+  const seed: Dataset = useMemo(
+    () => dataset(demoData, currentUser),
+    // Only the *initial* dataset depends on the profile. Re-deriving it on every
+    // edit would throw away everything authored since, so `updateProfile` patches
+    // the two rows that name you instead.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [demoData],
+  );
+
+  const [issues, setIssues] = useState<Issue[]>(seed.issues);
+  const [members, setMembers] = useState<Member[]>(seed.members);
   // The library and its run history are editable in the prototype: the builder
   // writes workflows, and a test run appends to the stream.
-  const [workflows, setWorkflows] = useState<Workflow[]>(seedWorkflows);
+  const [workflows, setWorkflows] = useState<Workflow[]>(seed.workflows);
   // The tree itself is editable now, so its folders and files are state rather
-  // than the seed constants they start from.
-  const [folders, setFolders] = useState<Folder[]>(seedFolders);
-  const [files, setFiles] = useState<LibraryFile[]>(seedFiles);
-  const [runs, setRuns] = useState<Run[]>(seedRuns);
+  // than the constants they start from.
+  const [folders, setFolders] = useState<Folder[]>(seed.folders);
+  const [files, setFiles] = useState<LibraryFile[]>(seed.files);
+  const [runs, setRuns] = useState<Run[]>(seed.runs);
+  const [runners, setRunners] = useState<Runner[]>(seed.runners);
+  const [schedules, setSchedules] = useState<Schedule[]>(seed.schedules);
+  const [eventTriggers, setEventTriggers] = useState<EventTrigger[]>(seed.eventTriggers);
+  const [credentials, setCredentials] = useState<Credential[]>(seed.credentials);
+  const [packages, setPackages] = useState<Package[]>(seed.packages);
+  const [globalValues, setGlobalValues] = useState<GlobalValue[]>(seed.globalValues);
+  const [platformUsers, setPlatformUsers] = useState<PlatformUser[]>(seed.platformUsers);
+  const [licenses, setLicenses] = useState<License[]>(seed.licenses);
   const [draft, setDraft] = useState<WorkflowDraft | null>(null);
-  const [selectedId, setSelectedId] = useState<number | null>(() => openOnDesktop(seedIssues[0]?.id ?? null));
-  const [selectedUserId, setSelectedUserId] = useState<string | null>(() =>
-    openOnDesktop(endUsers[0]?.id ?? null),
-  );
+  const [selectedId, setSelectedId] = useState<number | null>(() => openOnDesktop(seed.issues[0]?.id ?? null));
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(() =>
-    openOnDesktop(seedWorkflows[0]?.id ?? null),
+    openOnDesktop(seed.workflows[0]?.id ?? null),
   );
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
   const [treeSelection, setTreeSelectionState] = useState<LibraryNode[]>(() =>
-    seedWorkflows[0] && !isMobileNow() ? [{ kind: "workflow", id: seedWorkflows[0].id }] : [],
+    seed.workflows[0] && !isMobileNow() ? [{ kind: "workflow", id: seed.workflows[0].id }] : [],
   );
   const [peeking, setPeeking] = useState(false);
   // Which branches are open. Nothing stored yet means everything open — the shape
   // of the library is the first thing worth seeing.
   const [expanded, setExpandedState] = useState<Set<string>>(() => {
     const stored = read("tree-expanded", "");
-    if (stored === "") return new Set(["vis:public", "vis:private", ...seedFolders.map((f) => f.id)]);
+    if (stored === "") return new Set(["vis:public", "vis:private", ...seed.folders.map((f) => f.id)]);
     try {
       return new Set<string>(JSON.parse(stored));
     } catch {
-      return new Set(["vis:public", "vis:private", ...seedFolders.map((f) => f.id)]);
+      return new Set(["vis:public", "vis:private", ...seed.folders.map((f) => f.id)]);
     }
   });
   const persistExpanded = (next: Set<string>) => {
@@ -404,17 +495,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     | null
   >(null);
   const [selectedRunnerId, setSelectedRunnerId] = useState<string | null>(() =>
-    openOnDesktop(runners[0]?.id ?? null),
+    openOnDesktop(seed.runners[0]?.id ?? null),
   );
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
-  const [controlState, setControlState] = useState<Partial<Record<View, WorkspaceState>>>({});
-  const [sectionTabs, setSectionTabs] = useState<Partial<Record<View, string>>>({});
+  const [controlState, setControlState] = useState<Partial<Record<Section, WorkspaceState>>>({});
+  const [sectionTabs, setSectionTabs] = useState<Partial<Record<Section, string>>>({});
 
-  // Patch one page's control state, leaving every other page's untouched.
-  const patchControls = (v: View, patch: Partial<WorkspaceState>) =>
-    setControlState((prev) => ({ ...prev, [v]: { ...EMPTY_WORKSPACE, ...prev[v], ...patch } }));
+  // Patch one section's control state, leaving every other section's untouched.
+  const patchControls = (s: Section, patch: Partial<WorkspaceState>) =>
+    setControlState((prev) => ({ ...prev, [s]: { ...EMPTY_WORKSPACE, ...prev[s], ...patch } }));
   const [view, setViewRaw] = useState<View>("home");
   const [subview, setSubview] = useState<string | null>(null);
+  // The screen actually showing. Derived rather than stored: a stored copy would
+  // be a third thing to keep in step with `view` and `subview`, and it would be
+  // wrong for exactly one render every time either changes.
+  const section = sectionOf(view, subview);
   const [settingsReturn, setSettingsReturn] = useState<View>("home");
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
   // Global layout preference (list vs each page's board/grid alternate).
@@ -427,12 +522,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   // Integration data plane. Defaults to the seed-derived domain view (so the prototype
   // runs with no backend); if Supabase is configured, live data replaces it on mount.
-  const [audit, setAudit] = useState<AuditEntry[]>(seedAudit);
+  const [audit, setAudit] = useState<AuditEntry[]>(seed.audit);
   const [nodeTypes, setNodeTypes] = useState<StepAction[]>(ACTIONS);
-  const [connectedWorkflows, setConnectedWorkflows] = useState<DomainWorkflow[]>(() => seedConnectedWorkflows());
+  const [liveWorkflows, setConnectedWorkflows] = useState<DomainWorkflow[]>([]);
   const [capabilitySet, setCapabilitySet] = useState<Set<Capability>>(() => new Set(CAPABILITIES));
   const [dataSource, setDataSource] = useState<"live" | "seed">("seed");
   const [integrationError, setIntegrationError] = useState<string | null>(null);
+  // Without a backend the domain view *is* the local library, so it has to be
+  // derived rather than snapshotted: the library is editable, and a workflow
+  // authored a moment ago should appear here as it would through the API.
+  const connectedWorkflows = useMemo(
+    () => (dataSource === "live" ? liveWorkflows : seedConnectedWorkflows(workflows, members)),
+    [dataSource, liveWorkflows, workflows, members],
+  );
 
   useEffect(() => {
     if (!isSupabaseConfigured) return;
@@ -514,7 +616,74 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (isMobile) setInfoPaneState(false);
   }, [isMobile, view]);
 
-  const memberIndex = useMemo(() => new Map(members.map((m) => [m.id, m])), []);
+  /**
+   * Swap the whole dataset — a clean install, or the sample estate.
+   *
+   * This replaces every collection *and* every selection into one, because a
+   * selection is an id into a dataset that no longer exists: keeping
+   * `selectedWorkflowId` across the swap would leave the detail pane pointed at a
+   * workflow that isn't in the library any more, which renders as an empty pane
+   * that looks broken rather than as the clean slate it is. Edits made in the old
+   * dataset go with it, which is the honest reading of "load different data".
+   */
+  const setDemoData = (on: boolean) => {
+    const next = dataset(on, currentUser);
+    setDemoDataState(on);
+    write("demo-data", on ? "on" : "off");
+
+    setIssues(next.issues);
+    setMembers(next.members);
+    setWorkflows(next.workflows);
+    setFolders(next.folders);
+    setFiles(next.files);
+    setRuns(next.runs);
+    setRunners(next.runners);
+    setSchedules(next.schedules);
+    setEventTriggers(next.eventTriggers);
+    setCredentials(next.credentials);
+    setPackages(next.packages);
+    setGlobalValues(next.globalValues);
+    setPlatformUsers(next.platformUsers);
+    setLicenses(next.licenses);
+    setAudit(next.audit);
+
+    setDraft(null);
+    setUndoStack(null);
+    setSelectedId(openOnDesktop(next.issues[0]?.id ?? null));
+    setOpenIds(next.issues[0] && !isMobileNow() ? [next.issues[0].id] : []);
+    setSelectedWorkflowId(openOnDesktop(next.workflows[0]?.id ?? null));
+    setSelectedRunnerId(openOnDesktop(next.runners[0]?.id ?? null));
+    setSelectedFolderId(null);
+    setSelectedFileId(null);
+    setSelectedRunId(null);
+    setPeeking(false);
+    setTreeSelectionState(next.workflows[0] && !isMobileNow() ? [{ kind: "workflow", id: next.workflows[0].id }] : []);
+    // The stored expansion set names folders from the dataset being left behind.
+    persistExpanded(new Set(["vis:public", "vis:private", ...next.folders.map((f) => f.id)]));
+  };
+
+  /**
+   * Store a profile and update the workspace's own rows for you.
+   *
+   * The member row is what every avatar and assignee resolves through and the
+   * platform-user row is what Administration lists, so a profile that changed only
+   * the account menu would leave your old name on every other surface — including
+   * the one screen you'd open to check the change took.
+   *
+   * Both patches are no-ops on the sample estate, which has no `me` row: that is a
+   * fictional team, and writing your name into it would be the demo claiming you
+   * authored somebody else's workflows.
+   */
+  const applyProfile = (next: CurrentUser) => {
+    setCurrentUser(next);
+    writeUser(next);
+    setMembers((prev) => prev.map((m) => (m.id === ME_ID ? meAsMember(next) : m)));
+    setPlatformUsers((prev) =>
+      prev.map((u) => (u.id === ME_PLATFORM_USER_ID ? { ...u, ...meAsPlatformUser(next) } : u)),
+    );
+  };
+
+  const memberIndex = useMemo(() => new Map(members.map((m) => [m.id, m])), [members]);
 
   // Navigating to a top-level page clears any active subpage. Entering a
   // full-screen mode (Settings, the builder) remembers the view to return to;
@@ -733,23 +902,42 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   };
 
   const value: Store = {
+    demoData,
+    setDemoData,
     issues,
     members,
     workflows,
     folders,
     files,
     runs,
+    runners,
+    schedules,
+    eventTriggers,
+    credentials,
+    packages,
+    globalValues,
+    platformUsers,
+    licenses,
+    roleDefs: seed.roleDefs,
+    policies: seed.policies,
     workflowById: (id) => workflows.find((a) => a.id === id),
     runById: (id) => runs.find((r) => r.id === id),
+    runnerById: (id) => runners.find((r) => r.id === id),
     runsForWorkflow: (id) => runs.filter((r) => r.workflowId === id),
     draft,
     // New work lands in the private Drafts folder. The signed-in demo account
     // isn't one of the team members, so ownership defaults to the first and is
     // editable in the builder.
     newWorkflow: (folderId) => {
-      // Somewhere that still exists, else Drafts — a folder id from a stale
-      // selection would file the draft nowhere the tree can show it.
-      const home = folderId && folders.some((f) => f.id === folderId) ? folderId : "prv-drafts";
+      // Somewhere that still exists, else the private root — a folder id from a
+      // stale selection would file the draft nowhere the tree can show it, and on
+      // a clean install "Drafts" doesn't exist yet.
+      const home =
+        (folderId && folders.some((f) => f.id === folderId) && folderId) ||
+        (folders.some((f) => f.id === "prv-drafts") ? "prv-drafts" : undefined) ||
+        folders.find((f) => f.visibility === "private")?.id ||
+        folders[0]?.id ||
+        "";
       setDraft(blankDraft(members[0]?.id ?? "", home));
       if (view !== "builder") setSettingsReturn(view);
       setViewRaw("builder");
@@ -813,12 +1001,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setRole: (r) => {
       setRoleState(r);
       write("role", r);
-      // A demoted viewer loses any surface their new tier can't reach.
-      if (!can(r, "administer") && view === "administration") {
-        setViewRaw("home");
-        setSubview(null);
-      }
-      if (!can(r, "review") && view === "review") {
+      // A demoted viewer loses any surface their new tier can't reach. Governance
+      // is one destination with one gate now, so this is one check rather than one
+      // per screen — and the subpage goes with it: staying on `administration`
+      // while bounced to Home would leave the rail's group open on a screen the
+      // new tier can't see.
+      if (!can(r, "review") && view === "governance") {
         setViewRaw("home");
         setSubview(null);
       }
@@ -874,8 +1062,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     },
     selectedId,
     selected: issues.find((i) => i.id === selectedId) ?? null,
-    selectedUserId,
-    selectUser: setSelectedUserId,
     selectedWorkflowId,
     // The library's detail pane holds one thing: opening a workflow closes the
     // open folder, and opening a folder closes the open workflow. Clearing either
@@ -1028,38 +1214,48 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setSelectedFileId(undoStack.selection.file);
       // The trail is append-only: taking an edit back is a new entry, never the
       // removal of the one it reverses.
-      appendAudit({ category: "lifecycle", action: "undid", target: undoStack.label.toLowerCase() });
+      //
+      // Only the label's leading verb is lowercased, so it joins "undid …" as a
+      // sentence without flattening what follows. `toLowerCase()` on the whole
+      // label filed "undid moved payment reconciliation" — a governance record
+      // that renames the very workflow it is accounting for.
+      appendAudit({
+        category: "lifecycle",
+        action: "undid",
+        target: undoStack.label.charAt(0).toLowerCase() + undoStack.label.slice(1),
+      });
       setUndoStack(null);
     },
     selectedRunnerId,
     selectRunner: setSelectedRunnerId,
     selectedRunId,
     selectRun: setSelectedRunId,
-    controls: (v) => controlState[v] ?? EMPTY_WORKSPACE,
-    setControlsQuery: (v, query) => patchControls(v, { query }),
-    setControlsFilter: (v, filterId, value, op) =>
+    controls: (s) => controlState[s] ?? EMPTY_WORKSPACE,
+    setControlsQuery: (s, query) => patchControls(s, { query }),
+    setControlsFilter: (s, filterId, value, op) =>
       setControlState((prev) => {
-        const current = prev[v] ?? EMPTY_WORKSPACE;
+        const current = prev[s] ?? EMPTY_WORKSPACE;
         const filters = { ...current.filters };
         if (value === null) delete filters[filterId];
         // Keep the operator when only the value changes, and vice versa.
         else filters[filterId] = { op: op ?? filters[filterId]?.op ?? "is", value };
-        return { ...prev, [v]: { ...current, filters } };
+        return { ...prev, [s]: { ...current, filters } };
       }),
-    setControlsSort: (v, sort, dir) => patchControls(v, { sort, dir: dir ?? "" }),
-    clearControls: (v) => patchControls(v, { query: "", filters: {}, sort: "", dir: "" }),
-    sectionTab: (v) => sectionTabs[v] ?? "",
-    setSectionTab: (v, tab) => setSectionTabs((prev) => ({ ...prev, [v]: tab })),
+    setControlsSort: (s, sort, dir) => patchControls(s, { sort, dir: dir ?? "" }),
+    clearControls: (s) => patchControls(s, { query: "", filters: {}, sort: "", dir: "" }),
+    sectionTab: (s) => sectionTabs[s] ?? "",
+    setSectionTab: (s, tab) => setSectionTabs((prev) => ({ ...prev, [s]: tab })),
     view,
     subview,
+    section,
     sidebarExpanded,
     layout,
     setLayout: (l) => {
       setLayoutState(l);
       write("layout", l);
     },
-    viewMode: (v) => {
-      const modes = VIEW_MODES[v];
+    viewMode: (s) => {
+      const modes = VIEW_MODES[s];
       if (!modes || modes.length === 0) return "list";
       // A phone has room for one presentation, and it is the first one: every
       // alternate here (board, grid, timeline, diagram) is multi-column by
@@ -1082,7 +1278,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (!isMobile) write("info-pane", next ? "on" : "off");
         return next;
       }),
-    contextLabel: CONTEXT_LABEL[view] ?? "Details",
+    contextLabel: CONTEXT_LABEL[section] ?? "Details",
     isMobile,
     workspaces,
     workspace: workspaces.find((w) => w.id === workspaceId) ?? workspaces[0],
@@ -1120,13 +1316,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       });
     },
     authed,
-    signIn: () => {
+    // An email is the only identity this prototype is ever handed, so it seeds the
+    // profile. Signing in again with a *different* address adopts it — otherwise
+    // the first person to open the app would own the workspace's name for good.
+    // A provider button passes nothing and keeps whatever is already stored.
+    signIn: (email) => {
+      if (email && email.trim() && email.trim() !== currentUser.email) {
+        applyProfile(userFromEmail(email, currentUser.role));
+      }
       setAuthed(true);
       write("authed", "yes");
     },
     signOut: () => {
       setAuthed(false);
       write("authed", "no");
+    },
+    currentUser,
+    updateProfile: (patch) => {
+      const name = patch.name ?? currentUser.name;
+      applyProfile({
+        ...currentUser,
+        ...patch,
+        name,
+        initials: initialsOf(name),
+      });
     },
     memberById: (id) => memberIndex.get(id),
     updateIssue: (id, patch) =>

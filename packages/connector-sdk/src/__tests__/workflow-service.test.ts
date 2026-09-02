@@ -53,24 +53,24 @@ describe("Acceptance 2: disabling a connector at runtime removes its data with n
 });
 
 describe("Acceptance 3: two instances of the same type are addressable independently and distinguishable", () => {
-  it("builds two A360 instances from config and keeps their results distinct", async () => {
+  it("builds two instances of one type from config and keeps their results distinct", async () => {
     const registry = new ConnectorRegistry();
-    registry.defineType(fakeConnectorFactory("automation-anywhere"));
-    registry.add({ id: "a360-eu", type: "automation-anywhere", config: { workflows: [workflow({ botId: "b1", label: "EU Workflow", assignee: "Brad" })] } });
-    registry.add({ id: "a360-us", type: "automation-anywhere", config: { workflows: [workflow({ botId: "b1", label: "US Workflow", status: "Idle", assignee: "Dana" })] } });
+    registry.defineType(fakeConnectorFactory("acme-cloud"));
+    registry.add({ id: "acme-eu", type: "acme-cloud", config: { workflows: [workflow({ botId: "b1", label: "EU Workflow", assignee: "Brad" })] } });
+    registry.add({ id: "acme-us", type: "acme-cloud", config: { workflows: [workflow({ botId: "b1", label: "US Workflow", status: "Idle", assignee: "Dana" })] } });
     const service = new WorkflowService(registry);
 
     const { items } = await service.list();
     // Same vendor id "b1" on both, but namespaced ids never collide.
-    expect(items.map((b) => b.id).sort()).toEqual(["a360-eu:b1", "a360-us:b1"]);
-    expect(items.find((b) => b.connectorId === "a360-eu")?.title).toBe("EU Workflow");
-    expect(items.find((b) => b.connectorId === "a360-us")?.title).toBe("US Workflow");
-    expect(items.every((b) => b.platform === "automation-anywhere")).toBe(true);
+    expect(items.map((b) => b.id).sort()).toEqual(["acme-eu:b1", "acme-us:b1"]);
+    expect(items.find((b) => b.connectorId === "acme-eu")?.title).toBe("EU Workflow");
+    expect(items.find((b) => b.connectorId === "acme-us")?.title).toBe("US Workflow");
+    expect(items.every((b) => b.platform === "acme-cloud")).toBe(true);
 
     // Independently addressable by instance.
-    const eu = await service.list({ connectorId: "a360-eu" });
+    const eu = await service.list({ connectorId: "acme-eu" });
     expect(eu.items).toHaveLength(1);
-    expect(eu.items[0].id).toBe("a360-eu:b1");
+    expect(eu.items[0].id).toBe("acme-eu:b1");
   });
 });
 

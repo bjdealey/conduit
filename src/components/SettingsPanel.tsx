@@ -1,13 +1,15 @@
 import { type ReactNode } from "react";
 import { Building2, ChevronDown, Globe, Plus } from "lucide-react";
 import { useStore } from "../store";
-import { currentUser } from "../data/user";
 import { Switch } from "./Switch";
 import { DataTable, type Column } from "./DataTable";
 import { Button } from "./Button";
 import { TabStrip } from "./TabStrip";
 import { SETTINGS_PAGES, DEFAULT_SETTINGS_PAGE } from "../data/settings";
 import { LIBRARY_DENSITIES, LIBRARY_LAYOUTS } from "../data/libraryView";
+// `Credential` also names a DOM global, so these are imported explicitly rather
+// than left to resolve — an unimported `Credential[]` silently means the browser's.
+import type { Credential, GlobalValue, Package } from "../data/manage";
 import { ROLES, ROLE_BLURB, ROLE_LABEL, type Workflow } from "@conduit/domain";
 
 /* ---------------------------------------------------------------------------
@@ -33,12 +35,38 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function TextInput({ defaultValue, prefix, mono }: { defaultValue?: string; prefix?: string; mono?: boolean }) {
+/**
+ * A settings text field.
+ *
+ * Pass `value` + `onChange` for a field that actually saves, or `defaultValue` for
+ * one that doesn't yet. The distinction is deliberate rather than incidental: most
+ * of this page is still shaped-not-wired, but the profile is real, and a field
+ * that silently discards what you typed is worse than one that is visibly inert.
+ */
+function TextInput({
+  defaultValue,
+  value,
+  onChange,
+  placeholder,
+  type,
+  prefix,
+  mono,
+}: {
+  defaultValue?: string;
+  value?: string;
+  onChange?: (next: string) => void;
+  placeholder?: string;
+  type?: string;
+  prefix?: string;
+  mono?: boolean;
+}) {
   return (
     <label className="flex items-center rounded-lg border-border-strong border-[0.5px] bg-page">
       {prefix && <span className="pl-3 text-body-sm text-tertiary-foreground">{prefix}</span>}
       <input
-        defaultValue={defaultValue}
+        type={type}
+        placeholder={placeholder}
+        {...(onChange ? { value: value ?? "", onChange: (e) => onChange(e.target.value) } : { defaultValue })}
         className={
           "min-w-0 flex-1 bg-transparent px-3 py-2 text-body-sm text-primary-foreground outline-none placeholder:text-tertiary-foreground " +
           (mono ? "font-departure-mono" : "")
@@ -261,6 +289,8 @@ function ProfilePage() {
     setLibraryDensity,
     role,
     setRole,
+    currentUser,
+    updateProfile,
   } = useStore();
   return (
     <Page>
@@ -284,11 +314,24 @@ function ProfilePage() {
       </div>
 
       <Divider />
+      {/* These two save. Conduit ships with no idea who you are — a fresh install
+          takes its name from the address you signed in with, and this is where you
+          correct it. The avatar's initials are derived from the name rather than
+          entered, so they can't disagree with it. */}
       <Row label="Name">
-        <TextInput defaultValue={currentUser.name} />
+        <TextInput
+          value={currentUser.name}
+          onChange={(name) => updateProfile({ name })}
+          placeholder="Your name"
+        />
       </Row>
       <Row label="Email">
-        <TextInput defaultValue={currentUser.email} />
+        <TextInput
+          type="email"
+          value={currentUser.email}
+          onChange={(email) => updateProfile({ email })}
+          placeholder="name@work-email.com"
+        />
       </Row>
       <Row label="Role">
         <Choice options={ROLE_OPTIONS} value={role} onChange={setRole} />
@@ -365,6 +408,100 @@ function ProfilePage() {
 }
 
 /* ---------------------------------------------------------------------------
+   Resources — what a run consumes
+   --------------------------------------------------------------------------- */
+
+const RESOURCE_TABS = ["Credentials", "Packages", "Global values"] as const;
+type ResourceTab = (typeof RESOURCE_TABS)[number];
+
+/** What each tab says when it holds nothing. Per tab rather than one shared line:
+ *  "Nothing to show yet" is true of all three and useful for none of them, and on
+ *  a clean install every one of them starts empty. */
+const EMPTY_RESOURCE: Record<ResourceTab, string> = {
+  Credentials:
+    "No credentials. Conduit stores a reference, never the secret — the value lives in the vault and is resolved server-side at run time.",
+  Packages: "No packages. A package is a dependency a step pulls in; they are derived from the steps a workflow actually uses.",
+  "Global values": "No global values. These are the workspace-wide settings runs read.",
+};
+
+function Kind({ children }: { children: ReactNode }) {
+  return (
+    <span className="inline-flex items-center rounded-md bg-component px-1.5 py-0.5 text-[0.72rem] text-secondary-foreground">
+      {children}
+    </span>
+  );
+}
+
+const monoCell = (s: ReactNode) => <span className="font-departure-mono text-[0.72rem] text-secondary-foreground">{s}</span>;
+
+/**
+ * Settings → Resources: the credentials, packages and global values a run reads.
+ *
+ * The back half of the old Manage page. Its front half (schedules and event
+ * triggers) went to Workflows → Triggers, because these two groups were never one
+ * idea: a trigger is *how a workflow starts*, these are *what a run consumes*.
+ * Configuration is what Settings is for, so they land here rather than keeping a
+ * destination of their own.
+ *
+ * Credentials are metadata only by contract — name, kind, scope, owner, last used.
+ * No secret value reaches this table, or any other client surface.
+ */
+function ResourcesPage() {
+  const { memberById, credentials, packages, globalValues, sectionTab, setSectionTab } = useStore();
+  const tab = (sectionTab("settings") || RESOURCE_TABS[0]) as ResourceTab;
+
+  const credentialCols: Column<Credential>[] = [
+    { key: "name", header: "Name", render: (r) => <span className="font-medium">{r.name}</span> },
+    { key: "kind", header: "Kind", width: 110, render: (r) => <Kind>{r.kind}</Kind> },
+    { key: "scope", header: "Scope", render: (r) => monoCell(r.scope) },
+    {
+      key: "owner",
+      header: "Owner",
+      render: (r) => <span className="text-secondary-foreground">{memberById(r.ownerId)?.name ?? "—"}</span>,
+    },
+    { key: "used", header: "Last used", render: (r) => <span className="text-tertiary-foreground">{r.lastUsed}</span> },
+  ];
+
+  const packageCols: Column<Package>[] = [
+    { key: "name", header: "Name", render: (r) => monoCell(r.name) },
+    { key: "version", header: "Version", width: 100, render: (r) => monoCell(r.version) },
+    { key: "publisher", header: "Publisher", render: (r) => <span className="text-secondary-foreground">{r.publisher}</span> },
+    { key: "used", header: "Used by", align: "right", width: 90, render: (r) => `${r.usedBy} workflow${r.usedBy === 1 ? "" : "s"}` },
+    { key: "updated", header: "Updated", render: (r) => <span className="text-tertiary-foreground">{r.updatedAgo}</span> },
+  ];
+
+  const globalCols: Column<GlobalValue>[] = [
+    { key: "key", header: "Key", width: 220, render: (r) => monoCell(r.key) },
+    {
+      key: "value",
+      header: "Value",
+      render: (r) => (r.secret ? <span className="text-tertiary-foreground">••••••••</span> : monoCell(r.value)),
+    },
+    { key: "updated", header: "Updated", width: 160, render: (r) => <span className="text-tertiary-foreground">{r.updatedAgo}</span> },
+  ];
+
+  return (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <TabStrip
+        ariaLabel="Resources"
+        segments={RESOURCE_TABS.map((t) => ({ id: t, label: t }))}
+        value={tab}
+        onChange={(id) => setSectionTab("settings", id)}
+      />
+      <div key={tab} className="animate-in fade-in-0 duration-200 ease-out scrollbar-none flex-1 overflow-auto">
+        <div className="min-w-[640px] px-3 py-2">
+          {tab === "Credentials" && <DataTable columns={credentialCols} rows={credentials} empty={EMPTY_RESOURCE.Credentials} />}
+          {tab === "Packages" && <DataTable columns={packageCols} rows={packages} empty={EMPTY_RESOURCE.Packages} />}
+          {tab === "Global values" && (
+            <DataTable columns={globalCols} rows={globalValues} empty={EMPTY_RESOURCE["Global values"]} />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------------
    Integrations — live connector data plane (our API → our domain models)
    --------------------------------------------------------------------------- */
 
@@ -413,7 +550,7 @@ const WORKFLOW_COLUMNS: Column<Workflow>[] = [
 ];
 
 function IntegrationsPage() {
-  const { connectedWorkflows, capabilities, dataSource, integrationError } = useStore();
+  const { connectedWorkflows, capabilities, dataSource, integrationError, demoData, setDemoData } = useStore();
   const live = dataSource === "live";
 
   return (
@@ -432,9 +569,23 @@ function IntegrationsPage() {
             color: live ? "var(--color-success-solid)" : "var(--color-tertiary-foreground)",
           }}
         >
-          {live ? "Live · Supabase" : "Seed data"}
+          {live ? "Live · Supabase" : demoData ? "Sample data" : "Clean install"}
         </span>
       </div>
+
+      <Divider />
+      {/* The sample estate lives here rather than with the appearance settings:
+          it is a question about what data this workspace holds, which is what
+          this page is for. Off is the default — Conduit ships empty. */}
+      <Row label="Sample data">
+        <div className="flex items-center justify-between gap-4 pt-0.5">
+          <span className="text-body-sm text-tertiary-foreground">
+            Load a demo estate — workflows, runners, runs and users — so the platform can be shown without building
+            one first. Switching it replaces everything, including anything you have created here.
+          </span>
+          <Switch checked={demoData} onChange={setDemoData} label="Sample data" />
+        </div>
+      </Row>
 
       {integrationError && (
         <div
@@ -444,7 +595,8 @@ function IntegrationsPage() {
             color: "var(--color-secondary-foreground)",
           }}
         >
-          Couldn&rsquo;t reach the backend — showing seed data. <span className="text-tertiary-foreground">({integrationError})</span>
+          Couldn&rsquo;t reach the backend — showing local data{demoData ? " (the sample estate)" : ""}.{" "}
+          <span className="text-tertiary-foreground">({integrationError})</span>
         </div>
       )}
 
@@ -465,10 +617,17 @@ function IntegrationsPage() {
 
       <Divider />
       <div className="flex flex-col gap-2 py-4">
-        <span className="text-body-sm font-medium text-primary-foreground">Bots ({connectedWorkflows.length})</span>
-        <DataTable columns={WORKFLOW_COLUMNS} rows={connectedWorkflows} empty="No connectedWorkflows reported by any connector." />
+        {/* "Workflows", not "Bots" — these are our normalised domain models coming
+            back through our own API, and one word for the central object is the
+            naming decision stage 6 settled. */}
+        <span className="text-body-sm font-medium text-primary-foreground">Workflows ({connectedWorkflows.length})</span>
+        <DataTable
+          columns={WORKFLOW_COLUMNS}
+          rows={connectedWorkflows}
+          empty="No connector is configured, so nothing is being mirrored in."
+        />
         <span className="text-body-sm text-tertiary-foreground">
-          Namespaced by connector instance ({dataSource === "live" ? "live connectors" : "the local seed connector"}).
+          Namespaced by connector instance ({dataSource === "live" ? "live connectors" : "the local library, shown as our API would return it"}).
         </span>
       </div>
     </Page>
@@ -499,8 +658,6 @@ const PLACEHOLDER_HINTS: Record<string, string> = {
   alerts: "Configure how and when Conduit notifies you about new incidents.",
   integrations: "Connect Conduit to Slack, PagerDuty, GitHub and more.",
   developer: "API keys, webhooks and developer tooling live here.",
-  team: "Invite teammates and manage roles and permissions.",
-  billing: "Manage your plan, payment method and invoices.",
 };
 
 /** The settings pages, rendered in the main content panel (below the existing
@@ -530,6 +687,8 @@ export function SettingsContent() {
         <ProfilePage />
       ) : pageId === "workspace" ? (
         <WorkspaceDetailsPage />
+      ) : pageId === "resources" ? (
+        <ResourcesPage />
       ) : pageId === "integrations" ? (
         <IntegrationsPage />
       ) : (

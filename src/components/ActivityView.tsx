@@ -2,11 +2,11 @@ import { useMemo, useState, type ReactNode } from "react";
 import { ArrowUpRight, Layers, Workflow as WorkflowIcon } from "lucide-react";
 import { useStore } from "../store";
 import { RUN_STATES, type Workflow, type Issue, type Run, type RunState } from "../data/types";
+import type { Runner } from "@conduit/domain";
 import { RUN_STATE_ACCENT, RunStateChip } from "./Badges";
-import { runnerById } from "../data/runners";
 import { RunRow } from "./RunRow";
 import { ActivityFeed } from "./ActivityFeed";
-import { SurfaceChart } from "./SurfaceChart";
+import { TimeSeriesChart } from "./TimeSeriesChart";
 import { agoLabel, durationSeconds, minutesAgo, num } from "../lib/format";
 import { SplitView, Pane, DetailPane, ContextPane, PANE_WIDTH } from "./layout/SplitView";
 import { isNarrowed, matchesQuery, ordered, passesFilter, resolveSort, type WorkspaceState } from "../lib/workspace";
@@ -25,9 +25,9 @@ const HISTORICAL: RunState[] = ["Completed", "Failed"];
 /** A run passes the workspace header's search and filters. The search spans the
  *  fields an operator scans a run stream by — the run's own id, the workflow it
  *  belongs to, who or what started it, and the machine it ran on. */
-function runPasses(run: Run, workflowName: string, state: WorkspaceState): boolean {
+function runPasses(run: Run, workflowName: string, state: WorkspaceState, pool: readonly Runner[]): boolean {
   return (
-    matchesQuery(state.query, [run.id, workflowName, run.startedBy, run.state, run.trigger, runnerNameOf(run)]) &&
+    matchesQuery(state.query, [run.id, workflowName, run.startedBy, run.state, run.trigger, runnerNameOf(run, pool)]) &&
     passesFilter(state, "state", run.state) &&
     passesFilter(state, "trigger", run.trigger)
   );
@@ -36,7 +36,7 @@ function runPasses(run: Run, workflowName: string, state: WorkspaceState): boole
 /** Runs in the header's chosen order and direction. Position on the timeline comes
  *  from the clock, so this is what the grouped stream reads. */
 function sortRuns(runs: Run[], state: WorkspaceState, tab: string, nameOf: (id: string) => string): Run[] {
-  const { id, dir } = resolveSort(state, workspaceControls("activity", tab)?.sorts ?? []);
+  const { id, dir } = resolveSort(state, workspaceControls("activity/runs", tab)?.sorts ?? []);
   const compare: Record<string, (a: Run, b: Run) => number> = {
     // Oldest first, so the descending default reads newest-first.
     recent: (a, b) => -byRecency(a, b),
@@ -54,7 +54,8 @@ const isLive = (run: Run) => run.state === "Running" || run.state === "Queued";
 
 /** The runner a run was placed on, by name — what an operator scans a stream by.
  *  Empty while a run is still queued, because nothing has been placed yet. */
-const runnerNameOf = (run: Run): string => (run.runnerId ? runnerById(run.runnerId)?.name ?? run.runnerId : "");
+const runnerNameOf = (run: Run, pool: readonly Runner[]): string =>
+  run.runnerId ? pool.find((r) => r.id === run.runnerId)?.name ?? run.runnerId : "";
 
 /** One workflow's slice of the run stream. Both the sources pane and the
  *  timeline's lanes are built from these, so the two read the same way. */
@@ -440,8 +441,9 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
 /** A run opened from the timeline: its facts, then the run log. (The list layout
  *  expands runs in place instead — see <RunRow>.) */
 function RunDetail({ run }: { run: Run }) {
-  const { workflowById, selectWorkflow, select, setView } = useStore();
+  const { workflowById, selectWorkflow, select, openSubview, runners } = useStore();
   const workflow = workflowById(run.workflowId);
+  const runnerName = runnerNameOf(run, runners);
 
   return (
     <DetailPane>
@@ -456,7 +458,7 @@ function RunDetail({ run }: { run: Run }) {
               type="button"
               onClick={() => {
                 selectWorkflow(run.workflowId);
-                setView("workflows");
+                openSubview("workflows", "library");
               }}
               className="focusable inline-flex w-fit items-center gap-2 rounded-lg px-1 text-left transition-colors hover:bg-transparent-hover"
             >
@@ -473,14 +475,14 @@ function RunDetail({ run }: { run: Run }) {
             <Fact label="Started by">{run.startedBy}</Fact>
             <Fact label="Started">{run.startedAt}</Fact>
             <Fact label="Duration">{run.duration}</Fact>
-            {runnerNameOf(run) && <Fact label="Runner">{runnerNameOf(run)}</Fact>}
+            {runnerName && <Fact label="Runner">{runnerName}</Fact>}
           </div>
 
           <div className="h-px w-full" style={{ background: "var(--color-border-default)" }} />
 
           <section className="flex flex-col gap-3">
             <h3 className="text-body-base font-medium text-primary-foreground">Run log</h3>
-            <ActivityFeed events={run.activity} />
+            <ActivityFeed events={run.activity} runState={run.state} />
           </section>
 
           {run.issueId != null && (
@@ -488,7 +490,7 @@ function RunDetail({ run }: { run: Run }) {
               type="button"
               onClick={() => {
                 select(run.issueId!);
-                setView("inbox");
+                openSubview("activity", "issues");
               }}
               className="focusable inline-flex w-fit items-center gap-1 rounded-md bg-component px-2 py-1 text-body-sm text-secondary-foreground transition-colors hover:text-primary-foreground"
             >
@@ -504,10 +506,12 @@ function RunDetail({ run }: { run: Run }) {
 
 /* -------------------------------------------------------------- incidents rail */
 
-/** The merged incident feed alongside the workflow runs. Incidents spun off an
- *  workflow surface that workflow; all are click-through to the Inbox. */
-function IncidentsRail({ issues }: { issues: Issue[] }) {
-  const { select, setView, workflowById } = useStore();
+/** The merged incident feed alongside the workflow runs. Incidents spun off a
+ *  workflow surface that workflow; all are click-through to the Issues subpage.
+ *  Scoped to the selected workflow, which is what distinguishes it from that
+ *  subpage rather than duplicating it. */
+function IncidentsRail({ issues, scoped }: { issues: Issue[]; scoped: boolean }) {
+  const { select, openSubview, workflowById } = useStore();
   // Workflow-linked incidents first (the run→incident story), then the rest.
   const ordered = useMemo(
     () => [...issues].sort((a, b) => Number(Boolean(b.workflowId)) - Number(Boolean(a.workflowId))),
@@ -516,7 +520,7 @@ function IncidentsRail({ issues }: { issues: Issue[] }) {
 
   const open = (id: number) => {
     select(id);
-    setView("inbox");
+    openSubview("activity", "issues");
   };
 
   return (
@@ -527,8 +531,11 @@ function IncidentsRail({ issues }: { issues: Issue[] }) {
       </div>
       <div className="scrollbar-none flex-1 overflow-y-auto px-2 py-2">
         {ordered.length === 0 ? (
+          // The rail is scoped to one workflow only when the sources pane has
+          // scoped the page; unscoped it covers the whole stream, and "for this
+          // workflow" then names a workflow the reader hasn't picked.
           <p className="px-3 py-6 text-center text-body-sm text-tertiary-foreground">
-            No incidents for this workflow.
+            {scoped ? "No incidents for this workflow." : "No incidents. A failed run opens one here."}
           </p>
         ) : (
           <div className="flex flex-col gap-0.5">
@@ -618,10 +625,10 @@ function Insights({ runs, workflows, activeIncidents }: { runs: Run[]; workflows
           </div>
         </section>
 
-        {/* Runs over time — reuses the surface events chart */}
+        {/* Runs over time */}
         <section className="flex flex-col gap-3">
           <h3 className="text-body-base font-medium text-primary-foreground">Runs over time</h3>
-          <SurfaceChart seed={runs.length + 7} />
+          <TimeSeriesChart seed={runs.length + 7} />
         </section>
 
         {/* Busiest workflows — magnitude, sequential single (brand) hue */}
@@ -675,15 +682,16 @@ export function ActivityView() {
     controls,
     sectionTab,
     setSectionTab,
+    runners,
   } = useStore();
   // The stream tabs are this page's section tabs, so the header's State filter can
   // offer just the states the open tab shows.
-  const tab = (sectionTab("activity") || "In progress") as Tab;
-  const setTab = (next: Tab) => setSectionTab("activity", next);
+  const tab = (sectionTab("activity/runs") || "In progress") as Tab;
+  const setTab = (next: Tab) => setSectionTab("activity/runs", next);
   const [scopeId, setScopeId] = useState<string | null>(null);
 
-  const state = controls("activity");
-  const timeline = viewMode("activity") === "timeline";
+  const state = controls("activity/runs");
+  const timeline = viewMode("activity/runs") === "timeline";
   // The scope belongs to the sources pane, which only the list layout shows. The
   // timeline's lanes already separate the workflows, so it plots all of them —
   // and the scope is still there when you switch back.
@@ -692,9 +700,9 @@ export function ActivityView() {
 
   // The header narrows the whole screen; the scope then narrows it to one workflow.
   const matched = useMemo(
-    () => sortRuns(runs.filter((r) => runPasses(r, nameOf(r.workflowId), state)), state, tab, nameOf),
+    () => sortRuns(runs.filter((r) => runPasses(r, nameOf(r.workflowId), state, runners)), state, tab, nameOf),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [runs, state, workflowById],
+    [runs, state, workflowById, runners],
   );
   const sources = useMemo(() => groupRuns(matched, workflowById), [matched, workflowById]);
   const visible = useMemo(
@@ -717,7 +725,7 @@ export function ActivityView() {
 
   const incidents = (
     <ContextPane width={PANE_WIDTH.list} scroll={false}>
-      <IncidentsRail issues={scopedIssues} />
+      <IncidentsRail issues={scopedIssues} scoped={scope !== null} />
     </ContextPane>
   );
 
@@ -767,10 +775,17 @@ export function ActivityView() {
             />
           ) : tabRuns.length === 0 ? (
             <NoRuns
+              // Three different facts, and they must not share a sentence: the
+              // search narrowed everything out, this tab is empty but the other
+              // isn't, or nothing has ever run here. "Nothing to show in this
+              // prototype tab yet" said the last one in the words of an *unbuilt*
+              // tab, which is a different claim entirely.
               hint={
                 isNarrowed(state) || scope !== null
                   ? "No runs match the current search, filters, or scope."
-                  : "Nothing to show in this prototype tab yet."
+                  : runs.length === 0
+                    ? "No runs yet. Triggering a workflow — from the library or the builder — starts one here."
+                    : `Nothing ${tab === "Historical" ? "has finished" : "is in progress"} right now.`
               }
               other={{ label: otherTab, count: tabCount[otherTab] ?? 0, onSelect: () => setTab(otherTab) }}
             />

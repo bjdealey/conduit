@@ -4,19 +4,19 @@ import { coerceCapabilities, coerceNodeType, coerceWorkflow, coerceWorkflows } f
 describe("api boundary coercion (defensive parsing of our API responses)", () => {
   it("coerceWorkflow returns a valid domain Workflow and guards the state field", () => {
     const bot = coerceWorkflow({
-      id: "a360-eu:1",
+      id: "acme-eu:1",
       sourceId: "1",
-      platform: "automation-anywhere",
-      connectorId: "a360-eu",
+      platform: "acme-cloud",
+      connectorId: "acme-eu",
       title: "Invoice Workflow",
       state: "Running",
       owner: "Brad",
     });
     expect(bot).toEqual({
-      id: "a360-eu:1",
+      id: "acme-eu:1",
       sourceId: "1",
-      platform: "automation-anywhere",
-      connectorId: "a360-eu",
+      platform: "acme-cloud",
+      connectorId: "acme-eu",
       title: "Invoice Workflow",
       state: "Running",
       owner: "Brad",

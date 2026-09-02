@@ -1,18 +1,5 @@
 import type { ReactNode } from "react";
-import {
-  Bell,
-  Box,
-  ClipboardCheck,
-  Cpu,
-  House,
-  Inbox,
-  ScrollText,
-  Settings,
-  ShieldCheck,
-  SlidersHorizontal,
-  Users,
-  Workflow as WorkflowIcon,
-} from "lucide-react";
+import { Bell, Cpu, House, ScaleIcon, Settings, Workflow as WorkflowIcon } from "lucide-react";
 import type { View } from "../store";
 
 /* =============================================================================
@@ -22,6 +9,11 @@ import type { View } from "../store";
    miss one. Lifted out of the sidebar when the bottom bar arrived: the same
    destination must carry the same glyph on the rail and on the bar, or the two
    shells read as two products.
+
+   Keyed by `View`, not `Section`: subpages have no icons. The rail indents them
+   under their parent's glyph and the bottom sheet does the same, because a
+   second icon vocabulary one level down gives the eye two things to learn where
+   the indent already says everything.
 
    `size` is a parameter rather than a constant because the two surfaces are read
    at different distances — the rail's 20px icon sits beside a label at arm's
@@ -34,18 +26,14 @@ import type { View } from "../store";
 export function navIcons(size: number): Record<View, ReactNode> {
   const props = { size, strokeWidth: 1.7 } as const;
   return {
-    audit: <ScrollText {...props} />,
-    review: <ClipboardCheck {...props} />,
     home: <House {...props} />,
-    builder: <WorkflowIcon {...props} />,
-    activity: <Bell {...props} />,
-    inbox: <Inbox {...props} />,
     workflows: <WorkflowIcon {...props} />,
-    manage: <SlidersHorizontal {...props} />,
-    users: <Users {...props} />,
-    administration: <ShieldCheck {...props} />,
-    surfaces: <Box {...props} />,
+    activity: <Bell {...props} />,
     runners: <Cpu {...props} />,
+    // Scales rather than a shield: this destination is where work is weighed —
+    // approved, recorded, governed — not where the platform is defended.
+    governance: <ScaleIcon {...props} />,
     settings: <Settings {...props} />,
+    builder: <WorkflowIcon {...props} />,
   };
 }

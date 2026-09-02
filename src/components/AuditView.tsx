@@ -8,7 +8,7 @@ import {
   type AuditEntry,
 } from "@conduit/domain";
 import { useStore } from "../store";
-import { PLATFORM_LABEL, type WorkflowPlatform } from "../data/types";
+import { platformLabel } from "../data/types";
 import { Chip } from "./Chip";
 import { TabStrip } from "./TabStrip";
 import { DetailPane } from "./layout/SplitView";
@@ -22,9 +22,9 @@ import { isNarrowed, matchesQuery } from "../lib/workspace";
    citizen builders submit and professionals promote, "who approved this" stops
    being a nice-to-have and becomes the thing that makes delegation defensible.
 
-   One trail across both estates. A mirrored Control Room action and a native
-   approval sit in the same list, distinguished by platform — the same promise
-   the library makes, applied to history.
+   One trail across every estate. An action mirrored in by a connector and a
+   native approval sit in the same list, distinguished only by platform — the
+   same promise the library makes, applied to history.
 
    Append-only: this view reads, and there is no control here that edits a row.
    ============================================================================= */
@@ -61,7 +61,7 @@ function Entry({ entry, last }: { entry: AuditEntry; last: boolean }) {
       </div>
       {entry.platform !== "conduit" && (
         <span className="shrink-0 text-[0.7rem] text-tertiary-foreground">
-          {PLATFORM_LABEL[entry.platform as WorkflowPlatform] ?? entry.platform}
+          {platformLabel(entry.platform)}
         </span>
       )}
       <span className="w-24 shrink-0 text-right font-departure-mono text-[0.7rem] text-tertiary-foreground">
@@ -75,7 +75,7 @@ function Entry({ entry, last }: { entry: AuditEntry; last: boolean }) {
 export function AuditView() {
   const { audit, controls, allowed } = useStore();
   const [tab, setTab] = useState<Tab>("All");
-  const state = controls("audit");
+  const state = controls("governance/audit");
 
   if (!allowed("review")) {
     return (
@@ -113,11 +113,13 @@ export function AuditView() {
         <div className="mx-auto flex max-w-4xl flex-col gap-4">
           <div className="flex items-center gap-2 text-body-sm text-tertiary-foreground">
             <ScrollText size={15} strokeWidth={1.8} />
-            Append-only. Every lifecycle move writes one entry, across both platforms.
+            Append-only. Every lifecycle move writes one entry, whichever platform it happened on.
           </div>
           {rows.length === 0 ? (
             <p className="py-16 text-center text-body-sm text-tertiary-foreground">
-              {isNarrowed(state) ? "Nothing matches the current search." : "Nothing recorded in this category yet."}
+              {isNarrowed(state)
+                ? "Nothing matches the current search."
+                : "Nothing recorded in this category yet. The trail writes itself as work is approved, published and run."}
             </p>
           ) : (
             <div className="flex flex-col rounded-xl border-border-default border-[0.5px] bg-page px-4 shadow-default">

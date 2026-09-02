@@ -1,7 +1,7 @@
 /**
  * The runtime's HTTP seam.
  *
- * Same idea as the A360 connector's transport (`connectors/automation-anywhere/src/http.ts`)
+ * Same idea as a connector's transport seam (`packages/connector-sdk`)
  * — depend on an interface, not on `fetch`, so a test can answer without a network —
  * with two differences the engine needs: response headers (a flow may branch on
  * `content-type` or read a `Location`), and a timeout, because a step that hangs holds

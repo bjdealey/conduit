@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { BookOpen, Layers, LogOut, Pin, Settings, UserPlus } from "lucide-react";
-import { currentUser } from "../data/user";
 import { useStore } from "../store";
+import { emailLine } from "../data/user";
 import { RailTooltip } from "./RailTooltip";
 
 const iconProps = { size: 18, strokeWidth: 1.7 };
@@ -41,7 +41,7 @@ function Divider() {
 
 /** Avatar button pinned at the bottom of the sidebar; opens an account popover. */
 export function UserMenu({ expanded }: { expanded: boolean }) {
-  const { signOut } = useStore();
+  const { signOut, currentUser } = useStore();
   const [open, setOpen] = useState(false);
   const close = () => setOpen(false);
 
@@ -98,7 +98,7 @@ export function UserMenu({ expanded }: { expanded: boolean }) {
         </span>
         <span className="rail-fade flex min-w-0 flex-1 flex-col text-left leading-tight">
           <span className="truncate text-body-sm font-medium text-primary-foreground">{currentUser.name}</span>
-          <span className="truncate text-tertiary-foreground" style={{ fontSize: "0.68rem" }}>{currentUser.email}</span>
+          <span className="truncate text-tertiary-foreground" style={{ fontSize: "0.68rem" }}>{emailLine(currentUser)}</span>
         </span>
         {!expanded && <RailTooltip label={currentUser.name} />}
       </button>
@@ -110,6 +110,9 @@ export function UserMenu({ expanded }: { expanded: boolean }) {
           {/* Popover */}
           <div
             role="menu"
+            /* Opens upward out of the sidebar's account row, so it rises into
+               place from its trigger rather than sinking away from it. */
+            data-pop="up"
             className="pop-in absolute rounded-xl border-border-default border-[0.5px] bg-page py-1.5"
             style={{
               zIndex: 50,
@@ -130,7 +133,7 @@ export function UserMenu({ expanded }: { expanded: boolean }) {
               </span>
               <span className="flex min-w-0 flex-col leading-tight">
                 <span className="truncate text-body-sm font-medium text-primary-foreground">{currentUser.name}</span>
-                <span className="truncate text-tertiary-foreground" style={{ fontSize: "0.72rem" }}>{currentUser.email}</span>
+                <span className="truncate text-tertiary-foreground" style={{ fontSize: "0.72rem" }}>{emailLine(currentUser)}</span>
               </span>
             </div>
 

@@ -136,13 +136,25 @@ body {
 
 /* Opaque filled rail tiles (product mark, user avatar) fill their 36px slot, so
    a hover background would just frame them. Give a subtle scale for feedback
-   instead. (Gated by prefers-reduced-motion globally in globals.css.) */
+   instead. (Gated by prefers-reduced-motion globally in globals.css.)
+
+   The *hover* half is gated on a real pointer. A touch screen synthesises a hover
+   on tap and then leaves it applied until you touch something else, so an ungated
+   hover transform doesn't preview anything — it just sticks, on a tile you have
+   already finished using. The phone shell doesn't mount the rail at all, but a
+   touch laptop or a tablet in landscape is over the 767px breakpoint and gets
+   every one of these. Keyboard focus is deliberately *not* gated: a focus ring
+   means the same thing on every input device. */
 .rail-tile {
   transition: transform 0.15s ease;
 }
-.group:hover > .rail-tile,
 .group:focus-visible > .rail-tile {
   transform: scale(1.06);
+}
+@media (hover: hover) and (pointer: fine) {
+  .group:hover > .rail-tile {
+    transform: scale(1.06);
+  }
 }
 
 /* Optional "outlined" look (Settings → Appearance → Borders): a hairline around
@@ -157,6 +169,19 @@ body {
    active item is never wider than a plain one. It's a layer behind the content so
    the button itself can stay full-width (which keeps icons pinned for the morph),
    and it animates its inset so the highlight morphs with the rail. */
+/* ⚠️ These four insets animate layout, and that is deliberate — don't "optimise"
+   it into a transform. The highlight is a rounded box with a shadow, and the only
+   transform that changes a box's size is `scale`, which stretches both: the 8px
+   radius goes oval and the shadow smears with it, on the one element whose whole
+   job is to look like a crisp tile. `clip-path` can't help either, since the
+   shadow is drawn outside the border box and would be clipped away.
+
+   The cost is bounded and was checked before it was accepted: each highlight is
+   absolutely positioned, childless and `pointer-events: none`, so a change to its
+   insets invalidates layout for itself and nothing else. It also only ever runs
+   during the rail's expand/collapse, which is already animating `width` — a real
+   reflow of the whole shell that no technique avoids, because the content
+   genuinely has to move. Against that, ten out-of-flow boxes are noise. */
 .rail-hl {
   position: absolute;
   inset: 0;
@@ -204,12 +229,16 @@ nav[data-expanded="false"] .rail-hl {
   }
 }
 
-/* Search field: the trailing arrow nudges right on hover. */
+/* Search field: the trailing arrow nudges right on hover. Pointer-gated for the
+   same reason as `.rail-tile` — on a touch screen this is a nudge that arrives
+   after the tap and then stays put. */
 .search-arrow {
   transition: transform 0.15s ease;
 }
-.search-field:hover .search-arrow {
-  transform: translateX(2px);
+@media (hover: hover) and (pointer: fine) {
+  .search-field:hover .search-arrow {
+    transform: translateX(2px);
+  }
 }
 
 /* =============================================================================
@@ -238,6 +267,52 @@ nav[data-expanded="false"] .rail-fade {
 }
 nav[data-expanded="false"] .rail-fade-collapsed {
   opacity: 1;
+}
+
+/* A pinned "open page" arriving in the rail (<OpenItem>). It used to mount at
+   full opacity with no transition at all — the one element in this rail that
+   genuinely teleported, and it does so while your attention is on the main panel
+   you just opened the issue from.
+
+   `@starting-style` rather than a keyframe, for two reasons. It needs no JS, so
+   there is no `requestAnimationFrame` to seed the first frame — and an rAF that
+   never fires (a background tab throttles them to nothing) would leave the row
+   stuck at `opacity: 0` instead of merely un-animated. And a browser without
+   `@starting-style` simply renders the row, which is exactly today's behaviour.
+
+   Opacity and transform only, and no height: this group is the last thing inside
+   a `flex-1` scroll region, so an arriving row pushes nothing and there is no
+   layout change to bridge. That is also what lets the row keep `overflow: visible`
+   — folding a height would clip the collapsed rail's tooltip, which escapes to
+   `left: 100%`. The curve is the strong ease-out `.pop-in` uses, for the same
+   reason: at this duration the standard curve is nearly linear over the part
+   anyone perceives. */
+.rail-pin {
+  transition: opacity 0.18s cubic-bezier(0.23, 1, 0.32, 1), transform 0.18s cubic-bezier(0.23, 1, 0.32, 1);
+}
+@starting-style {
+  .rail-pin {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+
+/* Settings is the one navigation that replaces the rail rather than the panel it
+   frames: the workspace switcher becomes "Back" and twelve destinations become
+   seven settings pages, in place. Everywhere else the rail is the fixed thing the
+   content moves inside, so swapping it with no bridge reads as a flicker in the
+   periphery while the eye is on the panel.
+
+   A crossfade, deliberately: the rows are already shape-identical in both modes
+   (36px, icon pinned at the same left offset), so only their contents need
+   bridging — nothing should move. 140ms, shorter than `.rail-fade`'s 180ms,
+   because this is peripheral vision rather than the thing being looked at. */
+@keyframes rail-swap-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.rail-swap {
+  animation: rail-swap-in 0.14s var(--ease-out, cubic-bezier(0, 0, 0.2, 1)) both;
 }
 
 /* =============================================================================
@@ -358,8 +433,12 @@ nav[data-expanded="false"] .rail-fade-collapsed {
 .hover\:underline:hover { text-decoration-line: underline; }
 
 /* The chevron nudge on the metadata pane's "N evidence" button. Paired with
-   `transition-transform`; the icon carries no other transform. */
-.group:hover .group-hover\:translate-x-0\.5 { transform: translateX(0.125rem); }
+   `transition-transform`; the icon carries no other transform. Pointer-gated —
+   a nudge that only arrives once you have already tapped is telling you about an
+   affordance you just used. */
+@media (hover: hover) and (pointer: fine) {
+  .group:hover .group-hover\:translate-x-0\.5 { transform: translateX(0.125rem); }
+}
 
 /* Role and status chips render their label from the raw data ("admin"), and
    relied on this to present it. */
@@ -423,19 +502,75 @@ nav[data-expanded="false"] .rail-fade-collapsed {
 
 /* =============================================================================
    Enter animation helper for popovers/menus that mount on open.
+   -----------------------------------------------------------------------------
    Mirrors the tailwindcss-animate `animate-in fade-in zoom-in` pattern (which is
    only partially present in globals.css) so dropdowns fade+scale in from their
    anchor instead of popping. Set `transform-origin` per-menu via a style prop.
+
+   The translate has to agree with the origin, and that is the whole reason
+   `--pop-y` exists. A menu below its trigger starts 4px *high* — nearer the
+   trigger — and settles down away from it. A menu that opens upward (the sidebar
+   account menu, or any panel ActionMenu flips because there was no room below)
+   has its trigger underneath it, so it has to start 4px *low* for the same
+   reading. With a single fixed `-4px` the flipped case emerged moving away from
+   the control that opened it, which is backwards: the origin said one thing and
+   the motion said the other. Mark those panels `data-pop="up"`.
    ============================================================================= */
 @keyframes pop-in {
-  from { opacity: 0; transform: scale(0.96) translateY(-4px); }
+  from { opacity: 0; transform: scale(0.96) translateY(var(--pop-y, -4px)); }
   to   { opacity: 1; transform: none; }
 }
 .pop-in {
-  animation: pop-in 0.16s cubic-bezier(0, 0, 0.2, 1) both;
+  /* A strong ease-out, not the built-in one: at 160ms the built-in curve is
+     nearly linear over the part of the animation anyone perceives. */
+  animation: pop-in 0.16s cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+.pop-in[data-pop="up"] {
+  --pop-y: 4px;
 }
 @media (prefers-reduced-motion: reduce) {
   .pop-in { animation: none; }
+}
+
+/* =============================================================================
+   Reduced motion, softened
+   -----------------------------------------------------------------------------
+   globals.css carries the usual blanket reset — `transition-duration: .01ms
+   !important` on `*` — which is the right backstop and the wrong final answer.
+   The preference asks for less *movement*; it does not ask for the interface to
+   start cutting between states. A crossfade carries no motion at all, and it is
+   often the thing explaining that two states are the same surface rather than a
+   hard swap. Removing those makes the app snap harshly at exactly the people who
+   asked for it to be calmer.
+
+   So: for the handful of crossfades that are load-bearing, restore a duration and
+   pin the property to `opacity`, which is the whole point — nothing here may
+   animate a transform, a size or a position. This file is imported after
+   globals.css and the selectors are no less specific, so these win.
+
+   Anything not named here keeps the blanket reset. The list is meant to stay
+   short; if it grows, the reset is doing its job and something else is wrong.
+   ============================================================================= */
+@media (prefers-reduced-motion: reduce) {
+  .sheet-backdrop,
+  .rail-fade,
+  .rail-fade-collapsed,
+  .rail-tooltip,
+  .rail-flyout,
+  /* The pinned row keeps its fade and loses its scale — the preference asks for
+     less movement, and a row appearing out of nothing is the harsh cut this rule
+     exists to prevent. Pinning the property to `opacity` drops the 4% scale to an
+     instant, imperceptible step. */
+  .rail-pin {
+    transition-property: opacity !important;
+    transition-duration: 150ms !important;
+  }
+
+  /* Load-bearing crossfade, and already movement-free — it only needs its
+     duration back from the blanket reset. */
+  .rail-swap {
+    animation-duration: 150ms !important;
+  }
 }
 
 /* =============================================================================
@@ -520,11 +655,14 @@ nav[data-expanded="false"] .rail-fade-collapsed {
   inset: 0;
   z-index: 60;
 }
+/* The transform and opacity transitions live in Sheet.tsx, not here: the panel is
+   draggable, so its position is a value the component owns frame by frame, and a
+   class that also declared one would be fighting it. What stays in CSS is
+   everything static. */
 .sheet-backdrop {
   position: absolute;
   inset: 0;
   background: rgb(0 0 0 / 0.4);
-  animation: sheet-fade 0.18s ease both;
 }
 .sheet-panel {
   position: absolute;
@@ -540,8 +678,12 @@ nav[data-expanded="false"] .rail-fade-collapsed {
   box-shadow: var(--s-popover);
   padding-bottom: env(safe-area-inset-bottom, 0px);
   outline: none;
-  animation: sheet-rise 0.22s cubic-bezier(0, 0, 0.2, 1) both;
+  /* Promoted for the duration it exists: the panel is dragged, and a full-width
+     surface repainting per frame on a phone is where the dropped frames are. */
+  will-change: transform;
 }
+/* The header is also the drag surface, so it says so on a pointer device — the
+   handle itself is 36×4 and nobody is aiming at that with a mouse. */
 .sheet-header {
   display: flex;
   align-items: center;
@@ -549,9 +691,18 @@ nav[data-expanded="false"] .rail-fade-collapsed {
   flex-shrink: 0;
   padding: 14px 10px 10px 16px;
   border-bottom: 0.5px solid var(--color-border-default);
+  cursor: grab;
+  touch-action: none;
+}
+.sheet-header:active {
+  cursor: grabbing;
 }
 /* The grab handle, centred over the header rather than stacked above it — a row
-   of its own would cost 20px of a panel that is already capped at 80vh. */
+   of its own would cost 20px of a panel that is already capped at 80vh.
+
+   It is a real handle: a downward flick or pull on the header dismisses the sheet
+   (see Sheet.tsx). It drew one for a while without being one, which is worse than
+   drawing nothing — everybody tries a grab handle once. */
 .sheet-grip {
   position: absolute;
   top: 6px;
@@ -578,6 +729,20 @@ nav[data-expanded="false"] .rail-fade-collapsed {
 .sheet-row[data-active="true"] {
   background: var(--color-component-active);
 }
+/* A destination's subpage in the overflow sheet. The rail indents a group behind
+   a rule; a sheet row has no rule to hang one off, so the indent is the icon
+   column it deliberately leaves empty — the parent's glyph is the group's mark,
+   and a second one a level down would be a vocabulary to learn rather than a
+   relationship to read. Still 48px: it is a tap target like any other row. */
+.sheet-row-sub {
+  padding-left: 20px;
+  min-height: 44px;
+}
+.sheet-row-sub > :first-child {
+  width: 12px;
+  border-left: 0.5px solid var(--color-border-default);
+  align-self: stretch;
+}
 .sheet-footer {
   display: flex;
   align-items: center;
@@ -586,17 +751,22 @@ nav[data-expanded="false"] .rail-fade-collapsed {
   padding: 12px 16px;
   border-top: 0.5px solid var(--color-border-default);
 }
-@keyframes sheet-rise {
-  from { transform: translateY(100%); }
-  to   { transform: none; }
-}
-@keyframes sheet-fade {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
+/* Reduced motion: the panel arrives without travelling. Killing the transition is
+   enough to do that — the component still sets the transform, so it lands in
+   place on the frame it is presented, and, importantly, a drag still tracks the
+   thumb. Zeroing the transform instead would have made the gesture look broken
+   while quietly still dismissing on release.
+
+   `!important` because the declaration it has to beat is an inline style, and
+   this is the one case where an author rule wins that fight.
+
+   The backdrop keeps its crossfade: it is opacity, it carries no movement, and a
+   full-screen scrim appearing on one frame is the jarring change reduced motion
+   exists to prevent rather than an instance of one. */
 @media (prefers-reduced-motion: reduce) {
-  .sheet-panel,
-  .sheet-backdrop { animation: none; }
+  .sheet-panel {
+    transition: none !important;
+  }
 }
 
 /* A control sized for a thumb rather than a cursor. 44px is the smallest target

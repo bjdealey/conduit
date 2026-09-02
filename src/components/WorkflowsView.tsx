@@ -38,7 +38,7 @@ import {
   hasUnpublishedChanges,
   publishedVersion,
 } from "@conduit/domain";
-import { PLATFORM_LABEL } from "../data/types";
+import { platformLabel } from "../data/types";
 import { densityVars } from "../data/libraryView";
 import type { FileKind, Folder, LibraryFile, Workflow, WorkflowStatus, Visibility } from "../data/types";
 import { Avatar } from "./Avatar";
@@ -59,6 +59,7 @@ import {
 } from "../lib/library";
 import { narrowTree, rowAfter, rowMatching, visibleRows, type TreeRowInfo, type TreeSlice } from "../lib/tree";
 import { SplitView, Pane, DetailPane, ContextPane, EmptyDetail, PANE_WIDTH } from "./layout/SplitView";
+import { EmptyState } from "./EmptyState";
 import { isNarrowed, matchesQuery, ordered, passesFilter, resolveSort, type WorkspaceState } from "../lib/workspace";
 import { workspaceControls } from "../data/workspaceControls";
 import { TabStrip } from "./TabStrip";
@@ -83,7 +84,7 @@ function visibleWorkflows(workflows: Workflow[], state: WorkspaceState): Workflo
       passesFilter(state, "migration", a.migration),
   );
 
-  const { id, dir } = resolveSort(state, workspaceControls("workflows", "")?.sorts ?? []);
+  const { id, dir } = resolveSort(state, workspaceControls("workflows/library", "")?.sorts ?? []);
   const compare: Record<string, (a: Workflow, b: Workflow) => number> = {
     name: (a, b) => a.name.localeCompare(b.name),
     runs: (a, b) => a.runCount - b.runCount,
@@ -510,6 +511,7 @@ function RowMenu({ node, ctx }: { node: LibraryNode; ctx: TreeCtx }) {
       return {
         heading: `Move ${name}`,
         note: many ? "Only somewhere every selected item can go." : undefined,
+        empty: many ? "Nowhere every selected item can go." : "Nowhere to put it.",
         onBack: () => go("root"),
         scroll: true,
         items: targets.map((target) => ({
@@ -876,6 +878,27 @@ function FolderBranch({
 }
 
 /* --------------------------------------------------- merged library (nav + list) */
+
+/**
+ * Holds a notice open, and holds on to it while it closes.
+ *
+ * The bar sits in normal flow above the tree, so mounting one used to shove the
+ * whole library down ~40px on the same frame, and dismissing it snapped everything
+ * back up — on a pane the user is mid-way through reading. <Reveal> bridges that,
+ * but it can only animate children that still exist, and the conditions here
+ * (`refusal`, `undoable`) go null at the moment of dismissal.
+ *
+ * So the last content is kept and re-rendered for the length of the close. The ref
+ * write during render is deliberate and safe: it is idempotent, so StrictMode's
+ * second pass writes the same value rather than skipping work the first pass did.
+ * (That distinction is what bit ActionMenu — a *guard* that skipped on the second
+ * pass. This one has nothing to skip.)
+ */
+function NoticeSlot({ open, children }: { open: boolean; children: ReactNode }) {
+  const last = useRef<ReactNode>(null);
+  if (open) last.current = children;
+  return <Reveal open={open}>{open ? children : last.current}</Reveal>;
+}
 
 /** A dismissible line above the tree — a refusal, or the offer to undo. */
 function TreeNotice({
@@ -1317,20 +1340,20 @@ function WorkflowLibrary({
 
   return (
     <Pane width={PANE_WIDTH.list}>
-      {refusal && (
+      <NoticeSlot open={refusal !== null}>
         <TreeNotice tone="critical" onDismiss={() => setRefusal(null)}>
           {refusal}
         </TreeNotice>
-      )}
-      {!refusal && !undoDismissed && store.undoable && (
+      </NoticeSlot>
+      <NoticeSlot open={!refusal && !undoDismissed && store.undoable !== null}>
         <TreeNotice
           tone="neutral"
           action={{ label: "Undo", onSelect: () => { store.undo(); setUndoDismissed(true); } }}
           onDismiss={() => setUndoDismissed(true)}
         >
-          {store.undoable.label}
+          {store.undoable?.label}
         </TreeNotice>
-      )}
+      </NoticeSlot>
       <div
         ref={treeBox}
         role="tree"
@@ -1351,6 +1374,24 @@ function WorkflowLibrary({
           <p className="px-3 py-6 text-center text-body-sm text-tertiary-foreground">
             Nothing matches the current search or filters.
           </p>
+        ) : store.workflows.length === 0 && store.files.length === 0 ? (
+          // A library holding nothing but its two visibility roots. Rendering the
+          // empty tree instead would be two chevrons that expand onto nothing —
+          // technically the truth, and no help at all on someone's first day.
+          <EmptyState
+            icon={<WorkflowIcon size={22} strokeWidth={1.6} />}
+            title="The library is empty"
+            body={
+              store.allowed("author")
+                ? "Author a workflow here, or install a connector to mirror an estate you already run. Both land in this tree."
+                : "Nothing has been published to you yet. Workflows appear here as they are shared."
+            }
+            action={
+              store.allowed("author")
+                ? { label: "New workflow", onSelect: () => store.newWorkflow(undefined) }
+                : undefined
+            }
+          />
         ) : (
           roots.map((root) => {
             const visKey = `vis:${root.visibility}`;
@@ -1616,7 +1657,7 @@ function WorkflowDetail({ workflow, onSelectWorkflow }: { workflow: Workflow; on
                 </Button>
               ) : (
                 <span className="text-body-sm text-tertiary-foreground">
-                  Runs on {PLATFORM_LABEL[workflow.platform]} — Conduit observes it here.
+                  Runs on {platformLabel(workflow.platform)} — Conduit observes it here.
                 </span>
               )}
               {/* Only a natively-authored flow can be opened here; a mirrored one
@@ -1650,7 +1691,7 @@ function WorkflowDetail({ workflow, onSelectWorkflow }: { workflow: Workflow; on
             </MetaRow>
             <MetaRow label="Runs on">
               <span className="inline-flex items-center gap-1.5">
-                {PLATFORM_LABEL[workflow.platform]}
+                {platformLabel(workflow.platform)}
                 {workflow.platform !== "conduit" && (
                   <span className="text-tertiary-foreground">· authored there, mirrored here</span>
                 )}
@@ -1859,7 +1900,7 @@ function FolderDetail({
                         key={w.id}
                         icon={<span style={{ color: WORKFLOW_ROW_ICON.tone }}>{WORKFLOW_ROW_ICON.icon}</span>}
                         title={w.name}
-                        sub={[PLATFORM_LABEL[w.platform], updated].filter(Boolean).join(" · ")}
+                        sub={[platformLabel(w.platform), updated].filter(Boolean).join(" · ")}
                         trailing={
                           <span className="flex shrink-0 items-center gap-2">
                             <WorkflowStatusChip status={w.status} />
@@ -1960,7 +2001,7 @@ function FolderDetail({
               {platforms.length === 0 ? (
                 <span className="text-tertiary-foreground">—</span>
               ) : (
-                platforms.map((p) => PLATFORM_LABEL[p]).join(" · ")
+                platforms.map((p) => platformLabel(p)).join(" · ")
               )}
             </MetaRow>
           </div>
@@ -2334,7 +2375,7 @@ export function WorkflowsView() {
     peekNode,
     controls,
   } = useStore();
-  const state = controls("workflows");
+  const state = controls("workflows/library");
   const narrowed = isNarrowed(state);
   const visible = visibleWorkflows(workflows, state);
   const visibleFiles = narrowedFiles(files, state);
@@ -2366,7 +2407,7 @@ export function WorkflowsView() {
 
   // Board layout: the status board fills the panel; opening an workflow shows its
   // detail (the board is hidden) — deselect via the breadcrumb returns to the board.
-  if (viewMode("workflows") === "board") {
+  if (viewMode("workflows/library") === "board") {
     return (
       <SplitView>
         {selected ? (

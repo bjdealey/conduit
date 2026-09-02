@@ -7,9 +7,9 @@
 
 /** Where a mapping is happening, carried on every `MappingError` for diagnosis. */
 export type MapContext = {
-  /** Connector instance id, e.g. "a360-prod-eu". */
+  /** Connector instance id, e.g. "acme-prod-eu". */
   connectorId: string;
-  /** Connector type / platform, e.g. "automation-anywhere". */
+  /** Connector type / platform, e.g. "acme-cloud". */
   platform: string;
   /** Capability being mapped, e.g. "workflows". */
   capability: string;

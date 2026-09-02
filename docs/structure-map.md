@@ -1,5 +1,13 @@
 # Conduit ⇄ a360 structure map
 
+> ⚠️ **Superseded on the A360 question (historical document).** Conduit no longer ships an
+> Automation Anywhere connector, and no vendor is named in the product. The `automation-anywhere`
+> platform value, the `connectors/automation-anywhere` package and the mirrored seed estate were
+> all removed; `WorkflowPlatform` is now an open `string` the UI reads off the data. The
+> *mechanism* described here — pluggable connectors, capability services, the instance registry —
+> is unchanged and still current. This document is kept as a record of the reasoning at the time;
+> read `CLAUDE.md` § "Vendor independence" for what is true now.
+
 Analysis prepared before adding **automation monitoring, execution, and reporting** to
 Conduit's existing incident-management prototype. No application code was written or
 modified to produce this map; every claim is traceable to a cited file and line.

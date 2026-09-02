@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { KeyRound } from "lucide-react";
+import { useStore } from "../store";
 import type { ActivityEvent, Issue } from "../data/types";
-import { currentUser } from "../data/user";
 import { num } from "../lib/format";
 import { MetadataPanel } from "./MetadataPanel";
 import { ActivityFeed } from "./ActivityFeed";
@@ -62,6 +62,7 @@ function Composer({ onSend }: { onSend: (text: string) => void }) {
 }
 
 export function IssueDetail({ issue }: { issue: Issue }) {
+  const { currentUser } = useStore();
   const [tab, setTab] = useState<Tab>("Activity");
   // Comments posted from the composer, kept per issue for the session.
   const [posted, setPosted] = useState<Record<number, ActivityEvent[]>>({});

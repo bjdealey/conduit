@@ -6,24 +6,22 @@ import {
   CircleUser,
   Cpu,
   Globe,
-  MoreHorizontal,
   Package,
   Play,
   Plus,
   ShieldCheck,
-  Tag,
   Zap,
 } from "lucide-react";
-import type { View } from "../store";
+import type { Section } from "./nav";
 import type { SortDir } from "../lib/workspace";
 import {
+  CONDUIT_PLATFORM,
   MIGRATION_STATES,
-  PLATFORM_LABEL,
   PRIORITIES,
   RUN_STATES,
   RUN_TRIGGERS,
   STATUSES,
-  WORKFLOW_PLATFORMS,
+  platformLabel,
   type Role,
   type RunState,
 } from "./types";
@@ -31,7 +29,6 @@ import { RUNNER_CLASS_LABEL, RUNNER_CLASSES, RUNNER_STATES, WORKFLOW_STATUSES } 
 import { RUNNER_STATE_ACCENT } from "../components/RunnersView";
 import { members } from "./issues";
 import { WORKFLOW_STATUS_ACCENT, PRIORITY_ACCENT, RUN_STATE_ACCENT, STATUS_ACCENT } from "../components/Badges";
-import { endUsers } from "./users";
 import { ACTIONS } from "./actions";
 
 /* =============================================================================
@@ -85,6 +82,23 @@ export type WorkspaceControls = {
   filters?: FilterDef[];
   sorts?: SortDef[];
   actions?: ActionDef[];
+};
+
+/**
+ * The option sets a filter can only get from the rows on screen.
+ *
+ * A platform isn't a vocabulary this app defines — it arrives with a connector —
+ * so listing them here would mean a menu that either names something nobody has
+ * or misses something somebody does. `<WorkspaceHeader>` reads them off the store
+ * and passes them in.
+ *
+ * Optional throughout: the call sites that only want a page's `sorts`
+ * (`src/lib/select.ts`, `src/lib/builder.ts`) pass nothing and get the controls
+ * that don't depend on data.
+ */
+export type ControlFacets = {
+  /** Platforms present in the estate, native first (see `platformsIn`). */
+  platforms?: string[];
 };
 
 const option = <T extends string>(id: T, accent?: string): FilterOption => ({ id, label: id, accent });
@@ -155,74 +169,63 @@ function activity(tab: string): WorkspaceControls {
   };
 }
 
-const WORKFLOWS: WorkspaceControls = {
-  search: "Search or filter workflows…",
-  filters: [
-    {
-      id: "status",
-      label: "Status",
-      icon: <CircleDashed {...dim} />,
-      options: [...WORKFLOW_STATUSES].map(fromPalette(WORKFLOW_STATUS_ACCENT)),
-    },
-    {
-      id: "visibility",
-      label: "Visibility",
-      icon: <Globe {...dim} />,
-      options: [
-        { id: "public", label: "Public" },
-        { id: "private", label: "Private" },
-      ],
-    },
-    // Both estates live in one library, so which platform runs a thing is a filter
-    // rather than a separate screen.
-    {
-      id: "platform",
-      label: "Platform",
-      icon: <Cpu {...dim} />,
-      options: WORKFLOW_PLATFORMS.map((p) => ({ id: p, label: PLATFORM_LABEL[p] })),
-    },
-    {
-      id: "migration",
-      label: "Migration",
-      icon: <ArrowRightLeft {...dim} />,
-      options: MIGRATION_STATES.map(fromPalette(MIGRATION_ACCENT)),
-    },
-  ],
-  sorts: [
-    { id: "name", label: "Name", defaultDir: "asc" },
-    { id: "runs", label: "Runs", defaultDir: "desc" },
-    { id: "success", label: "Success rate", defaultDir: "desc" },
-    { id: "recent", label: "Last run", defaultDir: "desc" },
-  ],
-  actions: [{ id: "new-workflow", label: "New workflow", icon: newIcon, roles: ["admin", "professional", "builder"] }],
-};
+/**
+ * The library's controls.
+ *
+ * Platform and Migration only appear once there is a second estate in the library.
+ * Every estate lives in one library, so *which* platform runs a thing is a filter
+ * rather than a separate screen — but on a native-only install that filter has one
+ * option and narrows nothing, and Migration asks how far along a move that isn't
+ * happening is. Both appear on their own the moment a connector mirrors something in.
+ */
+function workflowsControls(facets: ControlFacets): WorkspaceControls {
+  const platforms = facets.platforms ?? [];
+  const connected = platforms.some((p) => p !== CONDUIT_PLATFORM);
 
-const USERS: WorkspaceControls = {
-  search: "Search or filter users…",
-  filters: [
-    {
-      id: "country",
-      label: "Country",
-      icon: <Globe {...dim} />,
-      // Derived from the seed directory, so the menu can't drift from the data.
-      options: [...new Set(endUsers.map((u) => u.country))].sort().map((c) => option(c)),
-    },
-    {
-      id: "problems",
-      label: "Problems",
-      icon: <Tag {...dim} />,
-      options: [
-        { id: "with", label: "With problems" },
-        { id: "without", label: "No problems" },
-      ],
-    },
-  ],
-  sorts: [
-    { id: "name", label: "Name", defaultDir: "asc" },
-    { id: "problems", label: "Problems", defaultDir: "desc" },
-    { id: "sessions", label: "Sessions", defaultDir: "desc" },
-  ],
-};
+  return {
+    search: "Search or filter workflows…",
+    filters: [
+      {
+        id: "status",
+        label: "Status",
+        icon: <CircleDashed {...dim} />,
+        options: [...WORKFLOW_STATUSES].map(fromPalette(WORKFLOW_STATUS_ACCENT)),
+      },
+      {
+        id: "visibility",
+        label: "Visibility",
+        icon: <Globe {...dim} />,
+        options: [
+          { id: "public", label: "Public" },
+          { id: "private", label: "Private" },
+        ],
+      },
+      ...(connected
+        ? [
+            {
+              id: "platform",
+              label: "Platform",
+              icon: <Cpu {...dim} />,
+              options: platforms.map((p) => ({ id: p, label: platformLabel(p) })),
+            },
+            {
+              id: "migration",
+              label: "Migration",
+              icon: <ArrowRightLeft {...dim} />,
+              options: MIGRATION_STATES.map(fromPalette(MIGRATION_ACCENT)),
+            },
+          ]
+        : []),
+    ],
+    sorts: [
+      { id: "name", label: "Name", defaultDir: "asc" },
+      { id: "runs", label: "Runs", defaultDir: "desc" },
+      { id: "success", label: "Success rate", defaultDir: "desc" },
+      { id: "recent", label: "Last run", defaultDir: "desc" },
+    ],
+    actions: [{ id: "new-workflow", label: "New workflow", icon: newIcon, roles: ["admin", "professional", "builder"] }],
+  };
+}
 
 const RUNNERS: WorkspaceControls = {
   search: "Search or filter runners…",
@@ -268,34 +271,33 @@ const BUILDER: WorkspaceControls = {
   ],
 };
 
-const SURFACES: WorkspaceControls = {
-  search: "Search events…",
-  actions: [
-    { id: "all-problems", label: "View all problems", hint: "P" },
-    { id: "options", label: "Surface options", icon: <MoreHorizontal size={16} strokeWidth={1.8} />, iconOnly: true },
+/** Every trigger carries an enabled/paused state, whether it fires on a clock or
+ *  on an event — one table, so one filter, rather than the per-tab branch the old
+ *  five-tab Manage page needed. */
+const TRIGGERS: WorkspaceControls = {
+  search: "Search or filter triggers…",
+  filters: [
+    {
+      id: "enabled",
+      label: "State",
+      icon: <Play {...dim} />,
+      options: [
+        { id: "enabled", label: "Enabled", accent: "grass" },
+        { id: "paused", label: "Paused", accent: "gray" },
+      ],
+    },
+    {
+      id: "kind",
+      label: "Kind",
+      icon: <Zap {...dim} />,
+      options: [
+        { id: "Schedule", label: "Schedule", accent: "blue" },
+        { id: "Event", label: "Event", accent: "violet" },
+      ],
+    },
   ],
+  actions: [{ id: "new-trigger", label: "New trigger", icon: newIcon, roles: ["admin", "professional", "builder"] }],
 };
-
-/** Manage's tabs hold different objects, so its filters follow the active tab —
- *  only the tabs whose rows carry an enabled/paused state offer that filter. */
-const MANAGE_ENABLED: FilterDef = {
-  id: "enabled",
-  label: "State",
-  icon: <Play {...dim} />,
-  options: [
-    { id: "enabled", label: "Enabled", accent: "grass" },
-    { id: "paused", label: "Paused", accent: "gray" },
-  ],
-};
-
-function manage(tab: string): WorkspaceControls {
-  const togglable = tab === "Scheduled" || tab === "Event triggers";
-  return {
-    search: `Search or filter ${tab.toLowerCase()}…`,
-    filters: togglable ? [MANAGE_ENABLED] : undefined,
-    actions: [{ id: "new", label: "New", icon: newIcon, roles: ["admin", "professional", "builder"] }],
-  };
-}
 
 function administration(tab: string): WorkspaceControls {
   const isUsers = tab === "Users";
@@ -329,35 +331,39 @@ function administration(tab: string): WorkspaceControls {
 /* ------------------------------------------------------------------- lookup */
 
 /**
- * The controls for a page. `tab` is the page's active section tab, for the pages
- * that have one (Activity, Manage, Administration) — their controls follow the
- * objects on screen. Other pages ignore it. Returns null for pages with no
- * controls, and the header hides itself.
+ * The controls for a screen. `tab` is the section's active tab, for the sections
+ * that have one (Activity's runs, Governance's Administration) — their controls
+ * follow the objects on screen. Other sections ignore it. Returns null for
+ * sections with no controls, and the header hides itself.
+ *
+ * Keyed by `Section` rather than `View`: Governance's Review, Audit and
+ * Administration are three screens with three sets of controls, and one entry per
+ * destination would give all three whichever was written last.
+ *
+ * `facets` carries the option sets that can only come from the rows on screen (see
+ * `ControlFacets`). It defaults to empty, which is what a caller wanting only a
+ * page's `sorts` needs — those never depend on the data.
  */
-export function workspaceControls(view: View, tab: string): WorkspaceControls | null {
-  switch (view) {
-    case "inbox":
+export function workspaceControls(section: Section, tab: string, facets: ControlFacets = {}): WorkspaceControls | null {
+  switch (section) {
+    case "activity/issues":
       return INBOX;
-    case "activity":
+    case "activity/runs":
       return activity(tab || "In progress");
-    case "workflows":
-      return WORKFLOWS;
-    case "users":
-      return USERS;
+    case "workflows/library":
+      return workflowsControls(facets);
+    case "workflows/triggers":
+      return TRIGGERS;
     case "runners":
       return RUNNERS;
-    case "review":
+    case "governance/review":
       return { search: "Search submissions…" };
-    case "audit":
+    case "governance/audit":
       return { search: "Search the audit trail…" };
-    case "surfaces":
-      return SURFACES;
+    case "governance/administration":
+      return administration(tab || "Users");
     case "builder":
       return BUILDER;
-    case "manage":
-      return manage(tab || "Scheduled");
-    case "administration":
-      return administration(tab || "Users");
     default:
       return null;
   }

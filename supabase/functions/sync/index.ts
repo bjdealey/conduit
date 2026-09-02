@@ -1,4 +1,4 @@
-// sync — pull workflows from every enabled A360 instance, normalise, and upsert into the
+// sync — pull workflows from every enabled connector instance, normalise, and upsert into the
 // `workflows` cache table. Invoked by pg_cron on a schedule and on demand by admins.
 //
 // Credentials are resolved from Vault inside each connector's connect(), server-side; no
@@ -19,7 +19,7 @@ Deno.serve(async (req: Request) => {
   const secrets = secretStore(supabase);
   const { registry, skipped, invalid } = await buildRegistry(supabase, secrets);
 
-  // WorkflowService health-gates each connector and never throws; a failing Control Room
+  // WorkflowService health-gates each connector and never throws; a failing upstream
   // becomes an error entry, not a crash.
   const result = await new WorkflowService(registry).list();
 

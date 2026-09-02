@@ -7,68 +7,74 @@ import { Sidebar } from "./components/Sidebar";
 import { BottomNav } from "./components/BottomNav";
 import { SettingsContent } from "./components/SettingsPanel";
 import { Titlebar } from "./components/Titlebar";
-import { Inbox } from "./components/Inbox";
-import { Board } from "./components/Board";
-import { IssueDetail } from "./components/IssueDetail";
-import { SplitView, DetailPane, EmptyDetail } from "./components/layout/SplitView";
 import { WorkspaceHeader } from "./components/WorkspaceHeader";
 import { WorkflowBuilder } from "./components/WorkflowBuilder";
-import { visibleIssues } from "./lib/select";
 import { ActivityView } from "./components/ActivityView";
+import { IssuesView } from "./components/IssuesView";
 import { WorkflowsView } from "./components/WorkflowsView";
-import { ManageView } from "./components/ManageView";
-import { AdministrationView } from "./components/AdministrationView";
-import { UsersView } from "./components/UsersView";
-import { SurfacesView } from "./components/SurfacesView";
+import { TriggersView } from "./components/TriggersView";
+import { GovernanceView } from "./components/GovernanceView";
 import { RunnersView } from "./components/RunnersView";
 import { HomeView } from "./components/HomeView";
-import { ReviewView } from "./components/ReviewView";
-import { AuditView } from "./components/AuditView";
+import { TabStrip } from "./components/TabStrip";
+import { defaultSubpage, navItems } from "./data/nav";
 
-function InboxView() {
-  const { issues, selected, viewMode, controls } = useStore();
-  // One narrowed set for both layouts — the workspace header drives them together.
-  const visible = visibleIssues(issues, controls("inbox"));
-
-  // Board layout: the kanban fills the panel; selecting a card opens the issue
-  // (detail + collapsible context) full-width — deselect returns to the board.
-  if (viewMode("inbox") === "board") {
-    if (selected) return <IssueDetail issue={selected} />;
-    return (
-      <DetailPane>
-        <Board issues={visible} />
-      </DetailPane>
-    );
-  }
-
-  // List layout: the grouped inbox, the activity detail, and the issue's details
-  // in the shared right-hand context pane. On a phone those are three steps
-  // rather than three columns — the inbox is the screen until you open an issue.
+/**
+ * The phone's way into a destination's subpages.
+ *
+ * Subpages navigate from the rail, which the phone shell doesn't mount — and the
+ * bottom bar gives a destination one slot, which lands on its first subpage. So
+ * without this, Triggers and Issues are simply unreachable on a phone: the bar
+ * tap goes to Library and Runs, and the overflow sheet only lists the
+ * destinations that *didn't* get a slot.
+ *
+ * A scrolling tab strip is the same control Settings already uses for exactly
+ * this reason, and the same one the tabbed pages inside these subpages use — so
+ * it costs the reader no new vocabulary.
+ */
+function SubpageTabs() {
+  const { view, subview, openSubview, isMobile } = useStore();
+  const subpages = navItems.find((n) => n.id === view)?.subpages;
+  if (!isMobile || !subpages?.length) return null;
   return (
-    <SplitView mobile={selected ? "detail" : "list"}>
-      <Inbox issues={visible} />
-      {selected ? <IssueDetail issue={selected} /> : <EmptyDetail>Select an issue from the inbox.</EmptyDetail>}
-    </SplitView>
+    <TabStrip
+      ariaLabel={`${navItems.find((n) => n.id === view)?.label ?? ""} sections`}
+      segments={subpages.map((sp) => ({ id: sp.id, label: sp.label }))}
+      value={subview ?? defaultSubpage(view) ?? subpages[0].id}
+      onChange={(id) => openSubview(view, id)}
+    />
   );
 }
 
 function Body() {
-  const { view } = useStore();
+  const { view, subview } = useStore();
   return (
-    <div key={view} className="animate-in fade-in-0 duration-200 ease-out flex min-h-0 flex-1">
+    // No enter animation on a view swap, and no `key={view}` to force one.
+    //
+    // Navigation is reached from the rail, the bottom bar and ⌘K, dozens of times
+    // a session, and a 200ms fade in front of each one is 200ms before the thing
+    // you asked for is readable. Motion earns its place by explaining a spatial
+    // relationship or a state change; a whole-view swap has neither to explain —
+    // the content simply is different now, and the breadcrumb and the nav's active
+    // state already say why. The tab strips inside individual views keep their
+    // fades, because there the surrounding frame stays put and the fade is what
+    // marks which part changed.
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <SubpageTabs />
+      <div className="flex min-h-0 min-w-0 flex-1">
       {view === "home" && <HomeView />}
-      {view === "activity" && <ActivityView />}
-      {view === "inbox" && <InboxView />}
-      {view === "workflows" && <WorkflowsView />}
-      {view === "review" && <ReviewView />}
-      {view === "audit" && <AuditView />}
-      {view === "manage" && <ManageView />}
-      {view === "administration" && <AdministrationView />}
-      {view === "users" && <UsersView />}
-      {view === "surfaces" && <SurfacesView />}
+      {/* A destination with subpages branches here, *before* its views render, so
+          neither has to know the other exists — WorkflowsView keeps its tree,
+          breadcrumb trail, multi-select and undo without a tab strip bolted on
+          above them. A null `subview` means "the first one" (`defaultSubpage`),
+          which is what arriving from the bottom bar or ⌘K leaves it as. */}
+      {view === "workflows" && (subview === "triggers" ? <TriggersView /> : <WorkflowsView />)}
+      {view === "activity" && (subview === "issues" ? <IssuesView /> : <ActivityView />)}
+      {view === "governance" && <GovernanceView />}
       {view === "runners" && <RunnersView />}
       {view === "builder" && <WorkflowBuilder />}
       {view === "settings" && <SettingsContent />}
+      </div>
     </div>
   );
 }
@@ -88,8 +94,18 @@ const rectOf = (el: Element): Rect => {
 type Morph = { source: Rect; target: Rect; grown: boolean; animating: boolean };
 
 // Grow duration; kept in sync with the inline transition below and the phase timer.
-const MORPH_MS = 560;
-const EASE = "cubic-bezier(0.4, 0, 0.2, 1)";
+// 480ms rather than the 560ms this started at: a strong ease-out spends most of
+// its distance early, so the morph reads as *longer* than the number suggests, and
+// 480 puts it back inside the 200–500ms a surface this size should take.
+const MORPH_MS = 480;
+// A strong ease-out. The previous curve was cubic-bezier(0.4, 0, 0.2, 1) — an
+// ease-in-*out*, which spends its first 100ms barely moving. That is the wrong
+// shape for something arriving: it delays the exact moment the user is watching,
+// and on the app's first impression at that.
+const EASE = "cubic-bezier(0.23, 1, 0.32, 1)";
+// The content panel's corner radius (`rounded-2xl`), repeated here because the
+// clip-path has to round its own corners to match while it is clipping them.
+const PANEL_RADIUS = 16;
 
 const prefersReducedMotion = () =>
   typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -120,39 +136,60 @@ function Workspace({ morph }: { morph: Morph | null }) {
   const { bordersEnabled, isMobile } = useStore();
   const grown = morph?.grown ?? false;
   const animating = morph?.animating ?? false;
-  const rect = morph ? (grown ? morph.target : morph.source) : null;
 
-  // While morphing, the content panel is lifted out of flow and its box is
-  // animated between the login card's rect and its own; `overflow: hidden` + a
-  // fixed-size inner wrapper means the content is clip-revealed (a real
-  // transform) rather than scaled. Transitions are gated on `animating` (not
-  // `grown`) so it plays in either direction — grow on sign-in, shrink on
-  // sign-out — with the sidebar/content fading with the panel size.
-  const mainStyle: CSSProperties | undefined =
-    morph && rect
-      ? {
-          position: "fixed",
-          margin: 0,
-          top: rect.top,
-          left: rect.left,
-          width: rect.width,
-          height: rect.height,
-          zIndex: 3,
-          transition: animating
-            ? `top ${MORPH_MS}ms ${EASE}, left ${MORPH_MS}ms ${EASE}, width ${MORPH_MS}ms ${EASE}, height ${MORPH_MS}ms ${EASE}`
-            : "none",
-        }
-      : undefined;
-  const innerStyle: CSSProperties | undefined = morph
+  // While morphing, the content panel is lifted out of flow and driven between the
+  // login card's rect and its own. The clip-reveal is the point — the content must
+  // not squash or scale, it must be *uncovered* — but the way to get one is not to
+  // animate the box.
+  //
+  // The panel is laid out at its full (target) rect for the whole morph and never
+  // resized. Two compositor-friendly properties do the work instead:
+  //
+  //   • `transform: translate(…)` carries it to where the login card is. Transform
+  //     never touches layout, so nothing inside the panel reflows on any frame.
+  //   • `clip-path: inset(…)` eats the difference in size from the right and the
+  //     bottom, so what remains visible is exactly the card's rect.
+  //
+  // Together those are indistinguishable from animating top/left/width/height,
+  // which is what this did first — four layout properties on the entire app shell,
+  // recomputing layout for every descendant, 60 times a second, on the first thing
+  // anyone sees. `clip-path` still costs paint; it does not cost layout, and layout
+  // was the expensive half. It also means the inner wrapper no longer needs a fixed
+  // pixel size to hold its content still, because nothing is moving underneath it.
+  //
+  // Transitions are gated on `animating` (not `grown`) so the same machinery plays
+  // in either direction — grow on sign-in, shrink on sign-out — with the sidebar
+  // and content fading with it.
+  const dx = morph ? morph.source.left - morph.target.left : 0;
+  const dy = morph ? morph.source.top - morph.target.top : 0;
+  const clipRight = morph ? Math.max(0, morph.target.width - morph.source.width) : 0;
+  const clipBottom = morph ? Math.max(0, morph.target.height - morph.source.height) : 0;
+
+  const mainStyle: CSSProperties | undefined = morph
     ? {
+        position: "fixed",
+        margin: 0,
+        top: morph.target.top,
+        left: morph.target.left,
         width: morph.target.width,
         height: morph.target.height,
+        zIndex: 3,
+        transform: grown ? "translate(0px, 0px)" : `translate(${dx}px, ${dy}px)`,
+        clipPath: grown
+          ? `inset(0 0 0 0 round ${PANEL_RADIUS}px)`
+          : `inset(0 ${clipRight}px ${clipBottom}px 0 round ${PANEL_RADIUS}px)`,
+        transition: animating ? `transform ${MORPH_MS}ms ${EASE}, clip-path ${MORPH_MS}ms ${EASE}` : "none",
+        willChange: "transform, clip-path",
+      }
+    : undefined;
+  const innerStyle: CSSProperties | undefined = morph
+    ? {
         opacity: grown ? 1 : 0,
-        transition: animating ? "opacity 0.36s ease 0.14s" : "none",
+        transition: animating ? `opacity 0.32s ease ${MORPH_MS * 0.25}ms` : "none",
       }
     : undefined;
   const sidebarStyle: CSSProperties | undefined = morph
-    ? { opacity: grown ? 1 : 0, transition: animating ? "opacity 0.4s ease 0.1s" : "none" }
+    ? { opacity: grown ? 1 : 0, transition: animating ? "opacity 0.34s ease 0.08s" : "none" }
     : undefined;
 
   // Two shells, one tree. On a phone the rail is replaced by a bottom bar (nearer

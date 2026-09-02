@@ -10,11 +10,11 @@
  * Fields every domain model carries so its origin is never ambiguous.
  *
  * - `id` is namespaced (`${connectorId}:${sourceId}`) so two instances of the same
- *   connector type (e.g. two A360 Control Rooms) can surface the same vendor id
+ *   connector type (e.g. two tenants of one vendor) can surface the same vendor id
  *   without colliding.
  * - `sourceId` preserves the raw vendor id for round-trips.
- * - `platform` is the connector *type* (e.g. "automation-anywhere").
- * - `connectorId` is the connector *instance* (e.g. "a360-prod-eu").
+ * - `platform` is the connector *type* (e.g. "acme-cloud").
+ * - `connectorId` is the connector *instance* (e.g. "acme-prod-eu").
  */
 export type SourceStamped = {
   id: string;

@@ -6,13 +6,13 @@ import { RailTooltip } from "./RailTooltip";
 /** A pinned "open page" in the sidebar — one per opened issue. Colour-coded by
  *  the issue's assignee. Click to reopen; the × (on hover) closes/unpins it. */
 export function OpenItem({ issue, expanded }: { issue: Issue; expanded: boolean }) {
-  const { selectedId, view, select, setView, memberById, closeIssue } = useStore();
+  const { selectedId, section, select, openSubview, memberById, closeIssue } = useStore();
   const accent = memberById(issue.assigneeId)?.accent ?? "gray";
-  const active = view === "inbox" && selectedId === issue.id;
+  const active = section === "activity/issues" && selectedId === issue.id;
 
   const open = () => {
     select(issue.id);
-    setView("inbox");
+    openSubview("activity", "issues");
   };
   const close = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -20,7 +20,24 @@ export function OpenItem({ issue, expanded }: { issue: Issue; expanded: boolean 
   };
 
   return (
-    <div className="group relative flex w-full items-center">
+    // `rail-pin` fades and scales the row in as it is pinned (see app.css). It is
+    // an *entrance only*, and the asymmetry is the decision rather than an omission:
+    //
+    //  • Arriving is unbidden. You open an issue in the main panel and a row
+    //    materialises in your periphery, which is the one genuinely jarring change
+    //    the rail makes. Nothing below it moves, because this group is the last
+    //    thing in a `flex-1` scroll region — so a fade needs no height animation
+    //    and no clipping to be complete.
+    //  • Leaving is not. You hover this row, its × appears, you click it: a
+    //    dismissal you already decided, with the cursor on the target, where an
+    //    instant removal reads as crisp rather than abrupt.
+    //
+    // A leaving animation would also have to fold the row's height to bridge the
+    // rows below sliding up, and folding a height means `overflow: hidden` on this
+    // box — which would clip the collapsed rail's tooltip, since it escapes to
+    // `left: 100%`. Fading without folding is worse than doing nothing: the row
+    // would fade for its whole duration and *then* everything below would jump.
+    <div className="rail-pin group relative flex w-full items-center">
       <button
         type="button"
         onClick={open}

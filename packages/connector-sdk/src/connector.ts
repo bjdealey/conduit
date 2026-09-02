@@ -23,9 +23,9 @@ export type SyncResult = {
 
 /** Lifecycle + identity every connector implements. */
 export interface Connector {
-  /** Instance id, e.g. "a360-prod-eu". */
+  /** Instance id, e.g. "acme-prod-eu". */
   readonly id: string;
-  /** Connector type / platform, e.g. "automation-anywhere". */
+  /** Connector type / platform, e.g. "acme-cloud". */
   readonly type: string;
   /** Capabilities this connector declares. */
   readonly capabilities: Capability[];

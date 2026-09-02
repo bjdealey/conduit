@@ -442,7 +442,14 @@ export function SearchFilterField({
         )}
       </div>
 
-      {open && suggestible && (
+      {/* A panel with nothing to suggest says nothing.
+          While suggesting, the panel is an offer the typing raised — not something
+          you asked for — so "Nothing matches." lands as a verdict on the *search*,
+          which is at that moment busy matching rows behind it. Typing a runner name
+          narrowed the stream to four runs and put "Nothing matches." over the list
+          saying otherwise. Browsing is the opposite case: you opened the list
+          deliberately, and an empty one has to admit it. */}
+      {open && suggestible && (mode === "browse" || rows.length > 0) && (
         <div
           className="pop-in absolute flex flex-col rounded-xl border-border-default border-[0.5px] bg-page"
           style={{

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ArrowUpRight, MessageSquare, ShieldCheck } from "lucide-react";
 import {
   AWAITING_REVIEW,
@@ -13,6 +13,7 @@ import { flattenSteps } from "../data/actions";
 import { WorkflowStatusChip } from "./Badges";
 import { Button } from "./Button";
 import { Avatar } from "./Avatar";
+import { Reveal } from "./Reveal";
 import { SplitView, Pane, DetailPane, ContextPane, EmptyDetail, PANE_WIDTH } from "./layout/SplitView";
 import { isNarrowed, matchesQuery } from "../lib/workspace";
 
@@ -55,18 +56,37 @@ function Group({
   onSelect: (id: string) => void;
 }) {
   const { memberById } = useStore();
-  if (items.length === 0) return null;
+
+  // A group used to `return null` the moment it emptied, which is the queue's most
+  // jarring frame: approving the last submission in a group deleted its heading,
+  // its blurb and its row at once, and every group below jumped up to fill the
+  // hole — while the reviewer was still looking at where they had just clicked.
+  //
+  // The row itself needs no exit, and deliberately doesn't get one: approving
+  // *relocates* a submission (In review → Approved) rather than removing it, and
+  // it carries its selection highlight into its new group, which already says
+  // where it went. Fading it out would claim it had gone away.
+  //
+  // The last non-empty contents are held so there is something to animate closed;
+  // the counts read from `shown` for the same reason, or the heading would flash
+  // "0" on its way out.
+  const open = items.length > 0;
+  const lastItems = useRef<Workflow[]>(items);
+  if (open) lastItems.current = items;
+  const shown = open ? items : lastItems.current;
+
   return (
+    <Reveal open={open}>
     <div className="mb-3 flex flex-col gap-0.5">
       <div className="flex items-center gap-2 px-2.5 py-1.5">
         <WorkflowStatusChip status={status} />
-        <span className="text-[0.72rem] text-tertiary-foreground">{items.length}</span>
+        <span className="text-[0.72rem] text-tertiary-foreground">{shown.length}</span>
       </div>
       {/* Whose move it is, under the heading it belongs to. */}
       {GROUP_BLURB[status] && (
         <p className="px-2.5 pb-1.5 text-[0.7rem] text-tertiary-foreground">{GROUP_BLURB[status]}</p>
       )}
-      {items.map((w) => {
+      {shown.map((w) => {
         const active = w.id === selectedId;
         const author = memberById(w.submittedBy ?? w.ownerId);
         return (
@@ -89,6 +109,7 @@ function Group({
         );
       })}
     </div>
+    </Reveal>
   );
 }
 
@@ -244,7 +265,7 @@ function SubmissionContext({ workflow }: { workflow: Workflow }) {
 /** Review — submissions waiting on a professional, and the moves they can make. */
 export function ReviewView() {
   const { workflows, controls, selectedWorkflowId, selectWorkflow, allowed } = useStore();
-  const state = controls("review");
+  const state = controls("governance/review");
 
   // Anything mid-lifecycle belongs here; Draft doesn't, because nobody has handed
   // it over yet, and Published/Paused are past the queue.

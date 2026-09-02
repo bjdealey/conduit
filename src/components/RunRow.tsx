@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowUpRight, ChevronRight, Cpu, Workflow as WorkflowIcon } from "lucide-react";
 import { explainRequirements, pickRunner } from "@conduit/domain";
 import { useStore } from "../store";
-import { runners } from "../data/runners";
 import type { Run } from "../data/types";
 import { RunStateChip } from "./Badges";
 import { ActivityFeed } from "./ActivityFeed";
+import { Reveal } from "./Reveal";
 
 /**
  * Where a run was placed, and why.
@@ -15,14 +15,18 @@ import { ActivityFeed } from "./ActivityFeed";
  * one line is the whole difference from a device list — the choice is visible and
  * challengeable rather than someone's undocumented habit.
  */
-function placementOf(run: Run, requirements: Parameters<typeof pickRunner>[0] | undefined) {
-  const placed = run.runnerId ? runners.find((r) => r.id === run.runnerId) : undefined;
+function placementOf(
+  run: Run,
+  requirements: Parameters<typeof pickRunner>[0] | undefined,
+  pool: Parameters<typeof pickRunner>[1],
+) {
+  const placed = run.runnerId ? pool.find((r) => r.id === run.runnerId) : undefined;
   const why = requirements ? explainRequirements(requirements) : "";
   if (placed) return { label: placed.name, rationale: `Running on ${placed.name} — ${why}` };
   if (!requirements) return null;
   // Not placed yet, so this is a proposal against the pool as it stands. The arrow
   // keeps that distinction visible: a queued run has not landed anywhere.
-  const { runner, runnerClass, rationale } = pickRunner(requirements, runners);
+  const { runner, runnerClass, rationale } = pickRunner(requirements, pool);
   return { label: runner ? `→ ${runner.name}` : `waiting · ${runnerClass}`, rationale };
 }
 
@@ -32,10 +36,19 @@ function placementOf(run: Run, requirements: Parameters<typeof pickRunner>[0] | 
  *  contexts (Activity) to surface the workflow name; omit it inside a single
  *  workflow's history. */
 export function RunRow({ run, showWorkflow = false }: { run: Run; showWorkflow?: boolean }) {
-  const { select, setView, workflowById, isMobile } = useStore();
+  const { select, openSubview, workflowById, isMobile, runners } = useStore();
   const [open, setOpen] = useState(false);
+  // Never-opened rows don't render their body at all. <Reveal> has to keep its
+  // children mounted to be able to animate them closed, and a run's body carries
+  // the whole log — so without this an Activity list of 200 runs would put 200
+  // logs in the DOM whether or not anyone opened one. Same gate the library tree
+  // uses on its branches, for the same reason.
+  const [everOpened, setEverOpened] = useState(false);
+  useEffect(() => {
+    if (open) setEverOpened(true);
+  }, [open]);
   const workflow = showWorkflow ? workflowById(run.workflowId) : undefined;
-  const placement = placementOf(run, workflowById(run.workflowId)?.requirements);
+  const placement = placementOf(run, workflowById(run.workflowId)?.requirements, runners);
   const timing = `${run.startedAt} · ${run.duration}`;
 
   return (
@@ -94,44 +107,53 @@ export function RunRow({ run, showWorkflow = false }: { run: Run; showWorkflow?:
           <span className="shrink-0 font-departure-mono text-[0.65rem] text-tertiary-foreground">{timing}</span>
         )}
       </button>
-      {open && (
+      {/* The chevron beside this row already animates its quarter-turn, so the
+          disclosure it announces should move too — it used to snap, which read as
+          the affordance and the content disagreeing about whether anything
+          happened. <Reveal> is the app's answer to exactly this and is already
+          carrying the library tree. */}
+      <Reveal open={open}>
         <div className="px-4 pb-4 pt-1">
-          {placement && (
-            <p className="mb-3 flex items-center gap-1.5 text-body-sm text-tertiary-foreground">
-              <Cpu size={13} strokeWidth={1.8} className="shrink-0" />
-              {placement.rationale}
-            </p>
-          )}
-          {showWorkflow && (
-            <div className="mb-3 flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setView("workflows")}
-                className="focusable inline-flex items-center gap-1 rounded-md bg-component px-2 py-1 text-body-sm text-secondary-foreground transition-colors hover:text-primary-foreground"
-              >
-                <WorkflowIcon size={13} strokeWidth={1.8} />
-                {workflow?.name ?? "Open workflow"}
-              </button>
-              <span className="text-body-sm text-tertiary-foreground">·</span>
-              <span className="text-body-sm text-tertiary-foreground">Triggered by {run.startedBy}</span>
-            </div>
-          )}
-          <ActivityFeed events={run.activity} />
-          {run.issueId != null && (
-            <button
-              type="button"
-              onClick={() => {
-                select(run.issueId!);
-                setView("inbox");
-              }}
-              className="focusable inline-flex items-center gap-1 rounded-md bg-component px-2 py-1 text-body-sm text-secondary-foreground transition-colors hover:text-primary-foreground"
-            >
-              Open incident #{run.issueId}
-              <ArrowUpRight size={14} strokeWidth={1.8} />
-            </button>
+          {everOpened && (
+            <>
+              {placement && (
+                <p className="mb-3 flex items-center gap-1.5 text-body-sm text-tertiary-foreground">
+                  <Cpu size={13} strokeWidth={1.8} className="shrink-0" />
+                  {placement.rationale}
+                </p>
+              )}
+              {showWorkflow && (
+                <div className="mb-3 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => openSubview("workflows", "library")}
+                    className="focusable inline-flex items-center gap-1 rounded-md bg-component px-2 py-1 text-body-sm text-secondary-foreground transition-colors hover:text-primary-foreground"
+                  >
+                    <WorkflowIcon size={13} strokeWidth={1.8} />
+                    {workflow?.name ?? "Open workflow"}
+                  </button>
+                  <span className="text-body-sm text-tertiary-foreground">·</span>
+                  <span className="text-body-sm text-tertiary-foreground">Triggered by {run.startedBy}</span>
+                </div>
+              )}
+              <ActivityFeed events={run.activity} runState={run.state} />
+              {run.issueId != null && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    select(run.issueId!);
+                    openSubview("activity", "issues");
+                  }}
+                  className="focusable inline-flex items-center gap-1 rounded-md bg-component px-2 py-1 text-body-sm text-secondary-foreground transition-colors hover:text-primary-foreground"
+                >
+                  Open incident #{run.issueId}
+                  <ArrowUpRight size={14} strokeWidth={1.8} />
+                </button>
+              )}
+            </>
           )}
         </div>
-      )}
+      </Reveal>
     </div>
   );
 }

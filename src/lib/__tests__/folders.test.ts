@@ -30,7 +30,6 @@ describe("folder tree helpers", () => {
     const added = [...folders, { id: "fld_1", name: "Alerts", parentId: "pub-root", visibility: "public" as const }];
     expect(childFolders(added, "pub-root").map((f) => f.name)).toEqual([
       "Alerts",
-      "Automation Anywhere",
       "Billing",
       "Monitoring",
       "Onboarding",

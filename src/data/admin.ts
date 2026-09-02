@@ -11,8 +11,12 @@ export type PlatformUserStatus = "Active" | "Invited" | "Suspended";
 
 export type PlatformUser = {
   id: string;
-  /** Ties to `members` for avatar + name. */
-  memberId: string;
+  /** Ties to `members` for avatar + name. Absent for an account that has been
+   *  invited but never signed in: there is no profile to tie to yet, and the row
+   *  shows the address the invitation went to. Borrowing another member's id to
+   *  fill the column put someone else's name and face against a shared mailbox on
+   *  the one screen that governs access. */
+  memberId?: string;
   email: string;
   role: Role;
   status: PlatformUserStatus;
@@ -24,7 +28,7 @@ export const platformUsers: PlatformUser[] = [
   { id: "pu_pf", memberId: "pf", email: "priya@conduit.com", role: "professional", status: "Active", lastActive: "12 minutes ago" },
   { id: "pu_jk", memberId: "jk", email: "jonas@conduit.com", role: "professional", status: "Active", lastActive: "an hour ago" },
   { id: "pu_ps", memberId: "ps", email: "paulo@conduit.com", role: "builder", status: "Active", lastActive: "20 minutes ago" },
-  { id: "pu_am", memberId: "ls", email: "finance-ops@conduit.com", role: "consumer", status: "Invited", lastActive: "—" },
+  { id: "pu_am", email: "finance-ops@conduit.com", role: "consumer", status: "Invited", lastActive: "—" },
 ];
 
 export type RoleDef = { id: Role; name: string; description: string; permissions: string };

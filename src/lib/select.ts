@@ -8,7 +8,7 @@ import { matchesQuery, ordered, passesFilter, resolveSort, type WorkspaceState }
    -----------------------------------------------------------------------------
    Applying a page's workspace controls to its rows. Pages whose panes live in one
    file do this inline; this module holds the selectors that more than one
-   component needs, so the panes can't drift apart — the inbox list and the board
+   component needs, so the panes can't drift apart — the issues list and the board
    must always show the same narrowed set.
    ============================================================================= */
 
@@ -22,7 +22,7 @@ const COMPARE: Record<string, (a: Issue, b: Issue) => number> = {
   id: (a, b) => a.id - b.id,
 };
 
-/** Issues narrowed by the inbox's search + filters, in the chosen sort order and
+/** Issues narrowed by the section's search + filters, in the chosen sort order and
  *  direction. Shared by the list pane (<Inbox>) and the kanban (<Board>). */
 export function visibleIssues(issues: Issue[], state: WorkspaceState): Issue[] {
   const rows = issues.filter(
@@ -33,6 +33,6 @@ export function visibleIssues(issues: Issue[], state: WorkspaceState): Issue[] {
       passesFilter(state, "assignee", issue.assigneeId),
   );
 
-  const { id, dir } = resolveSort(state, workspaceControls("inbox", "")?.sorts ?? []);
+  const { id, dir } = resolveSort(state, workspaceControls("activity/issues", "")?.sorts ?? []);
   return ordered(rows, dir, COMPARE[id] ?? COMPARE.priority);
 }

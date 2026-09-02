@@ -19,9 +19,9 @@ import {
 
 /** Narrow the aggregate result to a subset of connectors. */
 export type BotFilter = {
-  /** Connector type / platform, e.g. "automation-anywhere". */
+  /** Connector type / platform, e.g. "acme-cloud". */
   platform?: string;
-  /** Connector instance id, e.g. "a360-prod-eu". */
+  /** Connector instance id, e.g. "acme-prod-eu". */
   connectorId?: string;
 };
 

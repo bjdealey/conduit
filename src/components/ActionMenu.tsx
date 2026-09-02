@@ -54,6 +54,12 @@ export type MenuPanel = {
   onBack?: () => void;
   /** Show the panel's items in a scrolling box (long destination lists). */
   scroll?: boolean;
+  /** What to say when there are no items, in *this* panel's terms. Opt-in: a panel
+   *  whose `note` already explains why it offers nothing — the read-only refusal —
+   *  must not also assert a generic emptiness. It read "Nowhere to put it." under
+   *  an explanation about mirrored workflows, which answers a question nobody asked
+   *  and implies a move was refused rather than the whole row being read-only. */
+  empty?: string;
 };
 
 function Item({ item, onDone, keyboard }: { item: ActionItem; onDone: () => void; keyboard: boolean }) {
@@ -150,6 +156,10 @@ export function ActionMenu({
     left?: number;
     right?: number;
     origin: string;
+    /** Opening upward, because there wasn't room below. Drives the enter
+     *  animation's direction as well as the transform origin — a flipped panel
+     *  has its trigger *underneath* it, so it must rise into place. */
+    flip: boolean;
   } | null>(null);
 
   const setOpen = (next: boolean) => {
@@ -188,6 +198,7 @@ export function ActionMenu({
       // yet keeps the panel aligned whatever it ends up containing.
       ...(align === "right" ? { right: Math.max(GAP, window.innerWidth - r.right) } : { left: Math.max(GAP, r.left) }),
       origin: `${flip ? "bottom" : "top"} ${align}`,
+      flip,
     });
   }, [isOpen, align, panelId]);
 
@@ -263,6 +274,7 @@ export function ActionMenu({
             role="menu"
             aria-label={label}
             onClick={(e) => e.stopPropagation()}
+            data-pop={placement.flip ? "up" : undefined}
             className="pop-in fixed flex flex-col rounded-xl border-border-default border-[0.5px] bg-page p-1.5"
             style={{
               zIndex: 50,
@@ -304,8 +316,8 @@ export function ActionMenu({
               {current.items.map((item) => (
                 <Item key={item.id} item={item} keyboard={!mobile} onDone={() => setOpen(false)} />
               ))}
-              {current.items.length === 0 && (
-                <span className="px-2 py-2 text-body-sm text-tertiary-foreground">Nowhere to put it.</span>
+              {current.items.length === 0 && current.empty && (
+                <span className="px-2 py-2 text-body-sm text-tertiary-foreground">{current.empty}</span>
               )}
             </span>
           </span>

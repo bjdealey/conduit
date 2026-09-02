@@ -13,31 +13,6 @@ import type { LibraryFile } from "./types";
  * In-memory prototype data — edit freely.
  */
 
-const CONNECTOR_CONFIG = `<?xml version="1.0" encoding="UTF-8"?>
-<connector type="automation-anywhere" id="a360-prod-eu">
-  <controlRoom url="https://eu-prod.automationanywhere.digital" />
-  <!-- Pointer only. The credential itself lives in Supabase Vault and is
-       resolved server-side at connect() time; nothing here is a secret. -->
-  <secretRef>conduit/connectors/a360-prod-eu</secretRef>
-  <capabilities>
-    <capability id="workflows" />
-  </capabilities>
-  <sync cadence="15m" pruneMissing="false" />
-</connector>
-`;
-
-const STATUS_MAP = `<?xml version="1.0" encoding="UTF-8"?>
-<!-- Vendor status tokens folded onto our BotState. Anything absent from this
-     map normalises to Unknown, which is an explicit state, not a silent gap. -->
-<statusMap platform="automation-anywhere">
-  <status from="RUNNING"    to="Running" />
-  <status from="COMPLETED"  to="Completed" />
-  <status from="RUN_FAILED" to="Failed" />
-  <status from="QUEUED"     to="Queued" />
-  <status from="DEPLOYED"   to="Running" />
-</statusMap>
-`;
-
 const BILLING_RULES = `<?xml version="1.0" encoding="UTF-8"?>
 <rules scope="billing">
   <threshold name="invoice.autoApprove" currency="GBP" max="2500" />
@@ -65,7 +40,6 @@ working out belongs in **My workflows**, not here.
 - **Billing** — finance-owned flows and the thresholds they read.
 - **Onboarding** — joiner/leaver automation.
 - **Monitoring** — synthetics and the checks that page someone.
-- **Automation Anywhere** — the mirrored estate. Read-only here.
 
 ## House rules
 
@@ -94,24 +68,6 @@ that ties the failure to a runner and a version.
 
 - \`login\` occasionally fails on deploys. Two consecutive failures is the
   real signal; one is not.
-`;
-
-const MIGRATION_NOTES = `# Automation Anywhere — migration notes
-
-These rows are **mirrored**. They are authored in the Control Room and
-reflected here by the connector, which is why they have no steps and can't be
-renamed or deleted from this side: the next sync would overwrite it.
-
-## Order of moves
-
-| Workflow | State | Blocker |
-|---|---|---|
-| Vendor onboarding | Piloting | none |
-| Claims keying | Not started | needs headed runner |
-| FX rate refresh | Migrated | — |
-
-Migration is one attribute on one row, and it's reversible. There is no
-cutover date and there does not need to be one.
 `;
 
 const DRAFT_NOTES = `# Scratch
@@ -164,33 +120,6 @@ export const files: LibraryFile[] = [
   },
   {
     id: "fil_5",
-    name: "a360-prod-eu.xml",
-    folderId: "pub-aa",
-    visibility: "public",
-    ownerId: "jk",
-    updatedAgo: "5 days ago",
-    content: CONNECTOR_CONFIG,
-  },
-  {
-    id: "fil_6",
-    name: "status-map.xml",
-    folderId: "pub-aa",
-    visibility: "public",
-    ownerId: "jk",
-    updatedAgo: "5 days ago",
-    content: STATUS_MAP,
-  },
-  {
-    id: "fil_7",
-    name: "migration-notes.md",
-    folderId: "pub-aa",
-    visibility: "public",
-    ownerId: "pf",
-    updatedAgo: "4 hours ago",
-    content: MIGRATION_NOTES,
-  },
-  {
-    id: "fil_8",
     name: "scratch.md",
     folderId: "prv-drafts",
     visibility: "private",

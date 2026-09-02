@@ -110,9 +110,26 @@ export function SegmentedControl({
   };
 
   const thumb = rects[shownIndex];
+  const dragging = dragIndex !== null;
+
+  // The thumb travels on `transform`, not on `left`. Position is the part that
+  // moves on every frame, and a transform is composited — it never asks the
+  // browser to lay anything out. Only `width` is left as a real property, because
+  // the alternative is `scaleX`, and scaling a rounded card with a shadow visibly
+  // distorts both its corners and its edge. The thumb is absolutely positioned and
+  // childless, so a width transition re-lays-out nothing but itself.
+  //
+  // Duration depends on whether a thumb is under a finger. 200ms is right for a
+  // committed change (a click, a keyboard arrow) — it is a state change worth
+  // seeing. During a drag the same 200ms reads as the thumb lagging the pointer,
+  // which is the one thing a direct-manipulation control must never do, so it
+  // halves. The curve is a strong ease-out either way: the old
+  // cubic-bezier(0.4, 0, 0.2, 1) is an ease-in-out, and its slow start is exactly
+  // the part a dragging thumb cannot afford.
+  const ms = dragging ? 110 : 200;
   const transition = reduceMotion()
     ? undefined
-    : "left 0.22s cubic-bezier(0.4,0,0.2,1), top 0.22s cubic-bezier(0.4,0,0.2,1), width 0.22s cubic-bezier(0.4,0,0.2,1), height 0.22s cubic-bezier(0.4,0,0.2,1)";
+    : `transform ${ms}ms cubic-bezier(0.23, 1, 0.32, 1), width ${ms}ms cubic-bezier(0.23, 1, 0.32, 1)`;
 
   return (
     <div
@@ -131,10 +148,11 @@ export function SegmentedControl({
           aria-hidden
           className="pointer-events-none absolute rounded-md"
           style={{
-            left: thumb.left,
+            left: 0,
             top: thumb.top,
             width: thumb.width,
             height: thumb.height,
+            transform: `translateX(${thumb.left}px)`,
             transition,
             background: solid ? "var(--color-page)" : "var(--color-transparent-hover)",
             boxShadow: solid ? "var(--s-default)" : "none",

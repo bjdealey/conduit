@@ -1,26 +1,51 @@
 # CLAUDE.md — Conduit
 
 Guidance for AI sessions working in this repo. Read this before proposing or writing code for
-the integration layer. The full plan lives in `docs/integration-layer-plan.md`; the pre-existing
-A360 mapping in `docs/structure-map.md`; the vision gap analysis in `docs/vision-alignment.md`.
+the integration layer. The full plan lives in `docs/integration-layer-plan.md`; the vision gap
+analysis in `docs/vision-alignment.md`. (`docs/structure-map.md` maps a legacy A360 Control Room
+and is kept only as historical background — **no A360 connector exists in this repo**; see
+"Vendor independence" below.)
 
 ## Product framing (settled — read this first)
 
-**Conduit is the control plane that replaces the Automation Anywhere Control Room.** It is not the
-execution runtime. Three artefacts, clean boundaries:
+**Conduit is a control plane for automation.** It is not the execution runtime. Three artefacts,
+clean boundaries:
 
 | Plane | Owns | Lives |
 |---|---|---|
 | **Control plane — Conduit** | Authoring, the library, scheduling, **distribution**, the runner pool, credentials, node types, activity, audit, governance | This repo |
 | **Execution plane — runners** | Executing a workflow and reporting events. Stateless, ephemeral, cross-platform | Separate artefact |
-| **Migration bridge — connectors** | Normalising other platforms (A360 first) into our domain so both estates render through one UI | `packages/connector-sdk`, `connectors/*` |
+| **Integration bridge — connectors** | Normalising other platforms into our domain so every estate renders through one UI | `packages/connector-sdk`, `connectors/*` (**currently empty**) |
 
-**Conduit replaces the Control Room by first wrapping it.** The A360 connector makes Conduit a
-mirror of the incumbent estate; native workloads land in the same library, distinguished only by
-`Workflow.platform`. Migration is one attribute on one row, reversible, no cutover.
+### Vendor independence (settled — this reverses an earlier decision)
 
-**Parity where the Control Room is right; deliberate inversion where it is wrong.** Three inversions
-carry the product, and none of them may be quietly un-done:
+**No connector ships with Conduit, and no vendor is named anywhere in the product.** The repo
+previously carried an Automation Anywhere A360 connector and the strategy "replace the Control
+Room by first wrapping it". That connector has been **deleted in full** — the package, the
+`automation-anywhere` platform value, the mirrored seed rows, and the framing.
+
+What survives, and matters, is the *mechanism*: `packages/connector-sdk`, the capability
+services, and the `connector_instances` registry. A connector is still how another platform's
+estate is mirrored into this library, still distinguished only by `Workflow.platform`, and
+migration is still one reversible attribute on one row. There simply isn't one in the box.
+
+Consequences to respect:
+
+- **`WorkflowPlatform` is `string`, not a union.** Connectors are added at runtime with no
+  frontend change, so the set of platforms is *data the UI reads off the estate*
+  (`platformsIn`), never a list it is compiled against. `platformLabel` humanises an unknown id
+  rather than rendering `undefined`, so a new connector reads correctly with no edit.
+- **`defineKnownTypes` (`supabase/functions/_shared/registry.ts`) is deliberately empty.** A
+  `connector_instances` row of an unregistered type is reported as `skipped`, never silently
+  dropped.
+- **Don't reintroduce a vendor name** in a type, a label, a seed row, or a doc example. Use a
+  neutral placeholder (`acme-cloud`) where an example needs one.
+- UI that only makes sense with two estates — the Platform and Migration filters, Home's
+  migration breakdown — **appears only when a second platform is actually present**. On a
+  native-only install those controls narrow nothing and assert a move that never happened.
+
+**Parity where the incumbent tools are right; deliberate inversion where they are wrong.** Three
+inversions carry the product, and none of them may be quietly un-done:
 
 1. **No assignment.** Workflows declare `requirements`; `pickRunner` places them. Never add a UI
    that pins a workflow to a named machine — not on a schedule, not on a runner, not anywhere.
@@ -33,10 +58,13 @@ carry the product, and none of them may be quietly un-done:
 ## What this repo is today
 
 A frontend-only interactive prototype: **React 18 + TypeScript (strict, ESM) + Vite**, deployed
-as a static site to GitHub Pages (`.github/workflows/deploy.yml`). All data is **in-memory seed
-data** in `src/data/*.ts`, served synchronously through a React context store (`src/store.tsx`).
-There is **no backend, no HTTP client, no secrets handling, and no DI** yet — the integration
-layer introduces all of them.
+as a static site to GitHub Pages (`.github/workflows/deploy.yml`). Data is **in-memory** in
+`src/data/*.ts`, served through a React context store (`src/store.tsx`).
+
+**The app boots empty.** `src/data/dataset.ts` is the single place that answers "what does the
+app start with": `CLEAN` (the default) is a fresh install, `SAMPLE` is the demo estate behind
+the Settings → Integrations "Sample data" switch. The seed modules themselves are untouched and
+are still what the tests read. See "Stage 12" below before changing how any view gets its data.
 
 **Backend = Supabase** (decided). Runtime: **Edge Functions** (Deno + TypeScript). Read API:
 **PostgREST** over normalised domain tables with RLS. Secrets: **Supabase Vault**. Config/registry:
@@ -53,8 +81,8 @@ Frontend ──▶ Internal API ──▶ Capability services ──▶ Connecto
 
 - **The frontend never calls a vendor API.** It calls our API, which returns our domain models.
 - Vendor systems are **pluggable connectors** — added, enabled, disabled, or removed **at runtime,
-  with no frontend change**. First connector: Automation Anywhere A360. Then Azure DevOps, Jira,
-  ServiceNow, SQL Server, custom REST.
+  with no frontend change**. None ships in the box (see "Vendor independence"); candidates are
+  Azure DevOps, Jira, ServiceNow, SQL Server, custom REST.
 - **Capabilities, not vendor identity, drive the UI.** Each connector declares which capabilities
   it supports; the UI enables features from the declared-capability union, never from the
   connector's type.
@@ -68,8 +96,8 @@ Every connector implements a lifecycle interface; it implements one capability-p
 
 ```ts
 interface Connector {
-  readonly id: string;             // instance id, e.g. "a360-prod-eu"
-  readonly type: string;           // connector type / platform, e.g. "automation-anywhere"
+  readonly id: string;             // instance id, e.g. "acme-prod-eu"
+  readonly type: string;           // connector type / platform, e.g. "acme-cloud"
   readonly capabilities: Capability[];
   connect(): Promise<void>;
   disconnect(): Promise<void>;
@@ -95,12 +123,12 @@ and guards the domain boundary. Adding a connector must never require editing a 
 Follow the canonical shape — normalised, flat, **source system always present**:
 
 ```json
-{ "id": "123", "title": "Invoice Workflow", "state": "Running", "platform": "automation-anywhere", "owner": "Brad" }
+{ "id": "123", "title": "Invoice Workflow", "state": "Running", "platform": "acme-cloud", "owner": "Brad" }
 ```
 
 Every domain model additionally carries `sourceId` (raw vendor id), `platform` (connector type),
 and `connectorId` (connector instance); `id` is namespaced as `${connectorId}:${sourceId}` so
-two instances of the same connector type (e.g. two A360 Control Rooms) never collide. Domain
+two instances of the same connector type (e.g. two tenants of one vendor) never collide. Domain
 models live in `packages/domain` and are shared by frontend and backend. Vendor DTOs never leave
 the adapter.
 
@@ -135,11 +163,12 @@ the adapter.
 - Domain types centralised (today `src/data/types.ts`; target `packages/domain`); seed data in
   `src/data/*.ts`; helpers in `src/lib/*.ts`.
 - String ids with a type prefix: `wf_`, `run_`, `cred_`, `pkg_`, `sch_`, `evt_`.
-- Capability ids and connector `type`/`platform` values are **lowercase-kebab** (`automation-anywhere`).
+- Capability ids and connector `type`/`platform` values are **lowercase-kebab** (`acme-cloud`).
 - Postgres tables/columns are `snake_case`; the read layer maps them to the `camelCase` domain DTOs.
 - **One word for the central object: workflow.** UI label, domain type, capability id, cache
-  table and Edge Function are all `workflow(s)`. `bot` was the incumbent Control Room's word for
-  the thing Conduit replaces; it survives only inside the A360 adapter, describing *their* payloads.
+  table and Edge Function are all `workflow(s)`. `bot` was an incumbent tool's word for the same
+  thing; with the A360 connector gone it appears nowhere in this repo, and a connector that meets
+  it on the wire should keep it inside its own adapter, describing *that vendor's* payloads.
 
 ## Guardrails for sessions
 
@@ -184,47 +213,42 @@ Stack-agnostic TypeScript, no Supabase/vendor/frontend code yet. Tested with **V
 **Not yet built after stage 1** (do not assume these exist): any real connector, `SecretStore`, the
 other seven capability services, Supabase wiring, and any frontend change.
 
-## Implemented so far — stage 2: A360 connector + SecretStore
+## Implemented so far — stage 2: SecretStore (the A360 connector is gone)
 
-The `SecretStore` seam and the first real connector (**Automation Anywhere A360**), wired to the
-stage-1 interfaces. Still no Supabase/vendor-network/frontend code (tests use fakes).
+⚠️ **This stage originally shipped an Automation Anywhere A360 connector. It has been deleted
+in full** (see "Vendor independence" at the top). What remains from stage 2 is the `SecretStore`
+seam and the connector-facing contracts the deleted connector was the first to exercise. They are
+still authoritative — the next connector written must satisfy them.
 
-**Layout**
-- `packages/connector-sdk` gained `SecretStore` (interface + `InMemorySecretStore` for dev/tests +
+**Layout (what survives)**
+- `packages/connector-sdk` — `SecretStore` (interface + `InMemorySecretStore` for dev/tests +
   `SupabaseVaultSecretStore` over an injected `VaultClient` — no Supabase dep) and
   `queryCapability()` (structured supported/unsupported, never throws).
-- `connectors/automation-anywhere` — the A360 connector: `config` (non-secret, holds `secretRef`),
-  `http` (injectable `HttpTransport`, default `fetch`), `endpoints` (paths, TODO-flagged),
-  `session` (token acquire/refresh/expiry), `map` (status normalisation + `mapA360Workflow`),
-  `connector` (`A360Connector`), and `a360ConnectorFactory(secrets, deps?)`.
+- `connectors/` — **empty.** The npm workspace glob and the Vitest test glob still point at it, so
+  a new connector package is a directory, not a build change.
 
-**Contract details that concretized (authoritative for later stages)**
-- **Declare only implemented capabilities.** A360 declares `[workflows]` only; asking for anything else
-  returns `queryCapability(...).supported === false`, never an exception.
+**Contract details that remain authoritative for any connector**
+- **Declare only implemented capabilities.** Asking a connector for one it doesn't declare returns
+  `queryCapability(...).supported === false`, never an exception.
 - **Secrets are write-only through the store.** `SecretStore.get()` is server-side only;
-  `describe()` is the read path and returns `{ ref, present, keys, updatedAt }` — field names, never
-  values. Instance `config` holds a `secretRef` pointer only.
-- **No secret is serialisable.** Credentials live in the session behind ECMAScript `#private`
-  fields (non-enumerable, never `JSON.stringify`-ed); `A360Connector.toJSON()` additionally
-  allow-lists only `{ id, type, capabilities, controlRoomUrl, secretRef }`. A test asserts no
-  secret value appears on any public surface.
-- **Per-instance credential scoping.** A connector only ever resolves its own `config.secretRef`;
-  two Control Rooms cannot read each other's credentials, and their workflows stay attributed by
-  `connectorId` (ids namespaced `${connectorId}:${sourceId}`).
-- **Token lifecycle.** `A360Session` caches a token with an expiry taken from the JWT `exp`
-  (fallback TTL configurable), refreshes on expiry with no user re-entry (API-key re-auth or OAuth
-  refresh grant). A **refresh failure surfaces as an unhealthy `health()`**, so `WorkflowService`'s
-  health-gate skips the connector rather than crashing the listing path.
-- **Status normalisation.** `normalizeStatus()` folds A360 status tokens onto `BotState`; anything
-  unrecognised or absent maps to `Unknown` (an explicit state, not a silent partial).
-- **Testing seams.** Inject `HttpTransport` and a `now()` clock to test refresh/expiry without a
-  live Control Room. Only the fake transport carries vendor-shaped payloads.
+  `describe()` is the read path and returns `{ ref, present, keys, updatedAt }` — field names,
+  never values. Instance `config` holds a `secretRef` pointer only.
+- **No secret is serialisable.** Credentials belong behind ECMAScript `#private` fields
+  (non-enumerable, never `JSON.stringify`-ed), and a connector's `toJSON()` should allow-list the
+  non-secret fields explicitly rather than excluding the secret ones.
+- **Per-instance credential scoping.** A connector only ever resolves its own `config.secretRef`,
+  so two instances of one type cannot read each other's credentials; their workflows stay
+  attributed by `connectorId` (ids namespaced `${connectorId}:${sourceId}`).
+- **Token lifecycle.** Cache a token with an expiry taken from the JWT `exp` (configurable
+  fallback TTL) and refresh on expiry with no user re-entry. A **refresh failure must surface as
+  an unhealthy `health()`**, so `WorkflowService`'s health-gate skips the connector rather than
+  crashing the listing path.
+- **Status normalisation is total.** Fold vendor status tokens onto the domain state; anything
+  unrecognised or absent maps to `Unknown` — an explicit state, not a silent partial.
+- **Testing seams.** Inject an `HttpTransport` and a `now()` clock so refresh/expiry are testable
+  with no live upstream. Only the fake transport should ever carry vendor-shaped payloads.
 
-**Open TODO(a360) / TODO(supabase) flags** (endpoints/shapes not verified against a live Control
-Room; do not treat as confirmed): OAuth refresh endpoint+params; workflow-list endpoint + filter schema
-+ list envelope; the auth header (`X-Authorization` vs `Bearer`); the per-workflow status source field;
-workflow `name`/`createdBy` field names; token TTL fallback; and the production Supabase `VaultClient`.
-See the connector source and the stage-2 report for the exact questions.
+**Still open:** the production Supabase `VaultClient` (`TODO(supabase)`).
 
 ## Implemented so far — stage 3: Supabase wiring (all-in)
 
@@ -346,10 +370,10 @@ The third inversion, the naming decision, and the readiness markers. Verified in
 
 **One word: workflow**
 - `Bot` and `Automation` are gone. The domain type, the capability id, `WorkflowProvider` /
-  `WorkflowService`, the A360 mapper, the Postgres cache table, its Edge Function, the API client,
+  `WorkflowService`, the connector mapper, the Postgres cache table, its Edge Function, the API client,
   the store, the library view and the UI label are all `workflow`. Ids moved `aut_` → `wf_`.
-- `bot` survives only inside the A360 adapter, describing *their* payloads — the one place it's
-  still accurate.
+- `bot` survived only inside the A360 adapter, describing *their* payloads. That adapter is gone,
+  so the word now appears nowhere in the repo.
 - **Migrations are append-only.** `0005_rename_bots_to_workflows.sql` renames the table, its
   indexes and its read policy, and unschedules the old cron job before scheduling the renamed one.
   0002 and 0004 were left untouched because they may already have been applied.
@@ -859,3 +883,201 @@ there is unverified until `deno check` runs on deploy.
 the runner images that would carry them, OAuth/credential resolution inside a run (a runner presents
 what its environment holds — there is no per-workflow credential binding yet), retries or resumption
 inside a run, run cancellation, and a scheduler that actually fires `pg_cron` → `runs`.
+
+## Implemented so far — stage 12: vendor independence and a clean slate
+
+Two changes that belong together: the A360 connector is gone, and the app now **boots empty**.
+Verified in a real browser (Chromium): a clean install renders every view with no page errors,
+the Sample data switch restores the demo estate, and 318 tests pass.
+
+**The connector is deleted, the mechanism is not.** `connectors/automation-anywhere` — package,
+tests, workspace link, Edge Function import-map entry and registry factory — is removed, along
+with the `automation-anywhere` platform value, the ten mirrored seed workflows, the "Automation
+Anywhere" folder, its three files, and the mirrored audit entries. `packages/connector-sdk` and
+the capability services are untouched. See "Vendor independence" at the top for the rules this
+imposes; the short version is **don't name a vendor, anywhere.**
+- **`WorkflowPlatform` became `string`.** A closed union meant installing a connector required
+  editing and redeploying the frontend, which contradicts the whole registration design. The UI
+  now reads platforms off the estate (`platformsIn`) and labels an unknown id by humanising it
+  (`platformLabel`), so a new connector needs no edit here.
+- **Two-estate UI is conditional, not deleted.** Home's migration breakdown and the library's
+  Platform/Migration filters appear only when a non-`conduit` platform is actually present.
+  Deleting them would have thrown away the migration story; showing them on a native-only
+  install asserts a move that never happened and offers a filter that narrows nothing.
+- The library's read-only rule for mirrored workflows is **unchanged and still tested** — the
+  fixtures moved into the tests (`MIRRORED_WORKFLOW` in `library.test.ts`) rather than relying on
+  a seed row, which also states the rule's real precondition: it turns on `platform`, not on any
+  particular vendor.
+
+**One place decides what the app boots with** (`src/data/dataset.ts`). `CLEAN` is the default;
+`SAMPLE` is the seed modules, unchanged, behind Settings → Integrations → "Sample data"
+(persisted as `demo-data`).
+- **Empty is not zero.** A freshly set-up platform still has the two visibility roots (the
+  library needs somewhere to file the first thing you author), the four tier definitions, the
+  policy catalogue, and exactly one account — yours, derived from `currentUser`. Everything that
+  is somebody's *data* starts empty.
+- **The seed modules are untouched**, so the tests still read the full sample estate and "what
+  the app boots with" is one decision in one file rather than a property smeared across fifteen.
+- ⚠️ **Eleven components imported `src/data/*` directly at module scope** and so could not see
+  the switch at all. They read from the store now (`runners`, `endUsers`, `schedules`,
+  `eventTriggers`, `credentials`, `packages`, `globalValues`, `surfaces`, `platformUsers`,
+  `licenses`, plus `roleDefs`/`policies`). **Don't reintroduce a module-scope seed import in a
+  component** — whether a collection holds anything is a runtime question now, and a module-scope
+  import answers it once, at load, and is wrong for the rest of the session.
+- `seedConnectedWorkflows(workflows, members)` takes its inputs for the same reason, and
+  `connectedWorkflows` is derived rather than snapshotted so a just-authored workflow appears on
+  the Integrations page as it would through the API.
+- **Switching the dataset resets the selections too.** A selection is an id into a dataset that
+  no longer exists; keeping it points the detail pane at a workflow that isn't in the library,
+  which renders as an empty pane that looks broken rather than as the clean slate it is.
+
+**Empty states are the first screen, not an edge case** (`src/components/EmptyState.tsx`).
+`EmptyState` fills a pane, `EmptyPanel` sits in a dashboard card, `EmptyRow` is a list slot.
+- Each says **what** is missing in the page's own words and offers the one action that fills it —
+  and only when there *is* one. Activity and Audit fill themselves, so they explain instead of
+  offering a button that can do nothing.
+- **An empty collection and a narrowed one must never share a message.** Runners now distinguish
+  "no runners registered" (a new install) from "the pool has scaled to zero" (an autoscaler
+  decision) from "nothing matches the current search" — three different facts that had been one
+  sentence. Manage and Administration got per-tab messages for the same reason: "Nothing to show
+  yet" is true of all nine tabs and useful on none of them.
+- ⚠️ **`SurfacesView` read `surfaces[0]` unguarded** and took the page down on a clean install
+  rather than rendering an empty one. Any view that reads one row out of a collection to drive a
+  whole screen needs the same guard.
+- `SurfacesView`'s local `EmptyState` (for unbuilt prototype tabs) is now `UnbuiltTab`. The two
+  are genuinely different claims — "nobody has written this yet" versus "this workspace holds no
+  data" — and saying which is the point.
+
+**Filter menus take their options from the data** (`ControlFacets` in `data/workspaceControls`).
+Platform and Country used to be built from a compiled-in list and a seed import; both are now
+passed in by `<WorkspaceHeader>` from the store. A filter that offers a country nobody is in is
+worse than no filter.
+
+**You are not a fixture** (`src/data/user.ts`). `currentUser` was a hardcoded person — Keith
+Kennedy — and it was the one piece of someone else's data the clean slate missed, on the first
+screen, next to your work. It is now persisted state seeded from **the address you sign in with**:
+`userFromEmail("ada.lovelace@acme.com")` → "Ada Lovelace", initials "AL". The login screen already
+collected an email and threw it away; wiring it is what turns a gate into setup.
+- **Settings → Profile Name and Email actually save.** `TextInput` now takes either
+  `value`+`onChange` (a field that persists) or `defaultValue` (one that doesn't yet) — most of
+  that page is still shaped-not-wired, and a field that silently discards what you typed is worse
+  than one that is visibly inert.
+- **Initials are derived from the name, never entered** (`initialsOf`), the same rule a file's kind
+  follows: rename yourself and the avatar follows, with nothing to disagree about.
+- ⚠️ **A profile edit must reach the rows that name you**, not just the account menu.
+  `applyProfile` patches `members[me]` and `platformUsers[pu_me]` too — every avatar and assignee
+  resolves through the member row and Administration lists the platform-user row, so without this,
+  renaming yourself leaves the old name on the one screen you'd open to check it worked. Both
+  patches are deliberate no-ops on the sample estate, which has no `me` row: that is a fictional
+  team, and writing your name into it would have the demo claim you authored someone else's work.
+- **`CLEAN` became `cleanDataset(user)`** so the one account a fresh install has is you. `SAMPLE`
+  does not absorb you, for the reason above.
+- A provider button (Google/GitHub/Apple) has no address to offer here, so it signs in as
+  `NEW_USER` and Profile is where that stops being a placeholder. An unset email renders as
+  "No email set" (`emailLine`) rather than a blank second line, and "Not set" in the admin table —
+  an empty cell reads as a value that failed to load rather than one nobody has entered.
+- ⚠️ **`onClick={signIn}` hands the click event to `signIn` as its `email` argument.** The social
+  buttons take `() => signIn()`. TypeScript caught this one; an untyped handler would not have.
+
+## Implemented so far — stage 13: five destinations, and a `Section` key
+
+The rail carried **eleven destinations plus Settings**, and the count was four separate problems
+wearing one shape. Verified in a real browser (Chromium) at 1440×900 and 390×844, on both the
+clean install and the sample estate: every section renders, the console is clean, and 338 tests
+pass.
+
+**What the eleven actually were**
+
+1. **A name collision.** `Users` (end-user session monitoring) and `Administration → Users`
+   (platform accounts) were two nav-level things called Users meaning two populations.
+2. **Template residue.** `readiness.ts` already said it: Users and Surfaces were *"the two
+   surfaces inherited from the marketing template that have no vision counterpart yet"*, both
+   `roadmap`. Surfaces was a frontend-observability product (Events/Keys/Environments/Releases)
+   inside an automation control plane.
+3. **Four queues that are one idea.** Activity, Inbox, Review and Audit — and Review and Audit
+   carried the *identical* role gate, while `ActivityView` already rendered an incidents rail
+   over the same `issues` collection the Inbox showed.
+4. **Manage was two concepts and duplicated Settings.** Schedules and event triggers are *how a
+   workflow starts*; credentials, packages and global values are *what a run consumes*. Meanwhile
+   Settings → Team duplicated Administration → Users/Roles, and Settings → Billing duplicated
+   Administration → Licenses.
+
+**The shape now** — five destinations plus Settings:
+
+| Destination | Subpages |
+|---|---|
+| **Home** | — |
+| **Workflows** | Library · Triggers |
+| **Activity** | Runs · Issues |
+| **Runners** | — |
+| **Governance** | Review · Audit · Administration |
+| *Settings* | Profile · Workspace details · Resources · Alerts · Integrations · Developer |
+
+`View` went from 13 members to 7. Users and Surfaces are **deleted** — views, seed modules, store
+fields and dataset entries. `SurfaceChart` survived as `TimeSeriesChart`: Activity's Insights tab
+("Runs over time") reads it, and a component named for a page that no longer exists names a screen
+nobody can find.
+
+**`Section` is the new key, and it is the load-bearing part** (`src/data/nav.ts`). A section is a
+destination without subpages, or one of a destination's subpages (`"governance/audit"`). Six
+mechanisms were keyed by `View` and are now keyed by this: `workspaceControls`, the store's
+`controls` and `sectionTabs`, `VIEW_MODES`, `CONTEXT_LABEL`, and `readinessOf`.
+- **`View` stopped being the right granularity the moment a destination held more than one
+  screen.** Governance's Review and Audit need different search placeholders, different tab memory
+  and different readiness; one entry per destination gives all three whichever was written last.
+- The type is **derived from the nav table** (`SectionOf<(typeof NAV)[number]>`), so adding a
+  subpage without giving it controls or a readiness is a compile error rather than a screen that
+  silently falls back to its neighbour's. `navItems` is the widened `readonly NavItemDef[]` view of
+  the same table, so consumers see optional `roles`/`capability`/`subpages` rather than keys that
+  exist only on the items declaring them.
+- ⚠️ **`subview` is only a nav subpage on the destinations that declare them.** Settings reuses the
+  same store field for its own page list, so `sectionOf` reads the subview off `navItems` rather
+  than trusting it — an early version minted `"settings/resources"`, a section that exists nowhere,
+  and the first total record indexed by it (`readinessOf` → `READINESS_META[undefined]`) took the
+  titlebar down. A regression test pins that `sectionOf` only ever returns a real section.
+
+**The subpage machinery already existed and had never been used.** `NavItemDef.subpages`,
+`NavGroup`'s chevron-expanded list and `RailFlyout`'s collapsed-rail hover flyout were all built
+and wired to `openSubview`; nothing in `navItems` declared subpages. This spends it.
+- **Clicking a parent goes to its first subpage, not to a bare view.** `setView` clears the
+  subview, which renders that subpage anyway but leaves every row in the group unlit —
+  `defaultSubpage` keeps the rail and the screen in step. Same rule in `BottomNav`.
+- **A destination with subpages is never itself the active row**; one of its subpages always is.
+  Lighting both claims two places at once.
+- The **breadcrumb contributes two crumbs** for such a destination (`Governance › Administration`).
+  "Governance" alone doesn't say whether you're on the review queue or the audit trail.
+
+**Two placements are deliberate.**
+- **Triggers sits under Workflows, not beside Runners.** A trigger is `{workflowId, …}` and its
+  first column is the workflow. Filing *when* something runs next to *the machines it runs on*
+  re-associates the two, which is the habit the no-assignment inversion exists to remove — so the
+  table carries a Placement column reading "Chosen at run time" rather than leaving the gap where
+  a target goes in the tools this replaces.
+- **Schedules and event triggers are one table** with a Kind column. Both answer "what starts this
+  workflow"; the only real difference is cadence-vs-event, which is a value in a row rather than a
+  page you have to be on. An event has no next run and a schedule has no condition, so those cells
+  are an explicit em-dash — a blank reads as a value that failed to load.
+
+**The phone needed a third way in.** Subpages navigate from the rail, which the phone doesn't
+mount, and the bottom bar gives a destination one slot that lands on its first subpage — so
+Triggers and Issues were briefly *unreachable* on a phone. `SubpageTabs` in `App` renders a
+scrolling tab strip on mobile only: the same control Settings already uses for exactly this reason
+(its pages navigate from the rail too), so it costs the reader no new vocabulary. The overflow
+sheet also lists an overflowed destination's subpages as indented rows, so Governance's Audit is
+one tap rather than two.
+
+**Everything is built from the nav table now.** The command palette was a hand-written list of
+destinations beside `navItems` and had drifted into naming screens that no longer existed — the
+worst possible place for that, since the palette is where you go when you can't find something. It
+is generated from `navItems` with the rail's gating, one entry per subpage
+("Go to Governance → Audit").
+
+**Manage's two halves went to the two places they belonged.** The front half is Workflows →
+Triggers; the back half is Settings → **Resources** (Credentials · Packages · Global values).
+Settings dropped Team and Billing, which were placeholders describing what Governance →
+Administration already does. `ManageView.tsx` is deleted.
+
+Naming note: `AUDIT_CATEGORIES` includes a `governance` value, so the Audit tab strip shows a
+"Governance" tab inside the Governance destination. It reads as a category among Lifecycle,
+Execution and Connector rather than a section, so it was left alone — but it is the one echo in
+the scheme.

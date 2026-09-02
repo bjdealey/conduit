@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { ChevronRight, Hash } from "lucide-react";
 import { useStore } from "../store";
-import type { NavItemDef } from "../data/nav";
+import { defaultSubpage, type NavItemDef } from "../data/nav";
 import { ACTIVE_ITEM_STYLE } from "../lib/railStyles";
 import { RailTooltip } from "./RailTooltip";
 import { RailFlyout } from "./RailFlyout";
@@ -29,20 +29,34 @@ export function NavGroup({
   const hasSubs = !!item.subpages?.length;
   const showBadge = typeof badge === "number" && badge > 0;
   const onThisView = view === item.id;
-  // An open issue in the inbox is effectively an active "subpage": when one is
-  // selected, it carries the selection (via its pinned OpenItem), so the Inbox
-  // parent shouldn't also render as selected.
-  const inboxIssueOpen = item.id === "inbox" && selectedId !== null;
-  const parentActive = onThisView && (!hasSubs || subview === null) && !inboxIssueOpen;
+  // Which subpage is showing. A null `subview` means the destination's first one
+  // (`defaultSubpage`) — that is what its router renders — so the rail has to
+  // read it the same way or the open screen would have no row lit.
+  const openSub = onThisView ? subview ?? defaultSubpage(item.id) : null;
+  // An open issue is effectively an active "subpage": when one is selected it
+  // carries the selection (via its pinned OpenItem), so the parent shouldn't
+  // also render as selected.
+  const issueOpen = item.id === "activity" && openSub === "issues" && selectedId !== null;
+  // A destination with subpages is never itself the active row — one of its
+  // subpages always is. Lighting both would claim two places at once.
+  const parentActive = onThisView && !hasSubs && !issueOpen;
 
   // Keep the current page's subtree expanded.
   useEffect(() => {
     if (onThisView && hasSubs) setOpen(true);
   }, [onThisView, hasSubs]);
 
+  // Clicking the parent goes to its first subpage rather than to a bare view:
+  // `setView` clears the subview, which would render that subpage anyway but
+  // leave every row in the group unlit.
   const navigateParent = () => {
-    setView(item.id);
-    if (hasSubs) setOpen(true);
+    const sub = defaultSubpage(item.id);
+    if (sub) {
+      openSubview(item.id, sub);
+      setOpen(true);
+    } else {
+      setView(item.id);
+    }
   };
 
   return (
@@ -109,7 +123,7 @@ export function NavGroup({
           style={{ marginLeft: 14, borderLeft: "0.5px solid var(--color-border-default)", paddingLeft: 8 }}
         >
           {item.subpages!.map((sp) => {
-            const subActive = onThisView && subview === sp.id;
+            const subActive = openSub === sp.id;
             return (
               <button
                 key={sp.id}

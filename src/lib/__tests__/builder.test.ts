@@ -92,7 +92,7 @@ describe("editing the flow", () => {
 
 describe("saving a draft", () => {
   it("appends a new workflow with a readable id and derived packages", () => {
-    const { workflows: next, id } = commitDraft(workflows, draftWith(), "Keith Kennedy");
+    const { workflows: next, id } = commitDraft(workflows, draftWith(), "Ada Lovelace");
     expect(id).toBe("wf_nightly_export");
     expect(next).toHaveLength(workflows.length + 1);
     const saved = next.find((a) => a.id === id)!;
@@ -108,14 +108,14 @@ describe("saving a draft", () => {
   it("replaces in place when editing an existing workflow", () => {
     const existing = workflows[0];
     const edited: WorkflowDraft = { ...existing, isNew: false, name: "Renamed audit" };
-    const { workflows: next, id } = commitDraft(workflows, edited, "Keith Kennedy");
+    const { workflows: next, id } = commitDraft(workflows, edited, "Ada Lovelace");
     expect(id).toBe(existing.id);
     expect(next).toHaveLength(workflows.length);
     expect(next.find((a) => a.id === id)?.name).toBe("Renamed audit");
   });
 
   it("falls back to a title rather than saving an empty name", () => {
-    const { workflows: next, id } = commitDraft(workflows, draftWith({ name: "   " }), "Keith Kennedy");
+    const { workflows: next, id } = commitDraft(workflows, draftWith({ name: "   " }), "Ada Lovelace");
     expect(next.find((a) => a.id === id)?.name).toBe("Untitled workflow");
   });
 });
@@ -128,8 +128,8 @@ describe("starting a run", () => {
 
   it("starts queued, manually triggered, carrying the placement and nothing else", () => {
     const workflow = workflows[0];
-    const run = startedRun(workflow, "Keith Kennedy", runs, runners);
-    expect(run).toMatchObject({ state: "Queued", trigger: "Manual", startedBy: "Keith Kennedy", startedAt: "just now" });
+    const run = startedRun(workflow, "Ada Lovelace", runs, runners);
+    expect(run).toMatchObject({ state: "Queued", trigger: "Manual", startedBy: "Ada Lovelace", startedAt: "just now" });
     expect(run.workflowId).toBe(workflow.id);
     // Exactly one line: where it is going, and why. Everything else in the log is
     // reported by the engine as it happens — nothing here has happened yet, and the
@@ -140,7 +140,7 @@ describe("starting a run", () => {
 
   it("places the run through the distributor and records why", () => {
     const workflow = workflows[0];
-    const run = startedRun(workflow, "Keith Kennedy", runs, runners);
+    const run = startedRun(workflow, "Ada Lovelace", runs, runners);
     const placed = runners.find((r) => r.id === run.runnerId);
     expect(placed).toBeDefined();
     // The reason is on the log, not just the placement — a choice nobody can read
@@ -150,7 +150,7 @@ describe("starting a run", () => {
 
   it("names no runner when the pool can't take the work", () => {
     const headedOnly = { ...workflows[0], requirements: { auth: "none", ui: "headed", platform: "windows" } as const };
-    const run = startedRun(headedOnly, "Keith Kennedy", runs, []);
+    const run = startedRun(headedOnly, "Ada Lovelace", runs, []);
     expect(run.runnerId).toBeUndefined();
     expect(run.activity[0].title).toContain("Waiting for a runner");
   });
@@ -293,10 +293,10 @@ describe("the builder's chrome", () => {
 
 describe("version history", () => {
   it("cuts v1 on first save and appends on every edit", () => {
-    const { workflows: afterNew, id } = commitDraft(workflows, draftWith(), "Keith Kennedy");
+    const { workflows: afterNew, id } = commitDraft(workflows, draftWith(), "Ada Lovelace");
     const created = afterNew.find((w) => w.id === id)!;
     expect(created.versions.map((v) => v.version)).toEqual([1]);
-    expect(created.versions[0].authoredBy).toBe("Keith Kennedy");
+    expect(created.versions[0].authoredBy).toBe("Ada Lovelace");
 
     const edited = commitDraft(afterNew, { ...created, isNew: false, name: "Renamed" }, "Priya Fenn");
     expect(edited.workflows.find((w) => w.id === id)!.versions.map((v) => v.version)).toEqual([1, 2]);

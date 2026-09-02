@@ -15,7 +15,7 @@ import type { Workflow, WorkflowStep } from "../../data/types";
 
 const flowWith = (steps: WorkflowStep[]): Workflow => {
   const draft = { ...blankDraft("ls", "prv-drafts"), name: "Invoice check", steps, isNew: true };
-  return commitDraft([], draft, "Keith Kennedy").workflows[0];
+  return commitDraft([], draft, "Ada Lovelace").workflows[0];
 };
 
 const action = (id: string, actionId: string, config: Record<string, string>): WorkflowStep => ({

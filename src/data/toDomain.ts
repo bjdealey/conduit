@@ -9,8 +9,7 @@
  * crosses the API boundary. They converge once the library reads from the API.
  */
 import type { Workflow as DomainWorkflow, WorkflowRunState } from "@conduit/domain";
-import { workflows } from "./workflows";
-import { members } from "./issues";
+import type { Member, Workflow } from "./types";
 
 const STATE_FROM_STATUS: Record<string, WorkflowRunState> = {
   Published: "Running",
@@ -19,8 +18,19 @@ const STATE_FROM_STATUS: Record<string, WorkflowRunState> = {
   Draft: "Disabled",
 };
 
-/** The seed library as canonical domain workflows (source: the local `seed` connector). */
-export function seedConnectedWorkflows(): DomainWorkflow[] {
+/**
+ * The local library as canonical domain workflows (source: the local `seed`
+ * connector).
+ *
+ * Takes the collections rather than importing them, because what the library holds
+ * is now a runtime question — a clean install, the sample estate, or whatever has
+ * been authored since — and a module-scope import would answer it once, at load,
+ * and then be wrong for the rest of the session.
+ */
+export function seedConnectedWorkflows(
+  workflows: readonly Workflow[],
+  members: readonly Member[],
+): DomainWorkflow[] {
   return workflows.map((w) => ({
     id: `seed:${w.id}`,
     sourceId: w.id,

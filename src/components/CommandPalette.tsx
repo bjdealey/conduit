@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { ArrowUpRight, Hash, Search, Sparkles, SunMoon } from "lucide-react";
-import { useStore, type View } from "../store";
+import { useStore } from "../store";
+import { navItems } from "../data/nav";
 
 const cmdIconProps = { size: 18, strokeWidth: 1.7 };
 const ArrowIcon = <ArrowUpRight {...cmdIconProps} />;
@@ -17,19 +18,16 @@ export function CommandPalette() {
   const store = useStore();
   const { searchOpen, closeSearch, toggleSearch } = store;
 
-  // Enter/exit transition: render (mounted) vs visible (animated in).
-  const [render, setRender] = useState(searchOpen);
-  const [visible, setVisible] = useState(false);
-  useEffect(() => {
-    if (searchOpen) {
-      setRender(true);
-      const id = requestAnimationFrame(() => setVisible(true));
-      return () => cancelAnimationFrame(id);
-    }
-    setVisible(false);
-    const t = setTimeout(() => setRender(false), 180);
-    return () => clearTimeout(t);
-  }, [searchOpen]);
+  // No open/close animation, deliberately. ⌘K is reached hundreds of times a day,
+  // and a keyboard-initiated action is the one case where motion is pure latency:
+  // there is no spatial relationship to explain and no state change to clarify —
+  // the palette is simply either there or it isn't. This used to fade and rise
+  // over 180ms in each direction, which is 180ms before you can read the results
+  // of something you asked for instantly. (Raycast opens the same way, and for
+  // the same reason.)
+  //
+  // Everything below therefore keys straight off `searchOpen` — there is no
+  // mounted-but-invisible state to keep in step with it.
 
   // Global ⌘K / Ctrl+K.
   useEffect(() => {
@@ -54,34 +52,47 @@ export function CommandPalette() {
     }
   }, [searchOpen]);
   useEffect(() => {
-    if (visible) inputRef.current?.focus();
-  }, [visible]);
+    if (searchOpen) inputRef.current?.focus();
+  }, [searchOpen]);
   useEffect(() => setActiveIndex(0), [query]);
 
   const groups = useMemo<Group[]>(() => {
     const q = query.trim().toLowerCase();
     const m = (s: string) => !q || s.toLowerCase().includes(q);
 
-    const navDefs: [View, string][] = [
-      ["activity", "Go to Activity"],
-      ["inbox", "Go to Inbox"],
-      ["workflows", "Go to Workflows"],
-      ["manage", "Go to Manage"],
-      ["users", "Go to Users"],
-      // Administration is permission-gated: hidden from the palette for `user`.
-      ...(store.allowed("review")
-        ? ([
-            ["review", "Go to Review"],
-            ["audit", "Go to Audit"],
-            ["administration", "Go to Administration"],
-          ] as [View, string][])
-        : []),
-      ["surfaces", "Go to Surfaces"],
-      ["runners", "Go to Runners"],
-      ["settings", "Go to Settings"],
-    ];
-    const nav: Cmd[] = navDefs
-      .map(([id, label]) => ({ id: `nav-${id}`, label, icon: ArrowIcon, run: () => { store.setView(id); store.closeSearch(); } }))
+    // Built from `navItems`, not a second list beside it. The hand-written copy
+    // this replaces had drifted into naming destinations that no longer existed,
+    // which a palette is the worst place for: it is where you go when you can't
+    // find something. Gating is the rail's, so a destination your tier or
+    // capability set hides is not offered here either.
+    const nav: Cmd[] = navItems
+      .filter((item) => (!item.roles || item.roles.includes(store.role)) && (!item.capability || store.hasCapability(item.capability)))
+      .flatMap((item) =>
+        // A destination with subpages is reachable by each of them, named for
+        // where you actually land ("Governance → Audit"). Offering the parent as
+        // well would be a third row going to the same screen as the first child.
+        item.subpages?.length
+          ? item.subpages.map((sub) => ({
+              id: `nav-${item.id}-${sub.id}`,
+              label: `Go to ${item.label} → ${sub.label}`,
+              icon: ArrowIcon,
+              run: () => {
+                store.openSubview(item.id, sub.id);
+                store.closeSearch();
+              },
+            }))
+          : [
+              {
+                id: `nav-${item.id}`,
+                label: `Go to ${item.label}`,
+                icon: ArrowIcon,
+                run: () => {
+                  store.setView(item.id);
+                  store.closeSearch();
+                },
+              },
+            ],
+      )
       .filter((c) => m(c.label));
 
     const actions: Cmd[] = [
@@ -102,7 +113,7 @@ export function CommandPalette() {
             id: `issue-${i.id}`,
             label: `#${i.id}  ${i.title}`,
             icon: HashIcon,
-            run: () => { store.select(i.id); store.setView("inbox"); store.closeSearch(); },
+            run: () => { store.select(i.id); store.openSubview("activity", "issues"); store.closeSearch(); },
           }))
       : [];
 
@@ -115,7 +126,7 @@ export function CommandPalette() {
 
   const flat = useMemo(() => groups.flatMap((g) => g.items), [groups]);
 
-  if (!render) return null;
+  if (!searchOpen) return null;
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "ArrowDown") { e.preventDefault(); setActiveIndex((i) => Math.min(i + 1, flat.length - 1)); }
@@ -129,7 +140,7 @@ export function CommandPalette() {
     <div style={{ position: "fixed", inset: 0, zIndex: 100 }}>
       <div
         onClick={closeSearch}
-        style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.45)", opacity: visible ? 1 : 0, transition: "opacity 0.18s ease" }}
+        style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.45)" }}
       />
       <div
         role="dialog"
@@ -141,9 +152,7 @@ export function CommandPalette() {
           left: "50%",
           top: "14vh",
           width: "min(90vw, 640px)",
-          transform: `translateX(-50%) ${visible ? "translateY(0) scale(1)" : "translateY(-8px) scale(0.98)"}`,
-          opacity: visible ? 1 : 0,
-          transition: "opacity 0.18s ease, transform 0.18s cubic-bezier(0.4, 0, 0.2, 1)",
+          transform: "translateX(-50%)",
           boxShadow: "var(--s-modal)",
         }}
       >

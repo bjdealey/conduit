@@ -33,6 +33,6 @@ describe("mapping primitives fail loudly", () => {
   });
 
   it("stampId namespaces the vendor id by instance", () => {
-    expect(stampId("a360-eu", "b1")).toBe("a360-eu:b1");
+    expect(stampId("acme-eu", "b1")).toBe("acme-eu:b1");
   });
 });

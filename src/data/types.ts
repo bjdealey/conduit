@@ -112,7 +112,7 @@ export type FileKind = (typeof FILE_KINDS)[number];
  */
 export type LibraryFile = {
   id: string;
-  /** Name including the extension, e.g. "a360-mapping.xml". */
+  /** Name including the extension, e.g. "billing-rules.xml". */
   name: string;
   folderId: string;
   visibility: Visibility;
@@ -154,17 +154,52 @@ export type Run = {
 
 
 
-/** The platform that executes an workflow today. `conduit` is native — authored
+/** The platform that executes a workflow today. `conduit` is native — authored
  *  here, run on our runners. Anything else is a connected platform mirrored into the
- *  library by its connector: we show it and observe it, but its flow lives over there. */
-export const WORKFLOW_PLATFORMS = ["conduit", "automation-anywhere"] as const;
-export type WorkflowPlatform = (typeof WORKFLOW_PLATFORMS)[number];
+ *  library by its connector: we show it and observe it, but its flow lives over there.
+ *
+ *  Deliberately a bare `string` rather than a closed union. Connectors are added,
+ *  enabled and removed **at runtime with no frontend change**, so the set of
+ *  platforms is data the UI reads off the estate, never a list it is compiled
+ *  against — the moment a platform is a union member, installing a connector means
+ *  editing and redeploying the frontend. */
+export type WorkflowPlatform = string;
 
-/** Display names for the platforms an workflow can run on. */
-export const PLATFORM_LABEL: Record<WorkflowPlatform, string> = {
-  conduit: "Conduit",
-  "automation-anywhere": "Automation Anywhere",
+/** The native platform: authored here, run on our runners. The only one this build
+ *  knows by name, because it is the only one that isn't supplied by a connector. */
+export const CONDUIT_PLATFORM = "conduit";
+
+/** Display names for the platforms this build knows by name — just the native one.
+ *  Anything else arrived from a connector, so it is absent here by construction. */
+const PLATFORM_LABELS: Record<string, string> = {
+  [CONDUIT_PLATFORM]: "Conduit",
 };
+
+/** A platform's display name. A connector-supplied id falls back to a humanised
+ *  form of the id itself ("acme-cloud" → "Acme Cloud") rather than rendering
+ *  `undefined`, so a newly installed connector reads correctly with no edit here.
+ *  Casing a connector chooses for itself (DevOps, ServiceNow) is beyond a rule this
+ *  general; a connector that cares should ship its own label. */
+export function platformLabel(platform: WorkflowPlatform): string {
+  return (
+    PLATFORM_LABELS[platform] ??
+    platform
+      .split(/[-_\s]+/)
+      .filter(Boolean)
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ")
+  );
+}
+
+/** The platforms actually present in an estate, native first then the connected
+ *  ones alphabetically. This is what the UI enumerates — a clean install returns
+ *  just `conduit`, and a connector's platform appears the moment its first
+ *  workflow is mirrored in. */
+export function platformsIn(workflows: readonly { platform: WorkflowPlatform }[]): WorkflowPlatform[] {
+  const present = [...new Set(workflows.map((w) => w.platform))];
+  const connected = present.filter((p) => p !== CONDUIT_PLATFORM).sort();
+  return present.includes(CONDUIT_PLATFORM) ? [CONDUIT_PLATFORM, ...connected] : connected;
+}
 
 /** How far along the move onto Conduit an workflow is. Per workflow and
  *  reversible: there is no cutover date, so this is a state rather than a milestone,
